@@ -49,7 +49,7 @@ public class ChatRoom {
 
 	private LocalDateTime sellerDeletedAt;
 
-	@Column(length = 500)
+	@Column(length = 1000)
 	private String lastMessageContent;
 
 	private LocalDateTime lastMessageAt;
