@@ -17,17 +17,15 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 
-@SpringBootTest(properties = {
+@DataJpaTest(properties = {
 	"spring.datasource.url=jdbc:h2:mem:entity-mapping;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
 	"spring.datasource.driver-class-name=org.h2.Driver",
 	"spring.datasource.username=sa",
 	"spring.datasource.password=",
 	"spring.jpa.hibernate.ddl-auto=create-drop"
 })
-@Transactional
 class EntityMappingTest {
 
 	@Autowired
@@ -51,7 +49,7 @@ class EntityMappingTest {
 			.user(seller)
 			.title("키링")
 			.description("미개봉 상품")
-			.price(12000)
+			.price(12000L)
 			.productCategory(ProductCategory.KEYRING)
 			.productCondition(ProductCondition.NEW)
 			.productStatus(ProductStatus.ON_SALE)
@@ -61,7 +59,7 @@ class EntityMappingTest {
 		PurchaseOrder order = PurchaseOrder.builder()
 			.user(buyer)
 			.post(post)
-			.amount(12000)
+			.amount(12000L)
 			.pgProvider(PgProvider.TOSS_PAYMENTS)
 			.pgPaymentKey("payment-key")
 			.pgTransactionId("transaction-id")

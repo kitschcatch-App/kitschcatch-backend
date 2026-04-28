@@ -42,7 +42,7 @@ public class Post {
 	private String description;
 
 	@Column(nullable = false)
-	private int price;
+	private Long price;
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 30)
@@ -71,7 +71,7 @@ public class Post {
 		User user,
 		String title,
 		String description,
-		int price,
+		Long price,
 		ProductCategory productCategory,
 		ProductCondition productCondition,
 		ProductStatus productStatus

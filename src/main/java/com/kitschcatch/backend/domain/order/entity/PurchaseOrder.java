@@ -41,7 +41,7 @@ public class PurchaseOrder {
 	private Post post;
 
 	@Column(nullable = false)
-	private int amount;
+	private Long amount;
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 30)
@@ -69,7 +69,7 @@ public class PurchaseOrder {
 	private PurchaseOrder(
 		User user,
 		Post post,
-		int amount,
+		Long amount,
 		PgProvider pgProvider,
 		String pgPaymentKey,
 		String pgTransactionId,
