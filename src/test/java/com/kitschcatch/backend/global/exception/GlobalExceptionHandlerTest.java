@@ -1,18 +1,24 @@
 // 공통 응답 및 전역 예외 처리 HTTP 응답 형식을 검증하는 테스트
-package com.kitschcatch.backend.common.exception;
+package com.kitschcatch.backend.global.exception;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.kitschcatch.backend.common.response.ApiResponse;
+import com.kitschcatch.backend.global.response.ApiResponse;
+import com.kitschcatch.backend.global.response.ResponseStatusSetterAdvice;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -23,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
 	private MockMvc mockMvc;
@@ -33,7 +40,7 @@ class GlobalExceptionHandlerTest {
 		validator.afterPropertiesSet();
 
 		mockMvc = MockMvcBuilders.standaloneSetup(new TestApiController())
-			.setControllerAdvice(new GlobalExceptionHandler())
+			.setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
 			.setValidator(validator)
 			.build();
 	}
@@ -46,6 +53,24 @@ class GlobalExceptionHandlerTest {
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.name").value("kitsch"))
 			.andExpect(jsonPath("$.error").doesNotExist());
+	}
+
+	@Test
+	@DisplayName("생성 성공 응답은 ApiResponse의 HTTP 상태를 실제 응답 상태로 사용한다")
+	void createdResponseUsesApiResponseHttpStatus() throws Exception {
+		mockMvc.perform(get("/test/success-created"))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.name").value("kitsch"))
+			.andExpect(jsonPath("$.error").doesNotExist());
+	}
+
+	@Test
+	@DisplayName("ApiResponse 본문이 null이면 기본 응답 상태를 유지한다")
+	void nullApiResponseBodyUsesDefaultHttpStatus() throws Exception {
+		mockMvc.perform(get("/test/null-response"))
+			.andExpect(status().isOk())
+			.andExpect(content().string(""));
 	}
 
 	@Test
@@ -95,12 +120,34 @@ class GlobalExceptionHandlerTest {
 			.andExpect(jsonPath("$.error.fieldErrors").doesNotExist());
 	}
 
+	@Test
+	@DisplayName("처리하지 못한 서버 예외를 에러 로그로 남긴다")
+	void unhandledExceptionWritesErrorLog(CapturedOutput output) throws Exception {
+		mockMvc.perform(get("/test/server-error"))
+			.andExpect(status().isInternalServerError());
+
+		assertThat(output)
+			.contains("Unhandled exception occurred")
+			.contains("RuntimeException")
+			.contains("unexpected");
+	}
+
 	@RestController
 	static class TestApiController {
 
 		@GetMapping("/test/success")
 		ApiResponse<Map<String, String>> success() {
 			return ApiResponse.success(Map.of("name", "kitsch"));
+		}
+
+		@GetMapping("/test/success-created")
+		ApiResponse<Map<String, String>> created() {
+			return ApiResponse.created(Map.of("name", "kitsch"));
+		}
+
+		@GetMapping("/test/null-response")
+		ApiResponse<Void> nullResponse() {
+			return null;
 		}
 
 		@GetMapping("/test/business-exception")
