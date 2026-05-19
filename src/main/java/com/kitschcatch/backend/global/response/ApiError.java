@@ -1,8 +1,8 @@
 // API 실패 응답의 에러 코드, 메시지, 필드 오류를 표현하는 객체
-package com.kitschcatch.backend.common.response;
+package com.kitschcatch.backend.global.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.kitschcatch.backend.common.exception.ErrorCode;
+import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.util.List;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)

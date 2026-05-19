@@ -1,5 +1,5 @@
 // 공통 예외 상황별 HTTP 상태와 내부 에러 코드를 관리하는 enum
-package com.kitschcatch.backend.common.exception;
+package com.kitschcatch.backend.global.exception;
 
 import org.springframework.http.HttpStatus;
 

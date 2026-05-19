@@ -1,12 +1,13 @@
 // 공통 응답 및 전역 예외 처리 HTTP 응답 형식을 검증하는 테스트
-package com.kitschcatch.backend.common.exception;
+package com.kitschcatch.backend.global.exception;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.kitschcatch.backend.common.response.ApiResponse;
+import com.kitschcatch.backend.global.response.ApiResponse;
+import com.kitschcatch.backend.global.response.ResponseStatusSetterAdvice;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
@@ -33,7 +34,7 @@ class GlobalExceptionHandlerTest {
 		validator.afterPropertiesSet();
 
 		mockMvc = MockMvcBuilders.standaloneSetup(new TestApiController())
-			.setControllerAdvice(new GlobalExceptionHandler())
+			.setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
 			.setValidator(validator)
 			.build();
 	}
@@ -43,6 +44,16 @@ class GlobalExceptionHandlerTest {
 	void successResponseUsesCommonFormat() throws Exception {
 		mockMvc.perform(get("/test/success"))
 			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.name").value("kitsch"))
+			.andExpect(jsonPath("$.error").doesNotExist());
+	}
+
+	@Test
+	@DisplayName("생성 성공 응답은 ApiResponse의 HTTP 상태를 실제 응답 상태로 사용한다")
+	void createdResponseUsesApiResponseHttpStatus() throws Exception {
+		mockMvc.perform(get("/test/success-created"))
+			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.name").value("kitsch"))
 			.andExpect(jsonPath("$.error").doesNotExist());
@@ -101,6 +112,11 @@ class GlobalExceptionHandlerTest {
 		@GetMapping("/test/success")
 		ApiResponse<Map<String, String>> success() {
 			return ApiResponse.success(Map.of("name", "kitsch"));
+		}
+
+		@GetMapping("/test/success-created")
+		ApiResponse<Map<String, String>> created() {
+			return ApiResponse.created(Map.of("name", "kitsch"));
 		}
 
 		@GetMapping("/test/business-exception")
