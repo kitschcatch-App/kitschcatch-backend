@@ -28,7 +28,9 @@ public class ResponseStatusSetterAdvice implements ResponseBodyAdvice<ApiRespons
 		ServerHttpRequest request,
 		ServerHttpResponse response
 	) {
-		response.setStatusCode(body.httpStatus());
+		if (body != null && body.httpStatus() != null) {
+			response.setStatusCode(body.httpStatus());
+		}
 		return body;
 	}
 }
