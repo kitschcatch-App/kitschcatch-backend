@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.domain.post.entity;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum ProductCategory {
@@ -20,5 +21,15 @@ public enum ProductCategory {
 	@JsonValue
 	public String getLabel() {
 		return label;
+	}
+
+	@JsonCreator
+	public static ProductCategory from(String value) {
+		for (ProductCategory category : values()) {
+			if (category.name().equals(value) || category.label.equals(value)) {
+				return category;
+			}
+		}
+		throw new IllegalArgumentException("Unknown product category: " + value);
 	}
 }
