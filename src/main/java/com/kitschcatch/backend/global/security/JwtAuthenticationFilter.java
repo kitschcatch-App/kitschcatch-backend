@@ -50,7 +50,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			filterChain.doFilter(request, response);
 		} catch (BusinessException exception) {
 			SecurityContextHolder.clearContext();
-			response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+			filterChain.doFilter(request, response);
 		}
 	}
 }

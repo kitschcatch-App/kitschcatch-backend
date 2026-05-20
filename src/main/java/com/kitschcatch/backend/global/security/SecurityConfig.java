@@ -22,11 +22,15 @@ public class SecurityConfig {
 	@Bean
 	public SecurityFilterChain securityFilterChain(
 		HttpSecurity http,
-		JwtAuthenticationFilter jwtAuthenticationFilter
+		JwtAuthenticationFilter jwtAuthenticationFilter,
+		ApiAuthenticationExceptionHandler apiAuthenticationExceptionHandler
 	) throws Exception {
 		return http
 			.csrf(AbstractHttpConfigurer::disable)
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.exceptionHandling(exception -> exception
+				.authenticationEntryPoint(apiAuthenticationExceptionHandler)
+				.accessDeniedHandler(apiAuthenticationExceptionHandler))
 			.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers("/api/auth/**").permitAll()
 				.anyRequest().authenticated())
