@@ -26,6 +26,8 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest(properties = {
 	"spring.datasource.url=jdbc:h2:mem:auth-service;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
@@ -36,8 +38,10 @@ import org.springframework.context.annotation.Import;
 })
 @Import({
 	AuthService.class,
+	KakaoUserService.class,
 	AuthServiceTest.TestConfig.class
 })
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class AuthServiceTest {
 
 	@Autowired
@@ -57,6 +61,9 @@ class AuthServiceTest {
 
 	@BeforeEach
 	void setUp() {
+		refreshTokenRepository.deleteAllInBatch();
+		loginNonceRepository.deleteAllInBatch();
+		userRepository.deleteAllInBatch();
 		kakaoOidcTokenVerifier.user = new KakaoOidcUser(
 			"123456789",
 			"kakao@example.com",

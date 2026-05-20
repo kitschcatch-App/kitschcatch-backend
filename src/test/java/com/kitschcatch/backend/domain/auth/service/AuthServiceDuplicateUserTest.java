@@ -3,6 +3,8 @@ package com.kitschcatch.backend.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.kitschcatch.backend.domain.auth.dto.AuthTokenResponse;
@@ -12,7 +14,6 @@ import com.kitschcatch.backend.domain.auth.repository.LoginNonceRepository;
 import com.kitschcatch.backend.domain.auth.repository.RefreshTokenRepository;
 import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import com.kitschcatch.backend.domain.user.entity.User;
-import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.security.JwtProperties;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
 import java.time.Duration;
@@ -32,7 +33,6 @@ class AuthServiceDuplicateUserTest {
 			"kakao@example.com",
 			"kakao-nickname"
 		);
-		UserRepository userRepository = mock(UserRepository.class);
 		RefreshTokenRepository refreshTokenRepository = mock(RefreshTokenRepository.class);
 		LoginNonceRepository loginNonceRepository = mock(LoginNonceRepository.class);
 		JwtTokenProvider jwtTokenProvider = new JwtTokenProvider(new JwtProperties(
@@ -40,6 +40,7 @@ class AuthServiceDuplicateUserTest {
 			Duration.ofMinutes(30),
 			Duration.ofDays(14)
 		));
+		KakaoUserService kakaoUserService = mock(KakaoUserService.class);
 		User savedByConcurrentRequest = User.builder()
 			.nickname("kakao-nickname")
 			.email("kakao@example.com")
@@ -49,13 +50,15 @@ class AuthServiceDuplicateUserTest {
 		ReflectionTestUtils.setField(savedByConcurrentRequest, "id", 1L);
 
 		when(loginNonceRepository.consumeByRawNonce("nonce-value")).thenReturn(true);
-		when(userRepository.findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, "123456789"))
-			.thenReturn(Optional.empty(), Optional.of(savedByConcurrentRequest));
-		when(userRepository.save(any(User.class))).thenThrow(new DataIntegrityViolationException("duplicate"));
+		when(kakaoUserService.findKakaoUser("123456789"))
+			.thenReturn(Optional.empty())
+			.thenReturn(Optional.of(savedByConcurrentRequest));
+		when(kakaoUserService.createKakaoUser(any(KakaoOidcUser.class)))
+			.thenThrow(new DataIntegrityViolationException("duplicate"));
 
 		AuthService authService = new AuthService(
 			verifier,
-			userRepository,
+			kakaoUserService,
 			refreshTokenRepository,
 			loginNonceRepository,
 			jwtTokenProvider
@@ -64,5 +67,6 @@ class AuthServiceDuplicateUserTest {
 		AuthTokenResponse response = authService.loginWithKakaoIdToken("kakao-sdk-id-token", "nonce-value");
 
 		assertThat(response.user().id()).isEqualTo(1L);
+		verify(kakaoUserService, times(2)).findKakaoUser("123456789");
 	}
 }

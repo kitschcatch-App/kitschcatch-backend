@@ -9,9 +9,7 @@ import com.kitschcatch.backend.domain.auth.oidc.KakaoOidcTokenVerifier;
 import com.kitschcatch.backend.domain.auth.oidc.KakaoOidcUser;
 import com.kitschcatch.backend.domain.auth.repository.LoginNonceRepository;
 import com.kitschcatch.backend.domain.auth.repository.RefreshTokenRepository;
-import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import com.kitschcatch.backend.domain.user.entity.User;
-import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
@@ -29,26 +27,25 @@ import org.springframework.util.StringUtils;
 @Transactional
 public class AuthService {
 
-	private static final String DEFAULT_NICKNAME_PREFIX = "kakao-";
 	private static final Duration LOGIN_NONCE_TTL = Duration.ofMinutes(5);
 	private static final int NONCE_BYTES = 32;
 	private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
 	private final KakaoOidcTokenVerifier kakaoOidcTokenVerifier;
-	private final UserRepository userRepository;
+	private final KakaoUserService kakaoUserService;
 	private final RefreshTokenRepository refreshTokenRepository;
 	private final LoginNonceRepository loginNonceRepository;
 	private final JwtTokenProvider jwtTokenProvider;
 
 	public AuthService(
 		KakaoOidcTokenVerifier kakaoOidcTokenVerifier,
-		UserRepository userRepository,
+		KakaoUserService kakaoUserService,
 		RefreshTokenRepository refreshTokenRepository,
 		LoginNonceRepository loginNonceRepository,
 		JwtTokenProvider jwtTokenProvider
 	) {
 		this.kakaoOidcTokenVerifier = kakaoOidcTokenVerifier;
-		this.userRepository = userRepository;
+		this.kakaoUserService = kakaoUserService;
 		this.refreshTokenRepository = refreshTokenRepository;
 		this.loginNonceRepository = loginNonceRepository;
 		this.jwtTokenProvider = jwtTokenProvider;
@@ -76,7 +73,7 @@ public class AuthService {
 			throw new BusinessException(ErrorCode.KAKAO_EMAIL_REQUIRED);
 		}
 
-		User user = userRepository.findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, kakaoUser.subject())
+		User user = kakaoUserService.findKakaoUser(kakaoUser.subject())
 			.orElseGet(() -> createKakaoUser(kakaoUser));
 
 		return issueTokenResponse(user);
@@ -122,23 +119,11 @@ public class AuthService {
 
 	private User createKakaoUser(KakaoOidcUser kakaoUser) {
 		try {
-			return userRepository.save(User.builder()
-				.nickname(resolveNickname(kakaoUser))
-				.email(kakaoUser.email())
-				.authProvider(AuthProvider.KAKAO)
-				.providerUserId(kakaoUser.subject())
-				.build());
+			return kakaoUserService.createKakaoUser(kakaoUser);
 		} catch (DataIntegrityViolationException exception) {
-			return userRepository.findByAuthProviderAndProviderUserId(AuthProvider.KAKAO, kakaoUser.subject())
+			return kakaoUserService.findKakaoUser(kakaoUser.subject())
 				.orElseThrow(() -> exception);
 		}
-	}
-
-	private String resolveNickname(KakaoOidcUser kakaoUser) {
-		if (StringUtils.hasText(kakaoUser.nickname())) {
-			return kakaoUser.nickname();
-		}
-		return DEFAULT_NICKNAME_PREFIX + kakaoUser.subject();
 	}
 
 	private String generateNonce() {
