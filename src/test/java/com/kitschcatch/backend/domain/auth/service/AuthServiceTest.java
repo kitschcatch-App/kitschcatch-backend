@@ -156,10 +156,9 @@ class AuthServiceTest {
 		AuthTokenResponse refreshResponse = authService.refresh(loginResponse.refreshToken());
 
 		assertThat(refreshResponse.refreshToken()).isNotEqualTo(loginResponse.refreshToken());
-		assertThat(refreshTokenRepository.findAll()).hasSize(2);
 		assertThat(refreshTokenRepository.findAll())
-			.filteredOn(token -> token.isRevoked())
-			.hasSize(1);
+			.singleElement()
+			.satisfies(token -> assertThat(token.isRevoked()).isFalse());
 		assertThatThrownBy(() -> authService.refresh(loginResponse.refreshToken()))
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
