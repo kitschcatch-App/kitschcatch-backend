@@ -99,12 +99,14 @@ public class AuthService {
 	}
 
 	private AuthTokenResponse issueTokenResponse(User user) {
+		LocalDateTime now = LocalDateTime.now();
 		String accessToken = jwtTokenProvider.createAccessToken(user.getId());
 		String refreshToken = jwtTokenProvider.createRefreshToken(user.getId());
+		refreshTokenRepository.deleteInactiveByUser(user, now);
 		refreshTokenRepository.save(RefreshToken.builder()
 			.user(user)
 			.tokenHash(jwtTokenProvider.hashToken(refreshToken))
-			.expiresAt(LocalDateTime.now().plus(jwtTokenProvider.getRefreshTokenTtl()))
+			.expiresAt(now.plus(jwtTokenProvider.getRefreshTokenTtl()))
 			.build());
 
 		return new AuthTokenResponse(
