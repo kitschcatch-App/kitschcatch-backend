@@ -10,6 +10,7 @@ import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.PgProvider;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.post.entity.Post;
+import com.kitschcatch.backend.domain.post.entity.PostImage;
 import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
@@ -57,10 +58,11 @@ class EntityMappingTest {
 			.title("키링")
 			.description("미개봉 상품")
 			.price(12000L)
-			.productCategory(ProductCategory.KEYRING)
+			.productCategory(ProductCategory.GOODS)
 			.productCondition(ProductCondition.NEW)
 			.productStatus(ProductStatus.ON_SALE)
 			.build();
+		post.addImage("posts/1/image.png", 0);
 		entityManager.persist(post);
 
 		PurchaseOrder order = PurchaseOrder.builder()
@@ -96,6 +98,9 @@ class EntityMappingTest {
 		ChatMessage savedMessage = entityManager.find(ChatMessage.class, chatMessage.getId());
 
 		assertThat(savedMessage.getChatRoom().getPost().getTitle()).isEqualTo("키링");
+		assertThat(savedMessage.getChatRoom().getPost().getImages())
+			.extracting(PostImage::getObjectKey)
+			.containsExactly("posts/1/image.png");
 		assertThat(savedMessage.getChatRoom().getBuyer().getEmail()).isEqualTo("buyer@example.com");
 		assertThat(savedMessage.getSender().getNickname()).isEqualTo("buyer");
 		assertThat(entityManager.find(PurchaseOrder.class, order.getId()).getOrderStatus()).isEqualTo(OrderStatus.PAID);
