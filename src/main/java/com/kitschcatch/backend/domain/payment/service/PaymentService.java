@@ -17,6 +17,7 @@ import com.kitschcatch.backend.domain.payment.entity.PaymentMethod;
 import com.kitschcatch.backend.domain.payment.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.payment.repository.PaymentRepository;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
+import com.kitschcatch.backend.domain.post.repository.PostRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.Clock;
@@ -45,6 +46,7 @@ public class PaymentService {
 
 	private final PaymentRepository paymentRepository;
 	private final PurchaseOrderRepository orderRepository;
+	private final PostRepository postRepository;
 	private final TossPaymentClient tossPaymentClient;
 	private final TossPaymentProperties tossPaymentProperties;
 	private final Clock clock;
@@ -54,6 +56,7 @@ public class PaymentService {
 	public PaymentService(
 		PaymentRepository paymentRepository,
 		PurchaseOrderRepository orderRepository,
+		PostRepository postRepository,
 		TossPaymentClient tossPaymentClient,
 		TossPaymentProperties tossPaymentProperties,
 		PlatformTransactionManager transactionManager
@@ -61,6 +64,7 @@ public class PaymentService {
 		this(
 			paymentRepository,
 			orderRepository,
+			postRepository,
 			tossPaymentClient,
 			tossPaymentProperties,
 			Clock.systemDefaultZone(),
@@ -71,6 +75,7 @@ public class PaymentService {
 	PaymentService(
 		PaymentRepository paymentRepository,
 		PurchaseOrderRepository orderRepository,
+		PostRepository postRepository,
 		TossPaymentClient tossPaymentClient,
 		TossPaymentProperties tossPaymentProperties,
 		Clock clock,
@@ -78,6 +83,7 @@ public class PaymentService {
 	) {
 		this.paymentRepository = paymentRepository;
 		this.orderRepository = orderRepository;
+		this.postRepository = postRepository;
 		this.tossPaymentClient = tossPaymentClient;
 		this.tossPaymentProperties = tossPaymentProperties;
 		this.clock = clock;
@@ -152,6 +158,7 @@ public class PaymentService {
 	}
 
 	private PaymentResponse prepareCreatePayment(Long userId, CreatePaymentRequest request) {
+		lockPostByOrderId(userId, request.orderId());
 		PurchaseOrder order = orderRepository.findByIdAndUserIdForUpdate(request.orderId(), userId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 		if (request.method() == PaymentMethod.VIRTUAL_ACCOUNT) {
@@ -346,8 +353,26 @@ public class PaymentService {
 	}
 
 	private Payment findPaymentForUpdate(Long userId, Long paymentId) {
+		lockPostByPaymentId(userId, paymentId);
 		return paymentRepository.findByIdAndOrderUserIdForUpdate(paymentId, userId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+	}
+
+	private void lockPostByOrderId(Long userId, Long orderId) {
+		Long postId = orderRepository.findPostIdByIdAndUserId(orderId, userId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+		lockPost(postId, ErrorCode.ORDER_NOT_FOUND);
+	}
+
+	private void lockPostByPaymentId(Long userId, Long paymentId) {
+		Long postId = paymentRepository.findPostIdByIdAndOrderUserId(paymentId, userId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+		lockPost(postId, ErrorCode.PAYMENT_NOT_FOUND);
+	}
+
+	private void lockPost(Long postId, ErrorCode errorCode) {
+		postRepository.findByIdForUpdate(postId)
+			.orElseThrow(() -> new BusinessException(errorCode));
 	}
 
 	private Optional<Payment> findActivePayment(PurchaseOrder order) {

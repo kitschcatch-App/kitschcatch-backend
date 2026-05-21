@@ -14,6 +14,13 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<PurchaseOrder> findFirstByPostIdAndOrderStatusOrderByCreatedAtDesc(Long postId, OrderStatus orderStatus);
 
+	@Query("""
+		select o.post.id
+		from PurchaseOrder o
+		where o.id = :id and o.user.id = :userId
+		""")
+	Optional<Long> findPostIdByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("""
 		select o

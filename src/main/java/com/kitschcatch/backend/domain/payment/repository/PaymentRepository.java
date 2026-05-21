@@ -18,6 +18,14 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 		Collection<PaymentStatus> statuses
 	);
 
+	@Query("""
+		select o.post.id
+		from Payment p
+		join p.order o
+		where p.id = :id and o.user.id = :userId
+		""")
+	Optional<Long> findPostIdByIdAndOrderUserId(@Param("id") Long id, @Param("userId") Long userId);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("""
 		select p

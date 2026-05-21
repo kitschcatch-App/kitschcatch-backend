@@ -24,6 +24,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 	@Query("select p from Post p join fetch p.user where p.id = :id and p.deletedAt is null")
 	Optional<Post> findByIdAndDeletedAtIsNullForUpdate(@Param("id") Long id);
 
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from Post p where p.id = :id")
+	Optional<Post> findByIdForUpdate(@Param("id") Long id);
+
 	@EntityGraph(attributePaths = {"user", "images"})
 	Optional<Post> findDetailByIdAndDeletedAtIsNull(Long id);
 }

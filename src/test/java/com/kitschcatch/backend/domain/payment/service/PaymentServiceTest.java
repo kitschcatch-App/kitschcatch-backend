@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +30,7 @@ import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
+import com.kitschcatch.backend.domain.post.repository.PostRepository;
 import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.global.exception.BusinessException;
@@ -42,6 +44,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionOperations;
@@ -50,6 +53,7 @@ class PaymentServiceTest {
 
 	private PaymentRepository paymentRepository;
 	private com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository orderRepository;
+	private PostRepository postRepository;
 	private TossPaymentClient tossPaymentClient;
 	private TossPaymentProperties tossPaymentProperties;
 	private PaymentService paymentService;
@@ -63,6 +67,7 @@ class PaymentServiceTest {
 	void setUp() {
 		paymentRepository = mock(PaymentRepository.class);
 		orderRepository = mock(com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository.class);
+		postRepository = mock(PostRepository.class);
 		tossPaymentClient = mock(TossPaymentClient.class);
 		tossPaymentProperties = new TossPaymentProperties(
 			"test_sk",
@@ -78,6 +83,7 @@ class PaymentServiceTest {
 		paymentService = new PaymentService(
 			paymentRepository,
 			orderRepository,
+			postRepository,
 			tossPaymentClient,
 			tossPaymentProperties,
 			clock,
@@ -88,6 +94,9 @@ class PaymentServiceTest {
 		post = post(ProductStatus.RESERVED);
 		order = pendingOrder();
 		ReflectionTestUtils.setField(order, "id", 30L);
+		when(orderRepository.findPostIdByIdAndUserId(30L, 2L)).thenReturn(Optional.of(10L));
+		when(paymentRepository.findPostIdByIdAndOrderUserId(40L, 2L)).thenReturn(Optional.of(10L));
+		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(post));
 	}
 
 	@Test
@@ -112,6 +121,10 @@ class PaymentServiceTest {
 		assertThat(response.orderName()).isEqualTo("키링");
 		assertThat(response.successUrl()).isEqualTo("https://example.com/payments/success?paymentId=40");
 		assertThat(response.failUrl()).isEqualTo("https://example.com/payments/fail?paymentId=40");
+		InOrder inOrder = inOrder(orderRepository, postRepository);
+		inOrder.verify(orderRepository).findPostIdByIdAndUserId(30L, 2L);
+		inOrder.verify(postRepository).findByIdForUpdate(10L);
+		inOrder.verify(orderRepository).findByIdAndUserIdForUpdate(30L, 2L);
 	}
 
 	@Test
@@ -208,6 +221,10 @@ class PaymentServiceTest {
 		assertThat(payment.getPgTransactionId()).isEqualTo("tx-key");
 		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
 		assertThat(post.getProductStatus()).isEqualTo(ProductStatus.SOLD_OUT);
+		InOrder inOrder = inOrder(paymentRepository, postRepository);
+		inOrder.verify(paymentRepository).findPostIdByIdAndOrderUserId(40L, 2L);
+		inOrder.verify(postRepository).findByIdForUpdate(10L);
+		inOrder.verify(paymentRepository).findByIdAndOrderUserIdForUpdate(40L, 2L);
 	}
 
 	@Test
