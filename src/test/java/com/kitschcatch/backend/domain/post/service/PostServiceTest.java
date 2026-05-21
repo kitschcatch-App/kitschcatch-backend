@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,12 +34,15 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 class PostServiceTest {
 
 	private PostRepository postRepository;
 	private UserRepository userRepository;
 	private PostImageStorage postImageStorage;
+	private TrackingTransactionOperations transactionOperations;
 	private PostService postService;
 	private User seller;
 
@@ -47,7 +51,8 @@ class PostServiceTest {
 		postRepository = mock(PostRepository.class);
 		userRepository = mock(UserRepository.class);
 		postImageStorage = mock(PostImageStorage.class);
-		postService = new PostService(postRepository, userRepository, postImageStorage);
+		transactionOperations = new TrackingTransactionOperations();
+		postService = new PostService(postRepository, userRepository, postImageStorage, transactionOperations);
 		seller = User.builder()
 			.nickname("seller")
 			.email("seller@example.com")
@@ -83,7 +88,10 @@ class PostServiceTest {
 	void createPostSavesPostWithImages() {
 		when(userRepository.findById(1L)).thenReturn(Optional.of(seller));
 		when(postImageStorage.isOwnedPostImageKey(1L, "posts/1/image.png")).thenReturn(true);
-		when(postImageStorage.exists("posts/1/image.png")).thenReturn(true);
+		when(postImageStorage.exists("posts/1/image.png")).thenAnswer(invocation -> {
+			assertThat(transactionOperations.isInTransaction()).isFalse();
+			return true;
+		});
 		when(postImageStorage.imageUrl("posts/1/image.png")).thenReturn("https://cdn.example.com/posts/1/image.png");
 		when(postRepository.save(any(Post.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -124,12 +132,33 @@ class PostServiceTest {
 	}
 
 	@Test
+	@DisplayName("판매 게시글 생성은 중복된 이미지 key를 거부한다")
+	void createPostWithDuplicateImageKeysThrowsException() {
+		assertThatThrownBy(() -> postService.createPost(1L, new CreatePostRequest(
+			"키링 판매",
+			"미개봉 굿즈입니다.",
+			12000L,
+			ProductCategory.GOODS,
+			ProductCondition.NEW,
+			List.of("posts/1/image.png", "posts/1/image.png")
+		)))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.POST_IMAGE_INVALID);
+
+		verify(postImageStorage, never()).exists("posts/1/image.png");
+	}
+
+	@Test
 	@DisplayName("판매 게시글 수정은 전달된 이미지 목록으로 교체한다")
 	void updatePostReplacesImages() {
 		Post post = postWithImage("posts/1/old.png");
 		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(post));
 		when(postImageStorage.isOwnedPostImageKey(1L, "posts/1/new.png")).thenReturn(true);
-		when(postImageStorage.exists("posts/1/new.png")).thenReturn(true);
+		when(postImageStorage.exists("posts/1/new.png")).thenAnswer(invocation -> {
+			assertThat(transactionOperations.isInTransaction()).isFalse();
+			return true;
+		});
 		when(postImageStorage.imageUrl("posts/1/new.png")).thenReturn("https://cdn.example.com/posts/1/new.png");
 
 		PostResponse response = postService.updatePost(1L, 10L, new UpdatePostRequest(
@@ -183,5 +212,24 @@ class PostServiceTest {
 			.build();
 		post.addImage(imageKey, 0);
 		return post;
+	}
+
+	private static class TrackingTransactionOperations implements TransactionOperations {
+
+		private boolean inTransaction;
+
+		@Override
+		public <T> T execute(org.springframework.transaction.support.TransactionCallback<T> action) {
+			inTransaction = true;
+			try {
+				return action.doInTransaction(new SimpleTransactionStatus());
+			} finally {
+				inTransaction = false;
+			}
+		}
+
+		boolean isInTransaction() {
+			return inTransaction;
+		}
 	}
 }

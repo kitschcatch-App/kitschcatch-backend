@@ -11,7 +11,7 @@ import com.kitschcatch.backend.global.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -34,18 +34,18 @@ public class PostController {
 
 	@PostMapping("/images/presigned-urls")
 	public ApiResponse<CreatePostImageUploadUrlResponse> createImageUploadUrls(
-		Authentication authentication,
+		@AuthenticationPrincipal AuthenticatedUser user,
 		@Valid @RequestBody CreatePostImageUploadUrlRequest request
 	) {
-		return ApiResponse.success(postService.createImageUploadUrls(userId(authentication), request));
+		return ApiResponse.success(postService.createImageUploadUrls(user.userId(), request));
 	}
 
 	@PostMapping
 	public ApiResponse<PostResponse> createPost(
-		Authentication authentication,
+		@AuthenticationPrincipal AuthenticatedUser user,
 		@Valid @RequestBody CreatePostRequest request
 	) {
-		return ApiResponse.created(postService.createPost(userId(authentication), request));
+		return ApiResponse.created(postService.createPost(user.userId(), request));
 	}
 
 	@GetMapping
@@ -63,20 +63,16 @@ public class PostController {
 
 	@PatchMapping("/{postId}")
 	public ApiResponse<PostResponse> updatePost(
-		Authentication authentication,
+		@AuthenticationPrincipal AuthenticatedUser user,
 		@PathVariable Long postId,
 		@Valid @RequestBody UpdatePostRequest request
 	) {
-		return ApiResponse.success(postService.updatePost(userId(authentication), postId, request));
+		return ApiResponse.success(postService.updatePost(user.userId(), postId, request));
 	}
 
 	@DeleteMapping("/{postId}")
-	public ApiResponse<Void> deletePost(Authentication authentication, @PathVariable Long postId) {
-		postService.deletePost(userId(authentication), postId);
+	public ApiResponse<Void> deletePost(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable Long postId) {
+		postService.deletePost(user.userId(), postId);
 		return ApiResponse.success(null);
-	}
-
-	private Long userId(Authentication authentication) {
-		return ((AuthenticatedUser) authentication.getPrincipal()).userId();
 	}
 }
