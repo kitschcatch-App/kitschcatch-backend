@@ -23,6 +23,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -62,6 +63,7 @@ public class Post {
 	private ProductStatus productStatus;
 
 	@OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
+	@BatchSize(size = 20)
 	@OrderBy("sortOrder ASC")
 	private List<PostImage> images = new ArrayList<>();
 
