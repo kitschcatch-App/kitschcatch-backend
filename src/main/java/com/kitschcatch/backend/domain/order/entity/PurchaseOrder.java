@@ -45,17 +45,10 @@ public class PurchaseOrder {
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 30)
-	private PgProvider pgProvider;
-
-	@Column(length = 255)
-	private String pgPaymentKey;
-
-	@Column(length = 255)
-	private String pgTransactionId;
-
-	@Enumerated(EnumType.STRING)
-	@Column(nullable = false, length = 30)
 	private OrderStatus orderStatus;
+
+	@Column(nullable = false)
+	private LocalDateTime expiresAt;
 
 	@CreationTimestamp
 	@Column(nullable = false, updatable = false)
@@ -70,17 +63,43 @@ public class PurchaseOrder {
 		User user,
 		Post post,
 		Long amount,
-		PgProvider pgProvider,
-		String pgPaymentKey,
-		String pgTransactionId,
-		OrderStatus orderStatus
+		OrderStatus orderStatus,
+		LocalDateTime expiresAt
 	) {
 		this.user = user;
 		this.post = post;
 		this.amount = amount;
-		this.pgProvider = pgProvider;
-		this.pgPaymentKey = pgPaymentKey;
-		this.pgTransactionId = pgTransactionId;
 		this.orderStatus = orderStatus;
+		this.expiresAt = expiresAt;
+	}
+
+	public static PurchaseOrder pending(User user, Post post, Long amount, LocalDateTime expiresAt) {
+		return PurchaseOrder.builder()
+			.user(user)
+			.post(post)
+			.amount(amount)
+			.orderStatus(OrderStatus.PENDING)
+			.expiresAt(expiresAt)
+			.build();
+	}
+
+	public boolean isPending() {
+		return orderStatus == OrderStatus.PENDING;
+	}
+
+	public boolean isExpired(LocalDateTime now) {
+		return isPending() && !expiresAt.isAfter(now);
+	}
+
+	public void expire() {
+		this.orderStatus = OrderStatus.EXPIRED;
+	}
+
+	public void markPaid() {
+		this.orderStatus = OrderStatus.PAID;
+	}
+
+	public void cancel() {
+		this.orderStatus = OrderStatus.CANCELED;
 	}
 }
