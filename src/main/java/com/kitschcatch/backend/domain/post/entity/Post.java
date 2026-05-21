@@ -138,4 +138,16 @@ public class Post {
 	public void delete() {
 		this.deletedAt = LocalDateTime.now();
 	}
+
+	public void reserve() {
+		this.productStatus = ProductStatus.RESERVED;
+	}
+
+	public void markSoldOut() {
+		this.productStatus = ProductStatus.SOLD_OUT;
+	}
+
+	public void reopen() {
+		this.productStatus = ProductStatus.ON_SALE;
+	}
 }

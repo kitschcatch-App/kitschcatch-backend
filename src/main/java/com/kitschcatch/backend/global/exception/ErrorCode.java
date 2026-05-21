@@ -16,6 +16,15 @@ public enum ErrorCode {
 	POST_IMAGE_REQUIRED(HttpStatus.BAD_REQUEST, "POST_003", "판매 게시글 사진은 필수입니다."),
 	POST_IMAGE_INVALID(HttpStatus.BAD_REQUEST, "POST_004", "판매 게시글 사진 정보가 올바르지 않습니다."),
 	POST_IMAGE_NOT_UPLOADED(HttpStatus.BAD_REQUEST, "POST_005", "업로드된 판매 게시글 사진을 찾을 수 없습니다."),
+	POST_INVALID_STATE(HttpStatus.CONFLICT, "POST_006", "판매 게시글 상태가 올바르지 않습니다."),
+	ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_001", "주문을 찾을 수 없습니다."),
+	ORDER_UNAVAILABLE(HttpStatus.CONFLICT, "ORDER_002", "주문할 수 없는 판매 게시글입니다."),
+	ORDER_EXPIRED(HttpStatus.BAD_REQUEST, "ORDER_003", "주문 결제 가능 시간이 만료되었습니다."),
+	PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_001", "결제를 찾을 수 없습니다."),
+	PAYMENT_INVALID_STATE(HttpStatus.BAD_REQUEST, "PAYMENT_002", "결제 상태가 올바르지 않습니다."),
+	PAYMENT_PROVIDER_FAILED(HttpStatus.BAD_GATEWAY, "PAYMENT_003", "결제 대행사 요청에 실패했습니다."),
+	PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_004", "결제 금액이 주문 금액과 일치하지 않습니다."),
+	PAYMENT_PROVIDER_RESPONSE_INVALID(HttpStatus.BAD_GATEWAY, "PAYMENT_005", "결제 대행사 응답이 올바르지 않습니다."),
 	S3_BUCKET_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "S3_001", "S3 버킷 설정이 필요합니다."),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_999", "서버 내부 오류가 발생했습니다.");
 
