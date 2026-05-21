@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Service
 public class PaymentService {
@@ -474,8 +475,9 @@ public class PaymentService {
 	}
 
 	private String redirectUrl(String baseUrl, Payment payment) {
-		String separator = baseUrl.contains("?") ? "&" : "?";
-		return baseUrl + separator + "paymentId=" + payment.getId();
+		return UriComponentsBuilder.fromUriString(baseUrl)
+			.queryParam("paymentId", payment.getId())
+			.toUriString();
 	}
 
 	private record PreparedConfirmPayment(

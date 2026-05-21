@@ -73,8 +73,8 @@ class PaymentServiceTest {
 			"test_sk",
 			"test_ck",
 			"",
-			"https://example.com/payments/success",
-			"https://example.com/payments/fail",
+			"https://example.com/payments/success?source=checkout",
+			"https://example.com/payments/fail#retry",
 			null,
 			null
 		);
@@ -119,8 +119,8 @@ class PaymentServiceTest {
 		assertThat(response.pgOrderId()).startsWith("KC-PAY-");
 		assertThat(response.clientKey()).isEqualTo("test_ck");
 		assertThat(response.orderName()).isEqualTo("키링");
-		assertThat(response.successUrl()).isEqualTo("https://example.com/payments/success?paymentId=40");
-		assertThat(response.failUrl()).isEqualTo("https://example.com/payments/fail?paymentId=40");
+		assertThat(response.successUrl()).isEqualTo("https://example.com/payments/success?source=checkout&paymentId=40");
+		assertThat(response.failUrl()).isEqualTo("https://example.com/payments/fail?paymentId=40#retry");
 		InOrder inOrder = inOrder(orderRepository, postRepository);
 		inOrder.verify(orderRepository).findPostIdByIdAndUserId(30L, 2L);
 		inOrder.verify(postRepository).findByIdForUpdate(10L);
