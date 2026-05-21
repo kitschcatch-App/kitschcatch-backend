@@ -28,6 +28,7 @@ import com.kitschcatch.backend.global.response.ResponseStatusSetterAdvice;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -49,9 +52,16 @@ class PostControllerTest {
 	void setUp() {
 		postService = mock(PostService.class);
 		mockMvc = MockMvcBuilders.standaloneSetup(new PostController(postService))
+			.setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
 			.setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
 			.build();
 		authentication = new UsernamePasswordAuthenticationToken(new AuthenticatedUser(1L), null, List.of());
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+	}
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
 	}
 
 	@Test
