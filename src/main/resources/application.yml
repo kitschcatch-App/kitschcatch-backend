@@ -21,3 +21,11 @@ app:
     public-base-url: ${APP_S3_PUBLIC_BASE_URL:}
     upload-url-ttl: ${APP_S3_UPLOAD_URL_TTL:5m}
     post-image-prefix: ${APP_S3_POST_IMAGE_PREFIX:posts}
+  toss:
+    secret-key: ${APP_TOSS_SECRET_KEY:}
+    client-key: ${APP_TOSS_CLIENT_KEY:}
+    base-url: ${APP_TOSS_BASE_URL:https://api.tosspayments.com}
+    success-url: ${APP_TOSS_SUCCESS_URL:}
+    fail-url: ${APP_TOSS_FAIL_URL:}
+    connect-timeout: ${APP_TOSS_CONNECT_TIMEOUT:3s}
+    read-timeout: ${APP_TOSS_READ_TIMEOUT:10s}
