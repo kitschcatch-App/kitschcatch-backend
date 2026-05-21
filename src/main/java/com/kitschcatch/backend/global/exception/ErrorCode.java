@@ -11,6 +11,12 @@ public enum ErrorCode {
 	KAKAO_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_002", "카카오 이메일 동의가 필요합니다."),
 	INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_003", "리프레시 토큰이 올바르지 않습니다."),
 	INVALID_AUTH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_004", "인증 토큰이 올바르지 않습니다."),
+	POST_NOT_FOUND(HttpStatus.NOT_FOUND, "POST_001", "판매 게시글을 찾을 수 없습니다."),
+	POST_FORBIDDEN(HttpStatus.FORBIDDEN, "POST_002", "판매 게시글에 접근할 수 없습니다."),
+	POST_IMAGE_REQUIRED(HttpStatus.BAD_REQUEST, "POST_003", "판매 게시글 사진은 필수입니다."),
+	POST_IMAGE_INVALID(HttpStatus.BAD_REQUEST, "POST_004", "판매 게시글 사진 정보가 올바르지 않습니다."),
+	POST_IMAGE_NOT_UPLOADED(HttpStatus.BAD_REQUEST, "POST_005", "업로드된 판매 게시글 사진을 찾을 수 없습니다."),
+	S3_BUCKET_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "S3_001", "S3 버킷 설정이 필요합니다."),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_999", "서버 내부 오류가 발생했습니다.");
 
 	private final HttpStatus httpStatus;
