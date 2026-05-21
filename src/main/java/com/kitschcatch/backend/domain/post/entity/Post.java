@@ -101,8 +101,7 @@ public class Post {
 		String description,
 		Long price,
 		ProductCategory productCategory,
-		ProductCondition productCondition,
-		ProductStatus productStatus
+		ProductCondition productCondition
 	) {
 		if (title != null) {
 			this.title = title;
@@ -118,9 +117,6 @@ public class Post {
 		}
 		if (productCondition != null) {
 			this.productCondition = productCondition;
-		}
-		if (productStatus != null) {
-			this.productStatus = productStatus;
 		}
 	}
 

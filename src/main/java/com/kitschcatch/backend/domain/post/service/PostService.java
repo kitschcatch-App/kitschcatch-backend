@@ -104,6 +104,9 @@ public class PostService {
 	}
 
 	public PostResponse updatePost(Long userId, Long postId, UpdatePostRequest request) {
+		if (request.productStatus() != null) {
+			throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+		}
 		List<String> imageKeys = null;
 		if (request.imageKeys() != null) {
 			imageKeys = requireImageKeys(request.imageKeys());
@@ -120,8 +123,7 @@ public class PostService {
 				request.description(),
 				request.price(),
 				request.productCategory(),
-				request.productCondition(),
-				request.productStatus()
+				request.productCondition()
 			);
 
 			if (replacementImageKeys != null) {
@@ -134,8 +136,11 @@ public class PostService {
 
 	public void deletePost(Long userId, Long postId) {
 		transactionOperations.execute(status -> {
-			Post post = findActivePost(postId);
+			Post post = findActivePostForUpdate(postId);
 			validateOwner(userId, post);
+			if (post.getProductStatus() != ProductStatus.ON_SALE) {
+				throw new BusinessException(ErrorCode.POST_INVALID_STATE);
+			}
 			post.delete();
 			return null;
 		});
@@ -157,6 +162,11 @@ public class PostService {
 
 	private Post findActivePost(Long postId) {
 		return postRepository.findByIdAndDeletedAtIsNull(postId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+	}
+
+	private Post findActivePostForUpdate(Long postId) {
+		return postRepository.findByIdAndDeletedAtIsNullForUpdate(postId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 	}
 

@@ -167,26 +167,60 @@ class PostServiceTest {
 			10000L,
 			null,
 			null,
-			ProductStatus.RESERVED,
+			null,
 			List.of("posts/1/new.png")
 		));
 
 		assertThat(post.getTitle()).isEqualTo("수정 제목");
 		assertThat(post.getPrice()).isEqualTo(10000L);
-		assertThat(post.getProductStatus()).isEqualTo(ProductStatus.RESERVED);
+		assertThat(post.getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
 		assertThat(post.getImages()).extracting(PostImage::getObjectKey).containsExactly("posts/1/new.png");
 		assertThat(response.images().getFirst().imageKey()).isEqualTo("posts/1/new.png");
+	}
+
+	@Test
+	@DisplayName("판매 게시글 수정은 상품 상태 직접 변경을 거부한다")
+	void updatePostRejectsProductStatusChange() {
+		assertThatThrownBy(() -> postService.updatePost(1L, 10L, new UpdatePostRequest(
+			null,
+			null,
+			null,
+			null,
+			null,
+			ProductStatus.RESERVED,
+			null
+		)))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+		verify(postRepository, never()).findByIdAndDeletedAtIsNull(10L);
 	}
 
 	@Test
 	@DisplayName("판매 게시글 삭제는 작성자만 소프트 삭제한다")
 	void deletePostSoftDeletesOwnedPost() {
 		Post post = postWithImage("posts/1/image.png");
-		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(post));
+		when(postRepository.findByIdAndDeletedAtIsNullForUpdate(10L)).thenReturn(Optional.of(post));
 
 		postService.deletePost(1L, 10L);
 
 		assertThat(post.getDeletedAt()).isNotNull();
+	}
+
+	@Test
+	@DisplayName("예약 중인 판매 게시글은 삭제할 수 없다")
+	void deletePostRejectsReservedPost() {
+		Post post = postWithImage("posts/1/image.png");
+		post.reserve();
+		when(postRepository.findByIdAndDeletedAtIsNullForUpdate(10L)).thenReturn(Optional.of(post));
+
+		assertThatThrownBy(() -> postService.deletePost(1L, 10L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.POST_INVALID_STATE);
+
+		assertThat(post.getDeletedAt()).isNull();
 	}
 
 	@Test

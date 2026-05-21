@@ -165,7 +165,6 @@ class PostControllerTest {
 					{
 					  "title": "키링 판매 수정",
 					  "price": 10000,
-					  "productStatus": "RESERVED",
 					  "imageKeys": ["posts/1/image.png"]
 					}
 					"""))
