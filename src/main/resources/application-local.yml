@@ -6,3 +6,16 @@ spring:
     url: ${LOCAL_DB_URL}
     username: ${LOCAL_DB_USERNAME}
     password: ${LOCAL_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      auto-commit: true
+      data-source-properties:
+        prepareThreshold: 0
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
