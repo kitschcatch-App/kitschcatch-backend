@@ -1,0 +1,779 @@
+{
+  "info": {
+    "_postman_id": "a9b04e0a-9d79-4d9d-b9a4-2b9a2a0f1c01",
+    "name": "KitschCatch Backend",
+    "description": "현재 구현된 KitschCatch Backend HTTP API를 로컬에서 테스트하기 위한 컬렉션입니다. 인증 API를 제외한 요청은 `Authorization: Bearer {{accessToken}}` 값을 사용합니다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "description": "카카오 모바일 로그인과 토큰 재발급 요청입니다. 모바일 로그인은 실제 카카오 SDK ID 토큰이 필요합니다.",
+      "item": [
+        {
+          "name": "Create Kakao Login Nonce",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.nonce) {",
+                  "  pm.environment.set('nonce', json.data.nonce);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/kakao/nonce",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "kakao",
+                "nonce"
+              ]
+            },
+            "description": "카카오 OIDC 로그인에 사용할 nonce를 발급합니다. 응답의 `data.nonce`를 `nonce` 환경 변수에 저장합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Kakao Mobile Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "if (json.data) {",
+                  "  pm.environment.set('accessToken', json.data.accessToken);",
+                  "  pm.environment.set('refreshToken', json.data.refreshToken);",
+                  "  pm.environment.set('userId', json.data.user && json.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idToken\": \"{{kakaoIdToken}}\",\n  \"nonce\": \"{{nonce}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/kakao/mobile-login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "kakao",
+                "mobile-login"
+              ]
+            },
+            "description": "`kakaoIdToken` 환경 변수에 카카오 SDK에서 받은 실제 ID 토큰을 넣고 실행합니다. 성공하면 access token과 refresh token을 환경 변수에 저장합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "if (json.data) {",
+                  "  pm.environment.set('accessToken', json.data.accessToken);",
+                  "  pm.environment.set('refreshToken', json.data.refreshToken);",
+                  "  pm.environment.set('userId', json.data.user && json.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/token/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "token",
+                "refresh"
+              ]
+            },
+            "description": "현재 `refreshToken`으로 access token과 refresh token을 재발급합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "현재 `refreshToken`을 폐기합니다."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Posts",
+      "description": "판매 게시글 API입니다. 게시글 생성은 presigned URL 발급 후 실제 이미지 업로드가 선행되어야 합니다.",
+      "item": [
+        {
+          "name": "Create Image Upload URLs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "var first = json.data && json.data.images && json.data.images[0];",
+                  "if (first) {",
+                  "  pm.environment.set('uploadUrl', first.uploadUrl);",
+                  "  pm.environment.set('imageKey', first.imageKey);",
+                  "  pm.environment.set('imageUrl', first.imageUrl);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"images\": [\n    {\n      \"originalFileName\": \"{{postImageOriginalFileName}}\",\n      \"contentType\": \"{{postImageContentType}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/posts/images/presigned-urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts",
+                "images",
+                "presigned-urls"
+              ]
+            },
+            "description": "판매 게시글 이미지 업로드용 presigned URL을 발급합니다. 응답의 첫 번째 이미지 값을 `uploadUrl`, `imageKey`, `imageUrl` 환경 변수에 저장합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Image to Presigned URL",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "{{postImageContentType}}"
+              }
+            ],
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": ""
+              }
+            },
+            "url": {
+              "raw": "{{uploadUrl}}",
+              "host": [
+                "{{uploadUrl}}"
+              ]
+            },
+            "description": "Postman Body 탭에서 binary 파일을 선택한 뒤 실행합니다. 이 요청은 백엔드가 아니라 S3 presigned URL로 직접 업로드합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Post",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.environment.set('postId', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{postTitle}}\",\n  \"description\": \"{{postDescription}}\",\n  \"price\": {{postPrice}},\n  \"productCategory\": \"{{postCategory}}\",\n  \"productCondition\": \"{{postCondition}}\",\n  \"imageKeys\": [\"{{imageKey}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ]
+            },
+            "description": "판매 게시글을 생성합니다. 성공하면 `postId` 환경 변수를 저장합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "List Posts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts?page={{postPage}}&size={{postSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "{{postPage}}"
+                },
+                {
+                  "key": "size",
+                  "value": "{{postSize}}"
+                }
+              ]
+            },
+            "description": "삭제되지 않은 판매 게시글 목록을 페이지로 조회합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Post",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts/{{postId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts",
+                "{{postId}}"
+              ]
+            },
+            "description": "`postId`에 해당하는 판매 게시글 상세를 조회합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Post",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{postUpdatedTitle}}\",\n  \"price\": {{postUpdatedPrice}},\n  \"imageKeys\": [\"{{imageKey}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/posts/{{postId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts",
+                "{{postId}}"
+              ]
+            },
+            "description": "본인 판매 게시글을 부분 수정합니다. `productStatus`는 현재 수정 요청에서 허용되지 않습니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Post",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/posts/{{postId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "posts",
+                "{{postId}}"
+              ]
+            },
+            "description": "본인 판매 게시글을 소프트 삭제합니다. 주문 또는 결제 흐름을 테스트할 게시글은 삭제하지 마세요."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "description": "판매 게시글 기준 주문 생성 API입니다.",
+      "item": [
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.environment.set('orderId', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"postId\": {{postId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "`postId` 판매 게시글을 기준으로 주문을 생성합니다. 성공하면 `orderId` 환경 변수를 저장합니다."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "description": "토스페이먼츠 기반 결제 API입니다. 결제 생성은 서버에 토스 client key와 redirect URL 설정이 있어야 성공합니다.",
+      "item": [
+        {
+          "name": "Create Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var json = pm.response.json();",
+                  "if (json.data) {",
+                  "  pm.environment.set('paymentId', json.data.paymentId);",
+                  "  pm.environment.set('pgOrderId', json.data.pgOrderId);",
+                  "  pm.environment.set('paymentAmount', json.data.amount);",
+                  "  pm.environment.set('tossClientKey', json.data.clientKey);",
+                  "  pm.environment.set('paymentSuccessUrl', json.data.successUrl);",
+                  "  pm.environment.set('paymentFailUrl', json.data.failUrl);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId}},\n  \"method\": \"{{paymentMethod}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ]
+            },
+            "description": "`orderId` 주문의 결제 요청 값을 생성합니다. 성공하면 토스 SDK에 필요한 값을 환경 변수에 저장합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId}}"
+              ]
+            },
+            "description": "`paymentId` 결제 상태를 조회합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentKey\": \"{{paymentKey}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId}}/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId}}",
+                "confirm"
+              ]
+            },
+            "description": "토스페이먼츠 결제 성공 콜백에서 받은 `paymentKey`를 환경 변수에 넣고 실행합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cancelReason\": \"{{cancelReason}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId}}",
+                "cancel"
+              ]
+            },
+            "description": "승인된 결제를 취소합니다. 결제가 `APPROVED` 상태일 때 실행합니다."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
