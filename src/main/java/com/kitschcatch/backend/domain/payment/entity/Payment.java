@@ -2,6 +2,8 @@ package com.kitschcatch.backend.domain.payment.entity;
 
 import com.kitschcatch.backend.domain.order.entity.PgProvider;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
+import com.kitschcatch.backend.global.exception.BusinessException;
+import com.kitschcatch.backend.global.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -91,6 +93,7 @@ public class Payment {
 	}
 
 	public void startConfirm(String pgPaymentKey) {
+		requirePgPaymentKey(pgPaymentKey);
 		this.pgPaymentKey = pgPaymentKey;
 		this.status = PaymentStatus.CONFIRMING;
 	}
@@ -101,6 +104,7 @@ public class Payment {
 	}
 
 	public void approve(String pgPaymentKey, String pgTransactionId) {
+		requirePgPaymentKey(pgPaymentKey);
 		this.pgPaymentKey = pgPaymentKey;
 		if (StringUtils.hasText(pgTransactionId)) {
 			this.pgTransactionId = pgTransactionId;
@@ -125,5 +129,11 @@ public class Payment {
 
 	public void fail() {
 		this.status = PaymentStatus.FAILED;
+	}
+
+	private void requirePgPaymentKey(String pgPaymentKey) {
+		if (!StringUtils.hasText(pgPaymentKey)) {
+			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATE);
+		}
 	}
 }

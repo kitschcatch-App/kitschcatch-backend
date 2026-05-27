@@ -359,6 +359,28 @@ class PaymentServiceTest {
 	}
 
 	@Test
+	@DisplayName("결제 승인 시작은 빈 PG paymentKey를 거부한다")
+	void startConfirmRejectsBlankPaymentKey() {
+		Payment payment = requestedPayment();
+
+		assertThatThrownBy(() -> payment.startConfirm(" "))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.PAYMENT_INVALID_STATE);
+	}
+
+	@Test
+	@DisplayName("결제 승인은 빈 PG paymentKey를 저장하지 않는다")
+	void approveRejectsBlankPaymentKey() {
+		Payment payment = requestedPayment();
+
+		assertThatThrownBy(() -> payment.approve(null, "tx-key"))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.PAYMENT_INVALID_STATE);
+	}
+
+	@Test
 	@DisplayName("결제 취소는 토스 전액 취소 후 주문과 상품을 되돌린다")
 	void cancelPaymentCancelsApprovedPayment() {
 		Payment payment = requestedPayment();
