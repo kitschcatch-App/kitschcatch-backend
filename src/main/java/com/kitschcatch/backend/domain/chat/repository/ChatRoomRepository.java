@@ -1,6 +1,8 @@
 package com.kitschcatch.backend.domain.chat.repository;
 
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
+
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -24,5 +26,16 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 	  and (cr.buyer.id = :userId or cr.seller.id = :userId)
 	""")
 	boolean existsParticipant(@Param("chatRoomId") Long chatRoomId, @Param("userId") Long userId);
+
+
+	@EntityGraph(attributePaths = {"post", "post.images", "buyer", "seller"})
+	@Query("""
+	select cr
+	from ChatRoom cr
+	where (cr.buyer.id = :userId and cr.buyerDeletedAt is null)
+	   or (cr.seller.id = :userId and cr.sellerDeletedAt is null)
+	order by coalesce(cr.lastMessageAt, cr.createdAt) desc
+	""")
+	List<ChatRoom> findMyChatRooms(@Param("userId") Long userId);
 
 }
