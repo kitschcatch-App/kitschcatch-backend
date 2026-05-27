@@ -32,7 +32,7 @@ public class SecurityConfig {
 				.authenticationEntryPoint(apiAuthenticationExceptionHandler)
 				.accessDeniedHandler(apiAuthenticationExceptionHandler))
 			.authorizeHttpRequests(authorize -> authorize
-				.requestMatchers("/api/auth/**").permitAll()
+				.requestMatchers("/api/auth/**", "/ws", "/ws/**").permitAll()
 				.anyRequest().authenticated())
 			.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 			.build();

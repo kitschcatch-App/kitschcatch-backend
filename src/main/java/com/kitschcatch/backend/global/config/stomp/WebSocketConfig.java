@@ -1,5 +1,5 @@
-package com.kitschcatch.backend.global.config;
-
+package com.kitschcatch.backend.global.config.stomp;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -9,7 +9,10 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 
 @Configuration
 @EnableWebSocketMessageBroker
+@RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+	private final WebSocketAuthChannelInterceptor webSocketAuthChannelInterceptor;
 
 	@Override
 	public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -19,15 +22,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
 	@Override
 	public void registerStompEndpoints(StompEndpointRegistry config) {
-		config.addEndpoint("/ws-connect")
-			.setAllowedOriginPatterns("*");
-//			.withSockJS();
+		// STOMP 클라이언트가 /ws 기준으로 연결할 수 있도록 엔드포인트를 고정한다.
+		config.addEndpoint("/ws")
+			.setAllowedOriginPatterns("*")
+			.withSockJS();
 	}
 
 	@Override
 	public void configureClientInboundChannel(ChannelRegistration registration) {
-		// 클라이언트가 서버로 보내는 STOMP 메시지에 대해 인증 인터셉터를 적용한다.
-		// CONNECT 프레임에서 JWT를 읽어 Principal로 등록한다.
 		registration.interceptors(webSocketAuthChannelInterceptor);
 	}
 
