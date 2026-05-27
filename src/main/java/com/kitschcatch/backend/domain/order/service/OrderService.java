@@ -14,6 +14,7 @@ import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +57,10 @@ public class OrderService {
 		Post post = postRepository.findByIdAndDeletedAtIsNullForUpdate(request.postId())
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 		LocalDateTime now = LocalDateTime.now(clock);
+
+		if (Objects.equals(post.getUser().getId(), userId)) {
+			throw new BusinessException(ErrorCode.ORDER_UNAVAILABLE);
+		}
 
 		orderRepository.findFirstByPostIdAndOrderStatusOrderByCreatedAtDesc(post.getId(), OrderStatus.PENDING)
 			.ifPresent(order -> expireOrReject(order, post, now));

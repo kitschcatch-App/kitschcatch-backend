@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -108,6 +109,25 @@ class OrderServiceTest {
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.ORDER_UNAVAILABLE);
+	}
+
+	@Test
+	@DisplayName("판매자는 본인 판매글 주문을 생성할 수 없다")
+	void createOrderRejectsSellerOwnPost() {
+		Post post = post(ProductStatus.ON_SALE);
+		when(userRepository.findById(1L)).thenReturn(Optional.of(seller));
+		when(postRepository.findByIdAndDeletedAtIsNullForUpdate(10L)).thenReturn(Optional.of(post));
+		when(orderRepository.findFirstByPostIdAndOrderStatusOrderByCreatedAtDesc(10L, OrderStatus.PENDING))
+			.thenReturn(Optional.empty());
+		when(orderRepository.save(any(PurchaseOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		assertThatThrownBy(() -> orderService.createOrder(1L, new CreateOrderRequest(10L)))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.ORDER_UNAVAILABLE);
+
+		assertThat(post.getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+		verify(orderRepository, never()).save(any(PurchaseOrder.class));
 	}
 
 	@Test
