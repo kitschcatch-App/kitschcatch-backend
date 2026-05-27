@@ -4,12 +4,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.kitschcatch.backend.domain.chat.dto.ChatRoomListResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatRoomResponse;
 import com.kitschcatch.backend.domain.chat.dto.CreateChatRoomRequest;
+import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.domain.chat.service.ChatService;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
@@ -87,6 +90,50 @@ class ChatControllerTest {
 			.andExpect(jsonPath("$.data.postId").value(10))
 			.andExpect(jsonPath("$.data.buyerNickname").value("buyer"))
 			.andExpect(jsonPath("$.data.sellerNickname").value("seller"));
+	}
+
+	@Test
+	@DisplayName("채팅방 목록 조회 API는 현재 사용자가 참여한 채팅방 목록을 반환한다")
+	void getMyChatRoomsReturnsParticipatingRooms() throws Exception {
+		when(chatService.getMyChatRooms(1L)).thenReturn(List.of(
+			new ChatRoomListResponse(
+				101L,
+				11L,
+				"구매자 방 게시글",
+				12000L,
+				ProductStatus.ON_SALE,
+				"https://cdn.test/posts/11/thumbnail.png",
+				4L,
+				"another-seller",
+				"판매 중인가요?",
+				LocalDateTime.of(2026, 5, 27, 10, 0),
+				LocalDateTime.of(2026, 5, 26, 10, 0)
+			),
+			new ChatRoomListResponse(
+				102L,
+				12L,
+				"판매자 방 게시글",
+				13000L,
+				ProductStatus.RESERVED,
+				"https://cdn.test/posts/12/thumbnail.png",
+				3L,
+				"another-buyer",
+				"네 가능합니다.",
+				LocalDateTime.of(2026, 5, 27, 9, 0),
+				LocalDateTime.of(2026, 5, 26, 9, 0)
+			)
+		));
+
+		mockMvc.perform(get("/api/chat-rooms").principal(authentication))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.length()").value(2))
+			.andExpect(jsonPath("$.data[0].chatRoomId").value(101))
+			.andExpect(jsonPath("$.data[0].opponentNickname").value("another-seller"))
+			.andExpect(jsonPath("$.data[0].postThumbnailImageUrl").value("https://cdn.test/posts/11/thumbnail.png"))
+			.andExpect(jsonPath("$.data[1].chatRoomId").value(102))
+			.andExpect(jsonPath("$.data[1].opponentNickname").value("another-buyer"))
+			.andExpect(jsonPath("$.data[1].postThumbnailImageUrl").value("https://cdn.test/posts/12/thumbnail.png"));
 	}
 
 	@Test
