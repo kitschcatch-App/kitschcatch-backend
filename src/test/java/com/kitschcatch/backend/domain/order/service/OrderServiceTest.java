@@ -110,6 +110,41 @@ class OrderServiceTest {
 			.isEqualTo(ErrorCode.ORDER_UNAVAILABLE);
 	}
 
+	@Test
+	@DisplayName("결제 완료 주문은 만료 처리할 수 없다")
+	void paidOrderCannotExpire() {
+		PurchaseOrder paidOrder = pendingOrder(post(ProductStatus.RESERVED), LocalDateTime.of(2026, 5, 21, 14, 10));
+		paidOrder.markPaid();
+
+		assertThatThrownBy(paidOrder::expire)
+			.isInstanceOf(BusinessException.class)
+			.satisfies(exception -> assertThat(((BusinessException) exception).getErrorCode().name())
+				.isEqualTo("ORDER_INVALID_STATE"));
+	}
+
+	@Test
+	@DisplayName("만료 주문은 결제 완료 처리할 수 없다")
+	void expiredOrderCannotBeMarkedPaid() {
+		PurchaseOrder expiredOrder = pendingOrder(post(ProductStatus.RESERVED), LocalDateTime.of(2026, 5, 21, 13, 59));
+		expiredOrder.expire();
+
+		assertThatThrownBy(expiredOrder::markPaid)
+			.isInstanceOf(BusinessException.class)
+			.satisfies(exception -> assertThat(((BusinessException) exception).getErrorCode().name())
+				.isEqualTo("ORDER_INVALID_STATE"));
+	}
+
+	@Test
+	@DisplayName("대기 주문은 결제 취소 처리할 수 없다")
+	void pendingOrderCannotBeCanceled() {
+		PurchaseOrder pendingOrder = pendingOrder(post(ProductStatus.RESERVED), LocalDateTime.of(2026, 5, 21, 14, 10));
+
+		assertThatThrownBy(pendingOrder::cancel)
+			.isInstanceOf(BusinessException.class)
+			.satisfies(exception -> assertThat(((BusinessException) exception).getErrorCode().name())
+				.isEqualTo("ORDER_INVALID_STATE"));
+	}
+
 	private PurchaseOrder pendingOrder(Post post, LocalDateTime expiresAt) {
 		return PurchaseOrder.builder()
 			.user(buyer)

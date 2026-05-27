@@ -20,6 +20,7 @@ public enum ErrorCode {
 	ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_001", "주문을 찾을 수 없습니다."),
 	ORDER_UNAVAILABLE(HttpStatus.CONFLICT, "ORDER_002", "주문할 수 없는 판매 게시글입니다."),
 	ORDER_EXPIRED(HttpStatus.BAD_REQUEST, "ORDER_003", "주문 결제 가능 시간이 만료되었습니다."),
+	ORDER_INVALID_STATE(HttpStatus.BAD_REQUEST, "ORDER_004", "주문 상태가 올바르지 않습니다."),
 	PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_001", "결제를 찾을 수 없습니다."),
 	PAYMENT_INVALID_STATE(HttpStatus.BAD_REQUEST, "PAYMENT_002", "결제 상태가 올바르지 않습니다."),
 	PAYMENT_PROVIDER_FAILED(HttpStatus.BAD_GATEWAY, "PAYMENT_003", "결제 대행사 요청에 실패했습니다."),

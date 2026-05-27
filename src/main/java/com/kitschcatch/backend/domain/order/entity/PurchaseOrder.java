@@ -2,6 +2,8 @@ package com.kitschcatch.backend.domain.order.entity;
 
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.user.entity.User;
+import com.kitschcatch.backend.global.exception.BusinessException;
+import com.kitschcatch.backend.global.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -92,14 +94,23 @@ public class PurchaseOrder {
 	}
 
 	public void expire() {
+		requireStatus(OrderStatus.PENDING);
 		this.orderStatus = OrderStatus.EXPIRED;
 	}
 
 	public void markPaid() {
+		requireStatus(OrderStatus.PENDING);
 		this.orderStatus = OrderStatus.PAID;
 	}
 
 	public void cancel() {
+		requireStatus(OrderStatus.PAID);
 		this.orderStatus = OrderStatus.CANCELED;
+	}
+
+	private void requireStatus(OrderStatus expectedStatus) {
+		if (orderStatus != expectedStatus) {
+			throw new BusinessException(ErrorCode.ORDER_INVALID_STATE);
+		}
 	}
 }
