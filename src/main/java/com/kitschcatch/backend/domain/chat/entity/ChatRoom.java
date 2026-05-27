@@ -71,4 +71,11 @@ public class ChatRoom {
 				.build();
 	}
 
+	// 채팅방 목록에서 마지막 메세지와 시간을 보여주기 위한 메서드
+	public void updateLastMessage(String lastMessageContent, LocalDateTime lastMessageAt) {
+		this.lastMessageContent = lastMessageContent;
+		this.lastMessageAt = lastMessageAt;
+	}
+
+
 }
