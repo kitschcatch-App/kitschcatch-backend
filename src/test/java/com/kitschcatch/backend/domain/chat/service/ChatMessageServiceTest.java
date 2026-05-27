@@ -1,0 +1,190 @@
+package com.kitschcatch.backend.domain.chat.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
+import com.kitschcatch.backend.domain.chat.entity.ChatMessage;
+import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
+import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
+import com.kitschcatch.backend.domain.chat.repository.ChatRoomRepository;
+import com.kitschcatch.backend.domain.post.entity.Post;
+import com.kitschcatch.backend.domain.post.entity.ProductCategory;
+import com.kitschcatch.backend.domain.post.entity.ProductCondition;
+import com.kitschcatch.backend.domain.post.entity.ProductStatus;
+import com.kitschcatch.backend.domain.user.entity.AuthProvider;
+import com.kitschcatch.backend.domain.user.entity.User;
+import com.kitschcatch.backend.domain.user.repository.UserRepository;
+import com.kitschcatch.backend.global.exception.BusinessException;
+import com.kitschcatch.backend.global.exception.ErrorCode;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
+
+class ChatMessageServiceTest {
+
+	private ChatMessageRepository chatMessageRepository;
+	private ChatRoomRepository chatRoomRepository;
+	private UserRepository userRepository;
+	private ChatMessageService chatMessageService;
+	private User buyer;
+	private User seller;
+	private User outsider;
+	private ChatRoom chatRoom;
+
+	@BeforeEach
+	void setUp() {
+		chatMessageRepository = mock(ChatMessageRepository.class);
+		chatRoomRepository = mock(ChatRoomRepository.class);
+		userRepository = mock(UserRepository.class);
+		chatMessageService = new ChatMessageService(chatMessageRepository, chatRoomRepository, userRepository);
+
+		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");
+		seller = user(2L, "seller", "seller@example.com", "seller-provider");
+		outsider = user(3L, "outsider", "outsider@example.com", "outsider-provider");
+		chatRoom = chatRoom(100L, buyer, seller);
+	}
+
+	@Test
+	@DisplayName("이전 메시지 조회는 채팅방 참여자에게 시간순 메시지 목록을 반환한다")
+	void getMessagesReturnsStoredMessages() {
+		ChatMessage firstMessage = ChatMessage.createTextMessage(chatRoom, buyer, "안녕하세요");
+		ReflectionTestUtils.setField(firstMessage, "id", 11L);
+		ReflectionTestUtils.setField(firstMessage, "createdAt", LocalDateTime.of(2026, 5, 24, 20, 0));
+
+		ChatMessage secondMessage = ChatMessage.createTextMessage(chatRoom, seller, "네 문의 주세요");
+		ReflectionTestUtils.setField(secondMessage, "id", 12L);
+		ReflectionTestUtils.setField(secondMessage, "createdAt", LocalDateTime.of(2026, 5, 24, 20, 1));
+
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatMessageRepository.findByChatRoomIdOrderByCreatedAtAsc(100L))
+			.thenReturn(List.of(firstMessage, secondMessage));
+
+		List<ChatMessageResponse> responses = chatMessageService.getMessages(1L, 100L);
+
+		assertThat(responses).hasSize(2);
+		assertThat(responses.get(0).messageId()).isEqualTo(11L);
+		assertThat(responses.get(0).senderNickname()).isEqualTo("buyer");
+		assertThat(responses.get(1).messageId()).isEqualTo(12L);
+		assertThat(responses.get(1).senderNickname()).isEqualTo("seller");
+	}
+
+	@Test
+	@DisplayName("이전 메시지 조회는 참여자가 아니면 접근 거부 예외를 던진다")
+	void getMessagesWithoutParticipantThrowsException() {
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+
+		assertThatThrownBy(() -> chatMessageService.getMessages(3L, 100L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+	}
+
+	@Test
+	@DisplayName("텍스트 메시지 전송은 메시지를 저장하고 채팅방 마지막 메시지를 갱신한다")
+	void sendTextMessageSavesMessageAndUpdatesChatRoom() {
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
+		when(chatMessageRepository.saveAndFlush(any(ChatMessage.class))).thenAnswer(invocation -> {
+			ChatMessage savedMessage = invocation.getArgument(0);
+			ReflectionTestUtils.setField(savedMessage, "id", 200L);
+			ReflectionTestUtils.setField(savedMessage, "createdAt", LocalDateTime.of(2026, 5, 24, 20, 30));
+			return savedMessage;
+		});
+
+		ChatMessageResponse response = chatMessageService.sendTextMessage(1L, 100L, "구매 가능한가요?");
+
+		assertThat(response.messageId()).isEqualTo(200L);
+		assertThat(response.chatRoomId()).isEqualTo(100L);
+		assertThat(response.senderId()).isEqualTo(1L);
+		assertThat(response.content()).isEqualTo("구매 가능한가요?");
+		assertThat(chatRoom.getLastMessageContent()).isEqualTo("구매 가능한가요?");
+		assertThat(chatRoom.getLastMessageAt()).isEqualTo(LocalDateTime.of(2026, 5, 24, 20, 30));
+	}
+
+	@Test
+	@DisplayName("텍스트 메시지 전송은 공백 메시지를 허용하지 않는다")
+	void sendTextMessageWithBlankContentThrowsException() {
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+
+		assertThatThrownBy(() -> chatMessageService.sendTextMessage(1L, 100L, "   "))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.MESSAGE_CONTENT_EMPTY);
+	}
+
+	@Test
+	@DisplayName("이미지 메시지 전송은 URL을 저장하고 채팅방 마지막 메시지를 이미지로 갱신한다")
+	void sendImageMessageSavesImageUrlAndUpdatesChatRoom() {
+		MockMultipartFile imageFile = new MockMultipartFile(
+			"file",
+			"chat.png",
+			"image/png",
+			"image-content".getBytes()
+		);
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
+		when(chatMessageRepository.saveAndFlush(any(ChatMessage.class))).thenAnswer(invocation -> {
+			ChatMessage savedMessage = invocation.getArgument(0);
+			ReflectionTestUtils.setField(savedMessage, "id", 300L);
+			ReflectionTestUtils.setField(savedMessage, "createdAt", LocalDateTime.of(2026, 5, 24, 20, 40));
+			return savedMessage;
+		});
+
+		ChatMessageResponse response = chatMessageService.sendImageMessage(1L, 100L, imageFile);
+
+		assertThat(response.messageId()).isEqualTo(300L);
+		assertThat(response.imageUrl()).contains("temp.kitschcatch.local/chat-images");
+		assertThat(response.content()).isNull();
+		assertThat(chatRoom.getLastMessageContent()).isEqualTo("[이미지]");
+		assertThat(chatRoom.getLastMessageAt()).isEqualTo(LocalDateTime.of(2026, 5, 24, 20, 40));
+	}
+
+	@Test
+	@DisplayName("이미지 메시지 전송은 빈 파일을 허용하지 않는다")
+	void sendImageMessageWithEmptyFileThrowsException() {
+		MockMultipartFile emptyFile = new MockMultipartFile("file", "empty.png", "image/png", new byte[0]);
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+
+		assertThatThrownBy(() -> chatMessageService.sendImageMessage(1L, 100L, emptyFile))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.IMAGE_FILE_EMPTY);
+	}
+
+	private User user(Long id, String nickname, String email, String providerUserId) {
+		User user = User.builder()
+			.nickname(nickname)
+			.email(email)
+			.authProvider(AuthProvider.KAKAO)
+			.providerUserId(providerUserId)
+			.build();
+		ReflectionTestUtils.setField(user, "id", id);
+		return user;
+	}
+
+	private ChatRoom chatRoom(Long id, User buyer, User seller) {
+		Post post = Post.builder()
+			.user(seller)
+			.title("키링 판매")
+			.description("미개봉 상품입니다.")
+			.price(12000L)
+			.productCategory(ProductCategory.GOODS)
+			.productCondition(ProductCondition.NEW)
+			.productStatus(ProductStatus.ON_SALE)
+			.build();
+		ReflectionTestUtils.setField(post, "id", 10L);
+
+		ChatRoom chatRoom = ChatRoom.create(post, buyer, seller);
+		ReflectionTestUtils.setField(chatRoom, "id", id);
+		return chatRoom;
+	}
+}
