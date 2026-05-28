@@ -46,10 +46,10 @@ class ChatControllerTest {
 		validator.afterPropertiesSet();
 
 		mockMvc = MockMvcBuilders.standaloneSetup(new ChatController(chatService))
-			.setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
-			.setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
-			.setValidator(validator)
-			.build();
+				.setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+				.setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
+				.setValidator(validator)
+				.build();
 		authentication = new UsernamePasswordAuthenticationToken(new AuthenticatedUser(1L), null, List.of());
 		SecurityContextHolder.getContext().setAuthentication(authentication);
 	}
@@ -63,109 +63,96 @@ class ChatControllerTest {
 	@DisplayName("채팅방 생성 API는 생성된 채팅방 정보를 반환한다")
 	void createChatRoomReturnsCreatedRoom() throws Exception {
 		when(chatService.createChatRoom(eq(1L), any(CreateChatRoomRequest.class)))
-			.thenReturn(new ChatRoomResponse(
-				100L,
-				10L,
-				"키링 판매",
-				1L,
-				"buyer",
-				2L,
-				"seller",
-				null,
-				null,
-				LocalDateTime.of(2026, 5, 22, 20, 30)
-			));
+				.thenReturn(new ChatRoomResponse(
+						100L,
+						10L,
+						"키링 판매",
+						1L,
+						2L,
+						null,
+						null,
+						LocalDateTime.of(2026, 5, 22, 20, 30)
+				));
+
 
 		mockMvc.perform(post("/api/chat-rooms")
-				.principal(authentication)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
+						.principal(authentication)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
 					{
 					  "postId": 10
 					}
 					"""))
-			.andExpect(status().isCreated())
-			.andExpect(jsonPath("$.success").value(true))
-			.andExpect(jsonPath("$.data.chatRoomId").value(100))
-			.andExpect(jsonPath("$.data.postId").value(10))
-			.andExpect(jsonPath("$.data.buyerNickname").value("buyer"))
-			.andExpect(jsonPath("$.data.sellerNickname").value("seller"));
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.chatRoomId").value(100))
+				.andExpect(jsonPath("$.data.postId").value(10))
+				.andExpect(jsonPath("$.data.buyerNickname").value("buyer"))
+				.andExpect(jsonPath("$.data.sellerNickname").value("seller"));
 	}
 
 	@Test
 	@DisplayName("채팅방 목록 조회 API는 현재 사용자가 참여한 채팅방 목록을 반환한다")
 	void getMyChatRoomsReturnsParticipatingRooms() throws Exception {
 		when(chatService.getMyChatRooms(1L)).thenReturn(List.of(
-			new ChatRoomListResponse(
-				101L,
-				11L,
-				"구매자 방 게시글",
-				12000L,
-				ProductStatus.ON_SALE,
-				"https://cdn.test/posts/11/thumbnail.png",
-				4L,
-				"another-seller",
-				"판매 중인가요?",
-				LocalDateTime.of(2026, 5, 27, 10, 0),
-				LocalDateTime.of(2026, 5, 26, 10, 0)
-			),
-			new ChatRoomListResponse(
-				102L,
-				12L,
-				"판매자 방 게시글",
-				13000L,
-				ProductStatus.RESERVED,
-				"https://cdn.test/posts/12/thumbnail.png",
-				3L,
-				"another-buyer",
-				"네 가능합니다.",
-				LocalDateTime.of(2026, 5, 27, 9, 0),
-				LocalDateTime.of(2026, 5, 26, 9, 0)
-			)
+				new ChatRoomListResponse(
+						101L,
+						4L,
+						"another-seller",
+						"판매 중인가요?",
+						LocalDateTime.of(2026, 5, 27, 10, 0)
+				),
+				new ChatRoomListResponse(
+						102L,
+						3L,
+						"another-buyer",
+						"네 가능합니다.",
+						LocalDateTime.of(2026, 5, 27, 9, 0)
+				)
 		));
 
 		mockMvc.perform(get("/api/chat-rooms").principal(authentication))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.success").value(true))
-			.andExpect(jsonPath("$.data.length()").value(2))
-			.andExpect(jsonPath("$.data[0].chatRoomId").value(101))
-			.andExpect(jsonPath("$.data[0].opponentNickname").value("another-seller"))
-			.andExpect(jsonPath("$.data[0].postThumbnailImageUrl").value("https://cdn.test/posts/11/thumbnail.png"))
-			.andExpect(jsonPath("$.data[1].chatRoomId").value(102))
-			.andExpect(jsonPath("$.data[1].opponentNickname").value("another-buyer"))
-			.andExpect(jsonPath("$.data[1].postThumbnailImageUrl").value("https://cdn.test/posts/12/thumbnail.png"));
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.length()").value(2))
+				.andExpect(jsonPath("$.data[0].chatRoomId").value(101))
+				.andExpect(jsonPath("$.data[0].opponentNickname").value("another-seller"))
+				.andExpect(jsonPath("$.data[0].postThumbnailImageUrl").value("https://cdn.test/posts/11/thumbnail.png"))
+				.andExpect(jsonPath("$.data[1].chatRoomId").value(102))
+				.andExpect(jsonPath("$.data[1].opponentNickname").value("another-buyer"))
+				.andExpect(jsonPath("$.data[1].postThumbnailImageUrl").value("https://cdn.test/posts/12/thumbnail.png"));
 	}
 
 	@Test
 	@DisplayName("채팅방 생성 API는 postId가 없으면 검증 오류를 반환한다")
 	void createChatRoomWithoutPostIdReturnsBadRequest() throws Exception {
 		mockMvc.perform(post("/api/chat-rooms")
-				.principal(authentication)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("{}"))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.success").value(false))
-			.andExpect(jsonPath("$.error.code").value("COMMON_001"))
-			.andExpect(jsonPath("$.error.fieldErrors[0].field").value("postId"));
+						.principal(authentication)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.error.code").value("COMMON_001"))
+				.andExpect(jsonPath("$.error.fieldErrors[0].field").value("postId"));
 	}
 
 	@Test
 	@DisplayName("채팅방 생성 API는 자기 게시글 문의 예외를 공통 에러 형식으로 반환한다")
 	void createChatRoomSelfChatReturnsCommonError() throws Exception {
 		when(chatService.createChatRoom(eq(1L), any(CreateChatRoomRequest.class)))
-			.thenThrow(new BusinessException(ErrorCode.CHAT_ROOM_SELF_NOT_ALLOWED));
+				.thenThrow(new BusinessException(ErrorCode.CHAT_ROOM_SELF_NOT_ALLOWED));
 
 		mockMvc.perform(post("/api/chat-rooms")
-				.principal(authentication)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
+						.principal(authentication)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
 					{
 					  "postId": 10
 					}
 					"""))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.success").value(false))
-			.andExpect(jsonPath("$.error.code").value("CHAT_002"))
-			.andExpect(jsonPath("$.error.message").value("자신의 판매 게시글에는 문의할 수 없습니다."));
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.error.code").value("CHAT_002"))
+				.andExpect(jsonPath("$.error.message").value("자신의 판매 게시글에는 문의할 수 없습니다."));
 	}
 }
