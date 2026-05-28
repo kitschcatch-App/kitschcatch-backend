@@ -13,6 +13,7 @@ import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,7 +95,40 @@ class ChatRoomRepositoryTest {
 			.containsExactly(
 				LocalDateTime.of(2026, 5, 27, 10, 0),
 				LocalDateTime.of(2026, 5, 27, 9, 0)
-			);
+				);
+	}
+
+	@Test
+	@DisplayName("채팅방 상세 조회 전용 메서드는 게시글 이미지와 참여자를 함께 조회한다")
+	void findChatRoomDetailByIdLoadsPostImagesBuyerAndSeller() {
+		// 상세 조회 화면에 필요한 buyer, seller, post, post.images 데이터를 저장한다.
+		User buyer = saveUser("buyer", "buyer@example.com", "buyer-provider");
+		User seller = saveUser("seller", "seller@example.com", "seller-provider");
+		Post detailPost = savePost(seller, "상세 조회 게시글", "posts/1/test-image.jpg");
+		ChatRoom chatRoom = saveChatRoom(
+			detailPost,
+			buyer,
+			seller,
+			"상세 조회용 메시지",
+			LocalDateTime.of(2026, 5, 27, 12, 0)
+		);
+
+		entityManager.flush();
+		entityManager.clear();
+
+		// 상세 조회 전용 쿼리 메서드로 데이터를 다시 읽어온다.
+		ChatRoom foundChatRoom = chatRoomRepository.findChatRoomDetailById(chatRoom.getId()).orElseThrow();
+
+		assertThat(Hibernate.isInitialized(foundChatRoom.getPost())).isTrue();
+		assertThat(Hibernate.isInitialized(foundChatRoom.getPost().getImages())).isTrue();
+		assertThat(Hibernate.isInitialized(foundChatRoom.getBuyer())).isTrue();
+		assertThat(Hibernate.isInitialized(foundChatRoom.getSeller())).isTrue();
+		assertThat(foundChatRoom.getPost().getId()).isEqualTo(detailPost.getId());
+		assertThat(foundChatRoom.getBuyer().getId()).isEqualTo(buyer.getId());
+		assertThat(foundChatRoom.getSeller().getId()).isEqualTo(seller.getId());
+		assertThat(foundChatRoom.getPost().getImages())
+			.extracting(image -> image.getObjectKey())
+			.containsExactly("posts/1/test-image.jpg");
 	}
 
 	private User saveUser(String nickname, String email, String providerUserId) {
