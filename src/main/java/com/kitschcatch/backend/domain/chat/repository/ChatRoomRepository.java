@@ -28,7 +28,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 	boolean existsParticipant(@Param("chatRoomId") Long chatRoomId, @Param("userId") Long userId);
 
 
-	@EntityGraph(attributePaths = {"post", "post.images", "buyer", "seller"})
+	@EntityGraph(attributePaths = {"buyer", "seller"})
 	@Query("""
 	select cr
 	from ChatRoom cr
@@ -37,5 +37,18 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 	order by coalesce(cr.lastMessageAt, cr.createdAt) desc
 	""")
 	List<ChatRoom> findMyChatRooms(@Param("userId") Long userId);
+
+
+	// 채팅방 상세 조회
+	@EntityGraph(attributePaths = {"post", "post.images", "buyer", "seller"})
+	@Query("""
+	select cr
+	from ChatRoom cr
+	where cr.id = :chatRoomId
+	""")
+	Optional<ChatRoom> findChatRoomDetailById(@Param("chatRoomId") Long chatRoomId);
+
+
+
 
 }
