@@ -1,6 +1,7 @@
 package com.kitschcatch.backend.domain.chat.service;
 
 
+import com.kitschcatch.backend.domain.chat.dto.ChatRoomDetailResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatRoomListResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatRoomResponse;
 import com.kitschcatch.backend.domain.chat.dto.CreateChatRoomRequest;
@@ -55,18 +56,49 @@ public class ChatService {
         return ChatRoomResponse.from(chatRoom);
     }
 
-   // 사용자가 참여중인 모든 채팅방 조회
+    /**
+     * 현재 로그인 사용자가 참여 중인 채팅방 목록을 조회한다.
+     */
     @Transactional(readOnly = true)
     public List<ChatRoomListResponse> getMyChatRooms(Long userId) {
         return chatRoomRepository.findMyChatRooms(userId).stream()
-                .map(chatRoom -> ChatRoomListResponse.from(
-                        chatRoom,
-                        userId,
-                        getPostThumbnailImageUrl(chatRoom)
-                ))
+                .map(chatRoom -> ChatRoomListResponse.from(chatRoom, userId))
                 .toList();
     }
 
+
+    /**
+     * 특정 채팅방에서 게시글과 관련된 상세 정보를 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public ChatRoomDetailResponse getChatRoom(Long userId, Long chatRoomId) {
+
+        ChatRoom chatRoom = chatRoomRepository.findChatRoomDetailById(chatRoomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+
+        validateChatRoomParticipant(chatRoom, userId);
+
+        String postThumbnailImageUrl = getPostThumbnailImageUrl(chatRoom);
+
+        return ChatRoomDetailResponse.from(chatRoom, postThumbnailImageUrl);
+    }
+
+    /**
+     * 현재 로그인 사용자가 채팅방 참여자인지 검증한다.
+     */
+    private void validateChatRoomParticipant(ChatRoom chatRoom, Long userId) {
+        boolean isBuyer = chatRoom.getBuyer().getId().equals(userId);
+        boolean isSeller = chatRoom.getSeller().getId().equals(userId);
+
+        if (!isBuyer && !isSeller) {
+            throw new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+        }
+    }
+
+    /**
+     * 판매자가 자기 자신의 게시글에 문의하는 것을 방지한다.
+     */
     private void validateNotSelfChat(User buyer, User seller) {
         if (buyer.getId().equals(seller.getId())) {
             throw new BusinessException(ErrorCode.CHAT_ROOM_SELF_NOT_ALLOWED);
@@ -74,10 +106,12 @@ public class ChatService {
     }
 
 
-    // 판매글의 대표 이미지 URL 반환
+    /**
+     * 판매글의 대표 이미지 URL을 반환한다.
+     */
     private String getPostThumbnailImageUrl(ChatRoom chatRoom) {
         return chatRoom.getPost().getImages().stream()
-                .findFirst()
+                .findFirst() // 대표사진
                 .map(PostImage::getObjectKey)
                 .map(postImageStorage::imageUrl)
                 .orElse(null);

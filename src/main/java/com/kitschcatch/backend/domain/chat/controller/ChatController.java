@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.domain.chat.controller;
 
+import com.kitschcatch.backend.domain.chat.dto.ChatRoomDetailResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatRoomListResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatRoomResponse;
 import com.kitschcatch.backend.domain.chat.dto.CreateChatRoomRequest;
@@ -21,7 +22,6 @@ public class ChatController {
     private final ChatService chatService;
 
     // 채팅방 목록 조회 API
-    // 현재 로그인 사용자가 참여 중인  모든 채팅방 목록을 조회한다.
     @GetMapping
     public ApiResponse<List<ChatRoomListResponse>> getMyChatRooms(
             @AuthenticationPrincipal AuthenticatedUser user
@@ -37,6 +37,16 @@ public class ChatController {
     ) {
         return ApiResponse.created(chatService.createChatRoom(user.userId(), request));
     }
+
+    // 채팅방 상세 조회 API
+    @GetMapping("/{chatRoomId}")
+    public ApiResponse<ChatRoomDetailResponse> getChatRoom(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long chatRoomId
+    ) {
+        return ApiResponse.ok(chatService.getChatRoom(user.userId(), chatRoomId));
+    }
+
 
 
 
