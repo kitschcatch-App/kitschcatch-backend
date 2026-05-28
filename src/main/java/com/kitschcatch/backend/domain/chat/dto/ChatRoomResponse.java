@@ -8,9 +8,7 @@ public record ChatRoomResponse(
         Long postId,
         String postTitle,
         Long buyerId,
-        String buyerNickname,
         Long sellerId,
-        String sellerNickname,
         String lastMessageContent,
         LocalDateTime lastMessageAt,
         LocalDateTime createdAt
@@ -22,9 +20,7 @@ public record ChatRoomResponse(
                 chatRoom.getPost().getId(),
                 chatRoom.getPost().getTitle(),
                 chatRoom.getBuyer().getId(),
-                chatRoom.getBuyer().getNickname(),
                 chatRoom.getSeller().getId(),
-                chatRoom.getSeller().getNickname(),
                 chatRoom.getLastMessageContent(),
                 chatRoom.getLastMessageAt(),
                 chatRoom.getCreatedAt()
