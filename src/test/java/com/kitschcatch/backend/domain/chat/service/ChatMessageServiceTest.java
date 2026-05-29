@@ -3,10 +3,15 @@ package com.kitschcatch.backend.domain.chat.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
+import com.kitschcatch.backend.domain.chat.dto.ChatReadResponse;
 import com.kitschcatch.backend.domain.chat.entity.ChatMessage;
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
 import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
@@ -86,6 +91,74 @@ class ChatMessageServiceTest {
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+	}
+
+	@Test
+	@DisplayName("채팅방 참여자는 상대방이 보낸 안 읽은 메시지를 읽음 처리할 수 있다")
+	void markMessagesAsReadMarksOpponentUnreadMessages() {
+		List<Long> unreadMessageIds = List.of(10L, 11L, 12L);
+
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatMessageRepository.findUnreadMessageIds(100L, 1L)).thenReturn(unreadMessageIds);
+		when(chatMessageRepository.markAsReadByIds(unreadMessageIds)).thenReturn(3);
+
+		ChatReadResponse response = chatMessageService.markMessagesAsRead(1L, 100L);
+
+		assertThat(response.chatRoomId()).isEqualTo(100L);
+		assertThat(response.readerId()).isEqualTo(1L);
+		assertThat(response.readMessageIds()).containsExactly(10L, 11L, 12L);
+		assertThat(response.readCount()).isEqualTo(3);
+		assertThat(response.readAt()).isNotNull();
+
+		verify(chatRoomRepository).findChatRoomById(100L);
+		verify(chatMessageRepository).findUnreadMessageIds(100L, 1L);
+		verify(chatMessageRepository).markAsReadByIds(unreadMessageIds);
+	}
+
+	@Test
+	@DisplayName("읽을 메시지가 없으면 읽음 처리 update를 수행하지 않는다")
+	void markMessagesAsReadSkipsUpdateWhenNoUnreadMessages() {
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatMessageRepository.findUnreadMessageIds(100L, 1L)).thenReturn(List.of());
+
+		ChatReadResponse response = chatMessageService.markMessagesAsRead(1L, 100L);
+
+		assertThat(response.chatRoomId()).isEqualTo(100L);
+		assertThat(response.readerId()).isEqualTo(1L);
+		assertThat(response.readMessageIds()).isEmpty();
+		assertThat(response.readCount()).isZero();
+		assertThat(response.readAt()).isNotNull();
+
+		verify(chatMessageRepository).findUnreadMessageIds(100L, 1L);
+		verify(chatMessageRepository, never()).markAsReadByIds(anyList());
+	}
+
+	@Test
+	@DisplayName("채팅방 참여자가 아니면 메시지를 읽음 처리할 수 없다")
+	void markMessagesAsReadWithoutParticipantThrowsException() {
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+
+		assertThatThrownBy(() -> chatMessageService.markMessagesAsRead(999L, 100L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+
+		verify(chatMessageRepository, never()).findUnreadMessageIds(anyLong(), anyLong());
+		verify(chatMessageRepository, never()).markAsReadByIds(anyList());
+	}
+
+	@Test
+	@DisplayName("존재하지 않는 채팅방이면 메시지를 읽음 처리할 수 없다")
+	void markMessagesAsReadWithoutChatRoomThrowsException() {
+		when(chatRoomRepository.findChatRoomById(999L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> chatMessageService.markMessagesAsRead(1L, 999L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.CHAT_ROOM_NOT_FOUND);
+
+		verify(chatMessageRepository, never()).findUnreadMessageIds(anyLong(), anyLong());
+		verify(chatMessageRepository, never()).markAsReadByIds(anyList());
 	}
 
 	@Test
