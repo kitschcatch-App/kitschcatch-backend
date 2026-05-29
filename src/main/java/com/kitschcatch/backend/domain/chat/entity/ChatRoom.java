@@ -2,7 +2,18 @@ package com.kitschcatch.backend.domain.chat.entity;
 
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.user.entity.User;
-import jakarta.persistence.*;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
