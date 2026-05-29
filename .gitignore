@@ -5,5 +5,9 @@
 /.idea/
 
 .env
-!.env
 !.env.example
+
+# Local development/tooling files
+.gradle-home/
+.history-cleanup-mirror.git/
+.tools/
