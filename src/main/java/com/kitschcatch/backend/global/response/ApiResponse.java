@@ -4,15 +4,24 @@ package com.kitschcatch.backend.global.response;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kitschcatch.backend.global.exception.ErrorCode;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(description = "API 공통 응답")
 public record ApiResponse<T>(
 	@JsonIgnore
+	@Schema(hidden = true)
 	HttpStatus httpStatus,
+
+	@Schema(description = "요청 성공 여부")
 	boolean success,
+
+	@Schema(description = "성공 응답 데이터")
 	T data,
+
+	@Schema(description = "실패 응답 에러 정보")
 	ApiError error
 ) {
 

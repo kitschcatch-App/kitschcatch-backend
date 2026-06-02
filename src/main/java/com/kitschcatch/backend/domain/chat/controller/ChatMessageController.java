@@ -5,6 +5,10 @@ import com.kitschcatch.backend.domain.chat.dto.SendTextMessageRequest;
 import com.kitschcatch.backend.domain.chat.service.ChatMessageService;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +26,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/chat-rooms/{chatRoomId}/messages")
 @RequiredArgsConstructor
+@Tag(name = "채팅 메시지", description = "채팅 메시지 조회와 HTTP 기반 메시지 전송 API")
+@SecurityRequirement(name = "bearerAuth")
 public class ChatMessageController {
 
 	private final ChatMessageService chatMessageService;
@@ -29,8 +35,10 @@ public class ChatMessageController {
 
 	// 이전 대화 목록 불러오기
 	@GetMapping
+	@Operation(summary = "채팅 메시지 목록 조회", description = "인증 사용자가 참여 중인 채팅방의 이전 메시지를 조회합니다.")
 	public ApiResponse<List<ChatMessageResponse>> getMessages(
 		@AuthenticationPrincipal AuthenticatedUser user,
+		@Parameter(description = "채팅방 ID", example = "1")
 		@PathVariable Long chatRoomId
 	) {
 		return ApiResponse.success(chatMessageService.getMessages(user.userId(), chatRoomId));
@@ -38,8 +46,10 @@ public class ChatMessageController {
 
 	// 텍스트 타입 메세지 전송
 	@PostMapping("/text")
+	@Operation(summary = "텍스트 메시지 전송", description = "HTTP 요청으로 텍스트 메시지를 저장하고 같은 채팅방 구독자에게 전달합니다.")
 	public ApiResponse<ChatMessageResponse> sendTextMessage(
 		@AuthenticationPrincipal AuthenticatedUser user,
+		@Parameter(description = "채팅방 ID", example = "1")
 		@PathVariable Long chatRoomId,
 		@Valid @RequestBody SendTextMessageRequest request
 	) {
@@ -51,9 +61,12 @@ public class ChatMessageController {
 
 	// 이미지 타입 메세지 전송
 	@PostMapping("/images")
+	@Operation(summary = "이미지 메시지 전송", description = "HTTP multipart 요청으로 이미지 메시지를 저장하고 같은 채팅방 구독자에게 전달합니다.")
 	public ApiResponse<ChatMessageResponse> sendImageMessage(
 		@AuthenticationPrincipal AuthenticatedUser user,
+		@Parameter(description = "채팅방 ID", example = "1")
 		@PathVariable Long chatRoomId,
+		@Parameter(description = "전송할 이미지 파일")
 		@RequestPart("image") MultipartFile imageFile
 	) {
 		// HTTP로 저장한 이미지 메시지도 같은 채팅방 구독자에게 즉시 전달한다.
