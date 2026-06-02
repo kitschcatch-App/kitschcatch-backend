@@ -12,6 +12,7 @@ import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,11 +43,25 @@ public class ChatService {
         validateNotSelfChat(buyer, seller);
 
         // 채팅방 생성
-        ChatRoom chatRoom = chatRoomRepository
-                .findByPostIdAndBuyerIdAndSellerId(post.getId(), buyer.getId(), seller.getId())
-                .orElseGet(() -> chatRoomRepository.save(ChatRoom.create(post, buyer, seller)));
+        ChatRoom chatRoom = findOrCreateChatRoom(post, buyer, seller);
 
         return ChatRoomResponse.from(chatRoom);
+    }
+
+    private ChatRoom findOrCreateChatRoom(Post post, User buyer, User seller) {
+        return chatRoomRepository
+                .findByPostIdAndBuyerIdAndSellerId(post.getId(), buyer.getId(), seller.getId())
+                .orElseGet(() -> saveOrFindExistingChatRoom(post, buyer, seller));
+    }
+
+    private ChatRoom saveOrFindExistingChatRoom(Post post, User buyer, User seller) {
+        try {
+            return chatRoomRepository.saveAndFlush(ChatRoom.create(post, buyer, seller));
+        } catch (DataIntegrityViolationException e) {
+            return chatRoomRepository
+                    .findByPostIdAndBuyerIdAndSellerId(post.getId(), buyer.getId(), seller.getId())
+                    .orElseThrow(() -> e);
+        }
     }
 
     private void validateNotSelfChat(User buyer, User seller) {
@@ -54,8 +69,6 @@ public class ChatService {
             throw new BusinessException(ErrorCode.CHAT_ROOM_SELF_NOT_ALLOWED);
         }
     }
-
-
 }
 
 
