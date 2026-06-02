@@ -14,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -23,7 +24,10 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
-@Table(name = "orders")
+@Table(
+	name = "orders",
+	uniqueConstraints = @UniqueConstraint(name = "uk_orders_order_number", columnNames = "order_number")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PurchaseOrder {
@@ -31,6 +35,9 @@ public class PurchaseOrder {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
+
+	@Column(name = "order_number", nullable = false, length = 50)
+	private String orderNumber;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "user_id", nullable = false, foreignKey = @ForeignKey(name = "fk_orders_user"))
@@ -67,6 +74,7 @@ public class PurchaseOrder {
 
 	@Builder
 	private PurchaseOrder(
+		String orderNumber,
 		User user,
 		Post post,
 		Long amount,
@@ -75,6 +83,7 @@ public class PurchaseOrder {
 		String pgTransactionId,
 		OrderStatus orderStatus
 	) {
+		this.orderNumber = orderNumber;
 		this.user = user;
 		this.post = post;
 		this.amount = amount;
@@ -82,5 +91,14 @@ public class PurchaseOrder {
 		this.pgPaymentKey = pgPaymentKey;
 		this.pgTransactionId = pgTransactionId;
 		this.orderStatus = orderStatus;
+	}
+
+	public void markPaid(String pgPaymentKey) {
+		this.pgPaymentKey = pgPaymentKey;
+		this.orderStatus = OrderStatus.PAID;
+	}
+
+	public void cancel() {
+		this.orderStatus = OrderStatus.CANCELED;
 	}
 }
