@@ -58,7 +58,7 @@ class ChatServiceTest {
 		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(post));
 		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
 		when(chatRoomRepository.findByPostIdAndBuyerIdAndSellerId(10L, 1L, 2L)).thenReturn(Optional.empty());
-		when(chatRoomRepository.save(any(ChatRoom.class))).thenAnswer(invocation -> {
+		when(chatRoomRepository.saveAndFlush(any(ChatRoom.class))).thenAnswer(invocation -> {
 			ChatRoom saved = invocation.getArgument(0);
 			ReflectionTestUtils.setField(saved, "id", 100L);
 			ReflectionTestUtils.setField(saved, "createdAt", LocalDateTime.of(2026, 5, 22, 20, 30));
@@ -68,7 +68,7 @@ class ChatServiceTest {
 		ChatRoomResponse response = chatService.createChatRoom(1L, new CreateChatRoomRequest(10L));
 
 		ArgumentCaptor<ChatRoom> chatRoomCaptor = ArgumentCaptor.forClass(ChatRoom.class);
-		verify(chatRoomRepository).save(chatRoomCaptor.capture());
+		verify(chatRoomRepository).saveAndFlush(chatRoomCaptor.capture());
 		ChatRoom savedRoom = chatRoomCaptor.getValue();
 
 		assertThat(savedRoom.getPost()).isEqualTo(post);
@@ -96,7 +96,7 @@ class ChatServiceTest {
 
 		ChatRoomResponse response = chatService.createChatRoom(1L, new CreateChatRoomRequest(10L));
 
-		verify(chatRoomRepository, never()).save(any(ChatRoom.class));
+		verify(chatRoomRepository, never()).saveAndFlush(any(ChatRoom.class));
 		assertThat(response.chatRoomId()).isEqualTo(77L);
 		assertThat(response.postTitle()).isEqualTo("키링 판매");
 		assertThat(response.createdAt()).isEqualTo(LocalDateTime.of(2026, 5, 22, 19, 0));
