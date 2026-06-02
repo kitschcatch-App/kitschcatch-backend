@@ -2,6 +2,7 @@ package com.kitschcatch.backend.domain.chat.entity;
 
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.user.entity.User;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -12,6 +13,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -20,7 +23,15 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
-@Table(name = "chat_rooms")
+@Table(
+		name = "chat_rooms",
+		uniqueConstraints = {
+				@UniqueConstraint(
+						name = "uk_chat_rooms_post_buyer_seller",
+						columnNames = {"post_id", "buyer_id", "seller_id"}
+				)
+		}
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatRoom {
@@ -62,4 +73,20 @@ public class ChatRoom {
 		this.lastMessageContent = lastMessageContent;
 		this.lastMessageAt = lastMessageAt;
 	}
+
+	public static ChatRoom create(Post post, User buyer, User seller) {
+		return ChatRoom.builder()
+				.post(post)
+				.buyer(buyer)
+				.seller(seller)
+				.build();
+	}
+
+	// 채팅방 목록에서 마지막 메세지와 시간을 보여주기 위한 메서드
+	public void updateLastMessage(String lastMessageContent, LocalDateTime lastMessageAt) {
+		this.lastMessageContent = lastMessageContent;
+		this.lastMessageAt = lastMessageAt;
+	}
+
+
 }

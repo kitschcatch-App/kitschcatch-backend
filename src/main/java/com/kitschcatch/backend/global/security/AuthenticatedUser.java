@@ -4,3 +4,4 @@ public record AuthenticatedUser(
 	Long userId
 ) {
 }
+

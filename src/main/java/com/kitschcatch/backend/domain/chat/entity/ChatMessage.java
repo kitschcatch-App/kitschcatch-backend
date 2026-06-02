@@ -71,4 +71,29 @@ public class ChatMessage {
 		this.imageUrl = imageUrl;
 		this.isRead = isRead;
 	}
+
+	// 텍스트 메시지를 생성
+	public static ChatMessage createTextMessage(ChatRoom chatRoom, User sender, String content) {
+		return ChatMessage.builder()
+				.chatRoom(chatRoom)
+				.sender(sender)
+				.messageType(MessageType.TEXT)
+				.content(content)
+				.imageUrl(null)
+				.isRead(false)
+				.build();
+	}
+
+	// 이미지 메시지를 생성
+	public static ChatMessage createImageMessage(ChatRoom chatRoom, User sender, String imageUrl) {
+		return ChatMessage.builder()
+				.chatRoom(chatRoom)
+				.sender(sender)
+				.messageType(MessageType.IMAGE)
+				.content(null)
+				.imageUrl(imageUrl)
+				.isRead(false)
+				.build();
+	}
+
 }
