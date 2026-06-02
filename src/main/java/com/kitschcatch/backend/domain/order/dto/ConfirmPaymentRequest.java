@@ -7,7 +7,7 @@ public record ConfirmPaymentRequest(
 	@NotBlank(message = "결제 ID는 필수입니다.")
 	String paymentId,
 
-	@NotBlank(message = "결제 승인 토큰은 필수입니다.")
-	String paymentToken
+	@NotBlank(message = "토스 결제 키는 필수입니다.")
+	String paymentKey
 ) {
 }

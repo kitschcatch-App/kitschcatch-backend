@@ -11,6 +11,10 @@ import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentCancelRequest;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentConfirmRequest;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.util.Locale;
@@ -23,10 +27,16 @@ public class PaymentService {
 
 	private final PaymentRepository paymentRepository;
 	private final PurchaseOrderRepository orderRepository;
+	private final TossPaymentsClient tossPaymentsClient;
 
-	public PaymentService(PaymentRepository paymentRepository, PurchaseOrderRepository orderRepository) {
+	public PaymentService(
+		PaymentRepository paymentRepository,
+		PurchaseOrderRepository orderRepository,
+		TossPaymentsClient tossPaymentsClient
+	) {
 		this.paymentRepository = paymentRepository;
 		this.orderRepository = orderRepository;
+		this.tossPaymentsClient = tossPaymentsClient;
 	}
 
 	@Transactional
@@ -56,7 +66,13 @@ public class PaymentService {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 		}
 
-		payment.confirm(request.paymentToken());
+		TossPaymentResponse tossResponse = tossPaymentsClient.confirm(new TossPaymentConfirmRequest(
+			request.paymentKey(),
+			payment.getOrder().getOrderNumber(),
+			payment.getAmount()
+		));
+		validateTossPayment(tossResponse, payment);
+		payment.confirm(tossResponse.paymentKey());
 		return toResponse(payment);
 	}
 
@@ -71,7 +87,15 @@ public class PaymentService {
 		if (payment.getPaymentStatus() == PaymentStatus.CANCELED) {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 		}
+		if (payment.getPaymentStatus() != PaymentStatus.SUCCESS || payment.getPaymentKey() == null) {
+			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
+		}
 
+		TossPaymentResponse tossResponse = tossPaymentsClient.cancel(new TossPaymentCancelRequest(
+			payment.getPaymentKey(),
+			"고객 요청"
+		));
+		validateTossPayment(tossResponse, payment);
 		payment.cancel();
 		return toResponse(payment);
 	}
@@ -90,6 +114,14 @@ public class PaymentService {
 	private void validateOrderPending(PurchaseOrder order) {
 		if (order.getOrderStatus() != OrderStatus.PENDING) {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
+		}
+	}
+
+	private void validateTossPayment(TossPaymentResponse tossResponse, Payment payment) {
+		if (tossResponse == null
+			|| !payment.getOrder().getOrderNumber().equals(tossResponse.orderId())
+			|| !payment.getAmount().equals(tossResponse.totalAmount())) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
 		}
 	}
 

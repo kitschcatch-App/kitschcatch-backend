@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
@@ -19,6 +20,10 @@ import com.kitschcatch.backend.domain.order.entity.PgProvider;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentCancelRequest;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentConfirmRequest;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
@@ -40,6 +45,7 @@ class OrderPaymentServiceTest {
 
 	private PurchaseOrderRepository orderRepository;
 	private PaymentRepository paymentRepository;
+	private TossPaymentsClient tossPaymentsClient;
 	private PostRepository postRepository;
 	private UserRepository userRepository;
 	private OrderService orderService;
@@ -52,10 +58,11 @@ class OrderPaymentServiceTest {
 	void setUp() {
 		orderRepository = mock(PurchaseOrderRepository.class);
 		paymentRepository = mock(PaymentRepository.class);
+		tossPaymentsClient = mock(TossPaymentsClient.class);
 		postRepository = mock(PostRepository.class);
 		userRepository = mock(UserRepository.class);
 		orderService = new OrderService(orderRepository, paymentRepository, postRepository, userRepository);
-		paymentService = new PaymentService(paymentRepository, orderRepository);
+		paymentService = new PaymentService(paymentRepository, orderRepository, tossPaymentsClient);
 
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");
 		seller = user(2L, "seller", "seller@example.com", "seller-provider");
@@ -107,28 +114,35 @@ class OrderPaymentServiceTest {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PENDING);
 		Payment payment = payment("PAY-999", order, PaymentStatus.READY);
 		when(paymentRepository.findByPaymentIdAndOrderUserId("PAY-999", 1L)).thenReturn(Optional.of(payment));
+		when(tossPaymentsClient.confirm(new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)))
+			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "DONE"));
 
 		PaymentResponse response = paymentService.confirmPayment(
 			1L,
 			"PAY-999",
-			new ConfirmPaymentRequest("PAY-999", "pg-token")
+			new ConfirmPaymentRequest("PAY-999", "toss-payment-key")
 		);
 
 		assertThat(response.status()).isEqualTo(PaymentStatus.SUCCESS);
 		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
+		assertThat(order.getPgPaymentKey()).isEqualTo("toss-payment-key");
+		verify(tossPaymentsClient).confirm(new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L));
 	}
 
 	@Test
 	@DisplayName("결제 취소는 결제를 취소로 바꾸고 주문을 취소로 바꾼다")
 	void cancelPaymentMarksPaymentAndOrderCanceled() {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PAID);
-		Payment payment = payment("PAY-999", order, PaymentStatus.SUCCESS);
+		Payment payment = payment("PAY-999", order, PaymentStatus.SUCCESS, "toss-payment-key");
 		when(paymentRepository.findByPaymentIdAndOrderUserId("PAY-999", 1L)).thenReturn(Optional.of(payment));
+		when(tossPaymentsClient.cancel(new TossPaymentCancelRequest("toss-payment-key", "고객 요청")))
+			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "CANCELED"));
 
 		PaymentResponse response = paymentService.cancelPayment(1L, "PAY-999");
 
 		assertThat(response.status()).isEqualTo(PaymentStatus.CANCELED);
 		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.CANCELED);
+		verify(tossPaymentsClient).cancel(new TossPaymentCancelRequest("toss-payment-key", "고객 요청"));
 	}
 
 	@Test
@@ -185,12 +199,17 @@ class OrderPaymentServiceTest {
 	}
 
 	private Payment payment(String paymentId, PurchaseOrder order, PaymentStatus paymentStatus) {
+		return payment(paymentId, order, paymentStatus, null);
+	}
+
+	private Payment payment(String paymentId, PurchaseOrder order, PaymentStatus paymentStatus, String paymentKey) {
 		Payment payment = Payment.builder()
 			.paymentId(paymentId)
 			.order(order)
 			.amount(order.getAmount())
 			.paymentMethod(PaymentMethod.CARD)
 			.paymentStatus(paymentStatus)
+			.paymentKey(paymentKey)
 			.build();
 		ReflectionTestUtils.setField(payment, "createdAt", LocalDateTime.of(2026, 4, 13, 15, 0));
 		return payment;

@@ -86,7 +86,7 @@ class EntityMappingTest {
 			.amount(12000L)
 			.paymentMethod(PaymentMethod.CARD)
 			.paymentStatus(PaymentStatus.SUCCESS)
-			.paymentToken("payment-token")
+			.paymentKey("toss-payment-key")
 			.build();
 		entityManager.persist(payment);
 

@@ -92,7 +92,7 @@ class PaymentControllerTest {
 				.content("""
 					{
 					  "paymentId": "PAY-999",
-					  "paymentToken": "pg-token"
+					  "paymentKey": "toss-payment-key"
 					}
 					"""))
 			.andExpect(status().isOk())

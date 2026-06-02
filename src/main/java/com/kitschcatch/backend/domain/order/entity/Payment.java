@@ -53,7 +53,7 @@ public class Payment {
 	private PaymentStatus paymentStatus;
 
 	@Column(length = 255)
-	private String paymentToken;
+	private String paymentKey;
 
 	@CreationTimestamp
 	@Column(nullable = false, updatable = false)
@@ -70,21 +70,21 @@ public class Payment {
 		Long amount,
 		PaymentMethod paymentMethod,
 		PaymentStatus paymentStatus,
-		String paymentToken
+		String paymentKey
 	) {
 		this.paymentId = paymentId;
 		this.order = order;
 		this.amount = amount;
 		this.paymentMethod = paymentMethod;
 		this.paymentStatus = paymentStatus;
-		this.paymentToken = paymentToken;
+		this.paymentKey = paymentKey;
 	}
 
-	public void confirm(String paymentToken) {
-		this.paymentToken = paymentToken;
+	public void confirm(String paymentKey) {
+		this.paymentKey = paymentKey;
 		this.paymentStatus = PaymentStatus.SUCCESS;
 		this.approvedAt = LocalDateTime.now();
-		this.order.markPaid(paymentToken);
+		this.order.markPaid(paymentKey);
 	}
 
 	public void cancel() {

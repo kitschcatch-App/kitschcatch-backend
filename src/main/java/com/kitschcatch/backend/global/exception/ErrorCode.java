@@ -29,7 +29,9 @@ public enum ErrorCode {
 	ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_001", "주문을 찾을 수 없습니다."),
 	PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_001", "결제를 찾을 수 없습니다."),
 	PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_002", "결제 금액이 주문 금액과 일치하지 않습니다."),
-	PAYMENT_INVALID_STATUS(HttpStatus.BAD_REQUEST, "PAYMENT_003", "결제를 처리할 수 없는 상태입니다.");
+	PAYMENT_INVALID_STATUS(HttpStatus.BAD_REQUEST, "PAYMENT_003", "결제를 처리할 수 없는 상태입니다."),
+	TOSS_PAYMENTS_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "PAYMENT_004", "토스페이먼츠 설정이 필요합니다."),
+	TOSS_PAYMENTS_REQUEST_FAILED(HttpStatus.BAD_REQUEST, "PAYMENT_005", "토스페이먼츠 요청에 실패했습니다.");
 
 
 	private final HttpStatus httpStatus;
