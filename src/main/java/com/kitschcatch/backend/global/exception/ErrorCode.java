@@ -24,7 +24,12 @@ public enum ErrorCode {
 	CHAT_ROOM_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "CHAT_002", "자신의 판매 게시글에는 문의할 수 없습니다."),
 	CHAT_ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT_003", "채팅방에 접근할 권한이 없습니다."),
 	MESSAGE_CONTENT_EMPTY(HttpStatus.BAD_REQUEST, "CHAT_004", "메시지 내용은 비어 있을 수 없습니다."),
-	IMAGE_FILE_EMPTY(HttpStatus.BAD_REQUEST, "CHAT_005", "이미지 파일은 비어 있을 수 없습니다.");
+	IMAGE_FILE_EMPTY(HttpStatus.BAD_REQUEST, "CHAT_005", "이미지 파일은 비어 있을 수 없습니다."),
+
+	ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_001", "주문을 찾을 수 없습니다."),
+	PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_001", "결제를 찾을 수 없습니다."),
+	PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_002", "결제 금액이 주문 금액과 일치하지 않습니다."),
+	PAYMENT_INVALID_STATUS(HttpStatus.BAD_REQUEST, "PAYMENT_003", "결제를 처리할 수 없는 상태입니다.");
 
 
 	private final HttpStatus httpStatus;
