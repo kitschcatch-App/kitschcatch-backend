@@ -14,7 +14,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-@SpringBootTest(properties = "kakao.oauth.native-app-key=test-native-app-key")
+@SpringBootTest(properties = {
+	"kakao.oauth.native-app-key=test-native-app-key",
+	"springdoc.api-docs.enabled=true",
+	"springdoc.swagger-ui.enabled=true"
+})
 class SecurityConfigTest {
 
 	private MockMvc mockMvc;
@@ -53,5 +57,20 @@ class SecurityConfigTest {
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.success").value(false))
 			.andExpect(jsonPath("$.error.code").value("AUTH_004"));
+	}
+
+	@Test
+	@DisplayName("Swagger API 문서는 인증 없이 접근할 수 있다")
+	void swaggerApiDocsRequestDoesNotRequireAuthentication() throws Exception {
+		mockMvc.perform(get("/v3/api-docs"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.openapi").isNotEmpty());
+	}
+
+	@Test
+	@DisplayName("Swagger UI는 인증 없이 접근할 수 있다")
+	void swaggerUiRequestDoesNotRequireAuthentication() throws Exception {
+		mockMvc.perform(get("/swagger-ui/index.html"))
+			.andExpect(status().isOk());
 	}
 }

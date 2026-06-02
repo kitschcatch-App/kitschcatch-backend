@@ -4,6 +4,12 @@ spring:
   jpa:
     open-in-view: false
 
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 kakao:
   oauth:
     native-app-key: ${KAKAO_NATIVE_APP_KEY:}
