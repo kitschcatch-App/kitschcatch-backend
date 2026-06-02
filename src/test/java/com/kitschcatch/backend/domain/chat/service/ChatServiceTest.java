@@ -68,8 +68,10 @@ class ChatServiceTest {
 		// 게시글과 구매자가 존재하고 기존 채팅방이 없을 때 새 채팅방이 저장되도록 설정한다.
 		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(post));
 		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
-		when(chatRoomRepository.findByPostIdAndBuyerIdAndSellerId(10L, 1L, 2L)).thenReturn(Optional.empty());
-		when(chatRoomRepository.save(any(ChatRoom.class))).thenAnswer(invocation -> {
+		when(chatRoomRepository.findByPostIdAndBuyerIdAndSellerId(10L, 1L, 2L))
+				.thenReturn(Optional.empty());
+
+		when(chatRoomRepository.saveAndFlush(any(ChatRoom.class))).thenAnswer(invocation -> {
 			ChatRoom saved = invocation.getArgument(0);
 			ReflectionTestUtils.setField(saved, "id", 100L);
 			ReflectionTestUtils.setField(saved, "createdAt", LocalDateTime.of(2026, 5, 22, 20, 30));
@@ -79,7 +81,8 @@ class ChatServiceTest {
 		ChatRoomResponse response = chatService.createChatRoom(1L, new CreateChatRoomRequest(10L));
 
 		ArgumentCaptor<ChatRoom> chatRoomCaptor = ArgumentCaptor.forClass(ChatRoom.class);
-		verify(chatRoomRepository).save(chatRoomCaptor.capture());
+		verify(chatRoomRepository).saveAndFlush(chatRoomCaptor.capture());
+
 		ChatRoom savedRoom = chatRoomCaptor.getValue();
 
 		assertThat(savedRoom.getPost()).isEqualTo(post);
