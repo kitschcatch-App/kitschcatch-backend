@@ -1,146 +1,93 @@
-// 주문 결제의 생성, 승인, 조회, 취소 상태 전이를 담당하는 서비스
+// 토스 외부 API 호출과 결제 상태 변경 흐름을 조율하는 서비스
 package com.kitschcatch.backend.domain.order.service;
 
 import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
-import com.kitschcatch.backend.domain.order.entity.OrderStatus;
-import com.kitschcatch.backend.domain.order.entity.Payment;
-import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
-import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
-import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
-import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentCancelRequest;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentConfirmRequest;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
-import java.util.Locale;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentService {
 
-	private final PaymentRepository paymentRepository;
-	private final PurchaseOrderRepository orderRepository;
+	private static final String TOSS_CONFIRM_DONE = "DONE";
+	private static final String TOSS_CANCEL_CANCELED = "CANCELED";
+
+	private final PaymentTransactionService paymentTransactionService;
 	private final TossPaymentsClient tossPaymentsClient;
 
 	public PaymentService(
-		PaymentRepository paymentRepository,
-		PurchaseOrderRepository orderRepository,
+		PaymentTransactionService paymentTransactionService,
 		TossPaymentsClient tossPaymentsClient
 	) {
-		this.paymentRepository = paymentRepository;
-		this.orderRepository = orderRepository;
+		this.paymentTransactionService = paymentTransactionService;
 		this.tossPaymentsClient = tossPaymentsClient;
 	}
 
-	@Transactional
 	public CreatePaymentResponse createPayment(Long userId, CreatePaymentRequest request) {
-		PurchaseOrder order = orderRepository.findByOrderNumberAndUserId(request.orderId(), userId)
-			.orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-		validateAmount(request.amount(), order.getAmount());
-		validateOrderPending(order);
-
-		Payment payment = paymentRepository.save(Payment.builder()
-			.paymentId(generatePaymentId())
-			.order(order)
-			.amount(request.amount())
-			.paymentMethod(request.paymentMethod())
-			.paymentStatus(PaymentStatus.READY)
-			.build());
-		return new CreatePaymentResponse(payment.getPaymentId(), payment.getPaymentStatus());
+		return paymentTransactionService.createPayment(userId, request);
 	}
 
-	@Transactional
 	public PaymentResponse confirmPayment(Long userId, String paymentId, ConfirmPaymentRequest request) {
-		if (!paymentId.equals(request.paymentId())) {
-			throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);
+		PaymentOperationContext context = paymentTransactionService.startConfirm(userId, paymentId, request);
+		try {
+			TossPaymentResponse tossResponse = tossPaymentsClient.confirm(new TossPaymentConfirmRequest(
+				context.paymentKey(),
+				context.orderId(),
+				context.amount()
+			));
+			validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
+			return paymentTransactionService.completeConfirm(userId, paymentId, tossResponse.paymentKey());
+		} catch (RuntimeException exception) {
+			restoreProcessing(userId, paymentId, context);
+			throw exception;
 		}
-		Payment payment = findPayment(paymentId, userId);
-		if (payment.getPaymentStatus() != PaymentStatus.READY) {
-			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
-		}
-
-		TossPaymentResponse tossResponse = tossPaymentsClient.confirm(new TossPaymentConfirmRequest(
-			request.paymentKey(),
-			payment.getOrder().getOrderNumber(),
-			payment.getAmount()
-		));
-		validateTossPayment(tossResponse, payment);
-		payment.confirm(tossResponse.paymentKey());
-		return toResponse(payment);
 	}
 
-	@Transactional(readOnly = true)
 	public PaymentResponse getPayment(Long userId, String paymentId) {
-		return toResponse(findPayment(paymentId, userId));
+		return paymentTransactionService.getPayment(userId, paymentId);
 	}
 
-	@Transactional
 	public PaymentResponse cancelPayment(Long userId, String paymentId) {
-		Payment payment = findPayment(paymentId, userId);
-		if (payment.getPaymentStatus() == PaymentStatus.CANCELED) {
-			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
-		}
-		if (payment.getPaymentStatus() != PaymentStatus.SUCCESS || payment.getPaymentKey() == null) {
-			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
-		}
-
-		TossPaymentResponse tossResponse = tossPaymentsClient.cancel(new TossPaymentCancelRequest(
-			payment.getPaymentKey(),
-			"고객 요청"
-		));
-		validateTossPayment(tossResponse, payment);
-		payment.cancel();
-		return toResponse(payment);
-	}
-
-	private Payment findPayment(String paymentId, Long userId) {
-		return paymentRepository.findByPaymentIdAndOrderUserId(paymentId, userId)
-			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
-	}
-
-	private void validateAmount(Long requestedAmount, Long orderAmount) {
-		if (!orderAmount.equals(requestedAmount)) {
-			throw new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+		PaymentOperationContext context = paymentTransactionService.startCancel(userId, paymentId);
+		try {
+			TossPaymentResponse tossResponse = tossPaymentsClient.cancel(new TossPaymentCancelRequest(
+				context.paymentKey(),
+				"고객 요청"
+			));
+			validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
+			return paymentTransactionService.completeCancel(userId, paymentId);
+		} catch (RuntimeException exception) {
+			restoreProcessing(userId, paymentId, context);
+			throw exception;
 		}
 	}
 
-	private void validateOrderPending(PurchaseOrder order) {
-		if (order.getOrderStatus() != OrderStatus.PENDING) {
-			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
-		}
-	}
-
-	private void validateTossPayment(TossPaymentResponse tossResponse, Payment payment) {
+	private void validateTossPayment(
+		TossPaymentResponse tossResponse,
+		PaymentOperationContext context,
+		String expectedStatus
+	) {
 		if (tossResponse == null
-			|| !payment.getOrder().getOrderNumber().equals(tossResponse.orderId())
-			|| !payment.getAmount().equals(tossResponse.totalAmount())) {
+			|| !context.paymentKey().equals(tossResponse.paymentKey())
+			|| !context.orderId().equals(tossResponse.orderId())
+			|| !context.amount().equals(tossResponse.totalAmount())
+			|| !expectedStatus.equals(tossResponse.status())) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
 		}
 	}
 
-	private PaymentResponse toResponse(Payment payment) {
-		return new PaymentResponse(
-			payment.getPaymentId(),
-			payment.getOrder().getOrderNumber(),
-			payment.getAmount(),
-			payment.getPaymentStatus(),
-			payment.getCreatedAt(),
-			payment.getApprovedAt()
-		);
-	}
-
-	private String generatePaymentId() {
-		String suffix = UUID.randomUUID().toString()
-			.replace("-", "")
-			.substring(0, 12)
-			.toUpperCase(Locale.ROOT);
-		return "PAY-" + suffix;
+	private void restoreProcessing(Long userId, String paymentId, PaymentOperationContext context) {
+		try {
+			paymentTransactionService.restoreProcessing(userId, paymentId, context.rollbackStatus());
+		} catch (RuntimeException ignored) {
+			// 복구 실패가 원래 결제 오류를 가리지 않도록 원래 예외를 유지한다.
+		}
 	}
 }

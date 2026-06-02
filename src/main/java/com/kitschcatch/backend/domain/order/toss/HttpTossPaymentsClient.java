@@ -6,8 +6,10 @@ import com.kitschcatch.backend.global.exception.ErrorCode;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class HttpTossPaymentsClient implements TossPaymentsClient {
@@ -37,6 +39,8 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 				.body(TossPaymentResponse.class);
 		} catch (IllegalStateException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
+		} catch (RestClientResponseException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
 		} catch (RestClientException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
 		}
@@ -55,9 +59,19 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 				.body(TossPaymentResponse.class);
 		} catch (IllegalStateException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
+		} catch (RestClientResponseException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
 		} catch (RestClientException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
 		}
+	}
+
+	private String responseMessage(RestClientResponseException exception) {
+		String responseBody = exception.getResponseBodyAsString();
+		if (StringUtils.hasText(responseBody)) {
+			return responseBody;
+		}
+		return exception.getMessage();
 	}
 
 	private record TossCancelBody(String cancelReason) {

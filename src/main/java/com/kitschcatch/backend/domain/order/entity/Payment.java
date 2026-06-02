@@ -87,6 +87,14 @@ public class Payment {
 		this.order.markPaid(paymentKey);
 	}
 
+	public void startProcessing() {
+		this.paymentStatus = PaymentStatus.PROCESSING;
+	}
+
+	public void restoreStatus(PaymentStatus paymentStatus) {
+		this.paymentStatus = paymentStatus;
+	}
+
 	public void cancel() {
 		this.paymentStatus = PaymentStatus.CANCELED;
 		this.canceledAt = LocalDateTime.now();

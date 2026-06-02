@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
@@ -49,6 +51,7 @@ class OrderPaymentServiceTest {
 	private PostRepository postRepository;
 	private UserRepository userRepository;
 	private OrderService orderService;
+	private PaymentTransactionService paymentTransactionService;
 	private PaymentService paymentService;
 	private User buyer;
 	private User seller;
@@ -62,7 +65,8 @@ class OrderPaymentServiceTest {
 		postRepository = mock(PostRepository.class);
 		userRepository = mock(UserRepository.class);
 		orderService = new OrderService(orderRepository, paymentRepository, postRepository, userRepository);
-		paymentService = new PaymentService(paymentRepository, orderRepository, tossPaymentsClient);
+		paymentTransactionService = new PaymentTransactionService(paymentRepository, orderRepository);
+		paymentService = new PaymentService(paymentTransactionService, tossPaymentsClient);
 
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");
 		seller = user(2L, "seller", "seller@example.com", "seller-provider");
@@ -88,8 +92,27 @@ class OrderPaymentServiceTest {
 		var response = orderService.createOrder(1L, new CreateOrderRequest(10L, 650000L, PaymentMethod.CARD));
 
 		assertThat(response.orderId()).startsWith("ORD-");
+		assertThat(response.orderId()).hasSize(36);
 		assertThat(response.paymentId()).startsWith("PAY-");
+		assertThat(response.paymentId()).hasSize(36);
 		assertThat(response.status()).isEqualTo(PaymentStatus.READY);
+	}
+
+	@Test
+	@DisplayName("주문 생성은 판매 중이 아닌 게시글이면 예외를 던진다")
+	void createOrderWithNotOnSalePostThrowsException() {
+		Post reservedPost = post(10L, seller, 650000L, ProductStatus.RESERVED);
+		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
+		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(reservedPost));
+
+		assertThatThrownBy(() -> orderService.createOrder(
+			1L,
+			new CreateOrderRequest(10L, 650000L, PaymentMethod.CARD)
+		))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.BAD_REQUEST);
+		verifyNoInteractions(orderRepository, paymentRepository);
 	}
 
 	@Test
@@ -105,6 +128,7 @@ class OrderPaymentServiceTest {
 		);
 
 		assertThat(response.paymentId()).startsWith("PAY-");
+		assertThat(response.paymentId()).hasSize(36);
 		assertThat(response.status()).isEqualTo(PaymentStatus.READY);
 	}
 
@@ -113,7 +137,7 @@ class OrderPaymentServiceTest {
 	void confirmPaymentMarksPaymentAndOrderPaid() {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PENDING);
 		Payment payment = payment("PAY-999", order, PaymentStatus.READY);
-		when(paymentRepository.findByPaymentIdAndOrderUserId("PAY-999", 1L)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
 		when(tossPaymentsClient.confirm(new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)))
 			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "DONE"));
 
@@ -127,6 +151,45 @@ class OrderPaymentServiceTest {
 		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
 		assertThat(order.getPgPaymentKey()).isEqualTo("toss-payment-key");
 		verify(tossPaymentsClient).confirm(new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L));
+		verify(paymentRepository, times(2)).findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L);
+	}
+
+	@Test
+	@DisplayName("결제 승인은 주문이 대기 상태가 아니면 토스 승인 요청을 보내지 않는다")
+	void confirmPaymentWithNotPendingOrderThrowsException() {
+		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PAID);
+		Payment payment = payment("PAY-999", order, PaymentStatus.READY);
+		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
+
+		assertThatThrownBy(() -> paymentService.confirmPayment(
+			1L,
+			"PAY-999",
+			new ConfirmPaymentRequest("PAY-999", "toss-payment-key")
+		))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.PAYMENT_INVALID_STATUS);
+		verifyNoInteractions(tossPaymentsClient);
+	}
+
+	@Test
+	@DisplayName("결제 승인은 토스 응답 상태가 DONE이 아니면 대기 상태로 되돌린다")
+	void confirmPaymentWithUnexpectedTossStatusRestoresReadyStatus() {
+		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PENDING);
+		Payment payment = payment("PAY-999", order, PaymentStatus.READY);
+		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
+		when(tossPaymentsClient.confirm(new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)))
+			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "READY"));
+
+		assertThatThrownBy(() -> paymentService.confirmPayment(
+			1L,
+			"PAY-999",
+			new ConfirmPaymentRequest("PAY-999", "toss-payment-key")
+		))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
+		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.READY);
 	}
 
 	@Test
@@ -134,7 +197,7 @@ class OrderPaymentServiceTest {
 	void cancelPaymentMarksPaymentAndOrderCanceled() {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PAID);
 		Payment payment = payment("PAY-999", order, PaymentStatus.SUCCESS, "toss-payment-key");
-		when(paymentRepository.findByPaymentIdAndOrderUserId("PAY-999", 1L)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
 		when(tossPaymentsClient.cancel(new TossPaymentCancelRequest("toss-payment-key", "고객 요청")))
 			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "CANCELED"));
 
@@ -143,6 +206,24 @@ class OrderPaymentServiceTest {
 		assertThat(response.status()).isEqualTo(PaymentStatus.CANCELED);
 		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.CANCELED);
 		verify(tossPaymentsClient).cancel(new TossPaymentCancelRequest("toss-payment-key", "고객 요청"));
+		verify(paymentRepository, times(2)).findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L);
+	}
+
+	@Test
+	@DisplayName("결제 취소는 토스 응답 상태가 CANCELED가 아니면 성공 상태로 되돌린다")
+	void cancelPaymentWithUnexpectedTossStatusRestoresSuccessStatus() {
+		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PAID);
+		Payment payment = payment("PAY-999", order, PaymentStatus.SUCCESS, "toss-payment-key");
+		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
+		when(tossPaymentsClient.cancel(new TossPaymentCancelRequest("toss-payment-key", "고객 요청")))
+			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "DONE"));
+
+		assertThatThrownBy(() -> paymentService.cancelPayment(1L, "PAY-999"))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
+		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.SUCCESS);
+		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
 	}
 
 	@Test
@@ -172,6 +253,10 @@ class OrderPaymentServiceTest {
 	}
 
 	private Post post(Long id, User seller, Long price) {
+		return post(id, seller, price, ProductStatus.ON_SALE);
+	}
+
+	private Post post(Long id, User seller, Long price, ProductStatus productStatus) {
 		Post post = Post.builder()
 			.user(seller)
 			.title("피규어 판매")
@@ -179,7 +264,7 @@ class OrderPaymentServiceTest {
 			.price(price)
 			.productCategory(ProductCategory.GOODS)
 			.productCondition(ProductCondition.NEW)
-			.productStatus(ProductStatus.ON_SALE)
+			.productStatus(productStatus)
 			.build();
 		ReflectionTestUtils.setField(post, "id", id);
 		return post;

@@ -3,6 +3,7 @@ package com.kitschcatch.backend.domain.order.entity;
 
 public enum PaymentStatus {
 	READY,
+	PROCESSING,
 	SUCCESS,
 	CANCELED
 }

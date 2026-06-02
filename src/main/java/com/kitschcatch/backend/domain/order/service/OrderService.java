@@ -11,6 +11,7 @@ import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.entity.Post;
+import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.domain.post.repository.PostRepository;
 import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
@@ -48,6 +49,7 @@ public class OrderService {
 		Post post = postRepository.findByIdAndDeletedAtIsNull(request.postId())
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 
+		validatePostOnSale(post);
 		validateNotSeller(userId, post);
 		validateAmount(request.amount(), post.getPrice());
 
@@ -70,6 +72,12 @@ public class OrderService {
 		return new CreateOrderResponse(order.getOrderNumber(), payment.getPaymentId(), payment.getPaymentStatus());
 	}
 
+	private void validatePostOnSale(Post post) {
+		if (post.getProductStatus() != ProductStatus.ON_SALE) {
+			throw new BusinessException(ErrorCode.BAD_REQUEST, "판매 중인 상품만 주문할 수 있습니다.");
+		}
+	}
+
 	private void validateNotSeller(Long userId, Post post) {
 		if (post.getUser().getId().equals(userId)) {
 			throw new BusinessException(ErrorCode.POST_FORBIDDEN, "본인 판매 게시글은 주문할 수 없습니다.");
@@ -85,7 +93,6 @@ public class OrderService {
 	private String generateId(String prefix) {
 		String suffix = UUID.randomUUID().toString()
 			.replace("-", "")
-			.substring(0, 12)
 			.toUpperCase(Locale.ROOT);
 		return prefix + "-" + suffix;
 	}

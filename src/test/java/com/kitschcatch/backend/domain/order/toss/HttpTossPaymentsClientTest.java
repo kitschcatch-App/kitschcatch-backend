@@ -2,13 +2,16 @@
 package com.kitschcatch.backend.domain.order.toss;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.kitschcatch.backend.global.exception.BusinessException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,6 +84,25 @@ class HttpTossPaymentsClientTest {
 		);
 
 		assertThat(response.status()).isEqualTo("CANCELED");
+		server.verify();
+	}
+
+	@Test
+	@DisplayName("결제 승인 실패는 토스 에러 응답 바디를 예외 메시지로 보존한다")
+	void confirmFailureKeepsTossErrorBody() {
+		String errorBody = "{\"code\":\"ALREADY_APPROVED\",\"message\":\"이미 승인된 결제입니다.\"}";
+		server.expect(once(), requestTo("https://api.tosspayments.com/v1/payments/confirm"))
+			.andExpect(method(HttpMethod.POST))
+			.andExpect(header("Authorization", basicAuth()))
+			.andRespond(withBadRequest()
+				.contentType(MediaType.APPLICATION_JSON)
+				.body(errorBody));
+
+		assertThatThrownBy(() -> client.confirm(
+			new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)
+		))
+			.isInstanceOf(BusinessException.class)
+			.hasMessage(errorBody);
 		server.verify();
 	}
 
