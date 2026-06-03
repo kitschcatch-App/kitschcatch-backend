@@ -79,6 +79,7 @@ public class ChatRoom {
 				.post(post)
 				.buyer(buyer)
 				.seller(seller)
+				.lastMessageAt(LocalDateTime.now())
 				.build();
 	}
 
