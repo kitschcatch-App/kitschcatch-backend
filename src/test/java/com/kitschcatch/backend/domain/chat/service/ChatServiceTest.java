@@ -110,7 +110,7 @@ class ChatServiceTest {
 
 		ChatRoomResponse response = chatService.createChatRoom(1L, new CreateChatRoomRequest(10L));
 
-		verify(chatRoomRepository, never()).save(any(ChatRoom.class));
+		verify(chatRoomRepository, never()).saveAndFlush(any(ChatRoom.class));
 		assertThat(response.chatRoomId()).isEqualTo(77L);
 		assertThat(response.postTitle()).isEqualTo("키링 판매");
 		assertThat(response.createdAt()).isEqualTo(LocalDateTime.of(2026, 5, 22, 19, 0));

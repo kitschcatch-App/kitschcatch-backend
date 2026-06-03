@@ -7,6 +7,9 @@ import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
 import com.kitschcatch.backend.domain.chat.entity.MessageType;
 import com.kitschcatch.backend.domain.auth.entity.RefreshToken;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
+import com.kitschcatch.backend.domain.order.entity.Payment;
+import com.kitschcatch.backend.domain.order.entity.PaymentMethod;
+import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.entity.PgProvider;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.post.entity.Post;
@@ -66,6 +69,7 @@ class EntityMappingTest {
 		entityManager.persist(post);
 
 		PurchaseOrder order = PurchaseOrder.builder()
+			.orderNumber("ORD-123")
 			.user(buyer)
 			.post(post)
 			.amount(12000L)
@@ -75,6 +79,16 @@ class EntityMappingTest {
 			.orderStatus(OrderStatus.PAID)
 			.build();
 		entityManager.persist(order);
+
+		Payment payment = Payment.builder()
+			.paymentId("PAY-999")
+			.order(order)
+			.amount(12000L)
+			.paymentMethod(PaymentMethod.CARD)
+			.paymentStatus(PaymentStatus.SUCCESS)
+			.paymentKey("toss-payment-key")
+			.build();
+		entityManager.persist(payment);
 
 		ChatRoom chatRoom = ChatRoom.builder()
 			.post(post)
@@ -104,6 +118,7 @@ class EntityMappingTest {
 		assertThat(savedMessage.getChatRoom().getBuyer().getEmail()).isEqualTo("buyer@example.com");
 		assertThat(savedMessage.getSender().getNickname()).isEqualTo("buyer");
 		assertThat(entityManager.find(PurchaseOrder.class, order.getId()).getOrderStatus()).isEqualTo(OrderStatus.PAID);
+		assertThat(entityManager.find(Payment.class, payment.getId()).getPaymentId()).isEqualTo("PAY-999");
 	}
 
 	@Test
