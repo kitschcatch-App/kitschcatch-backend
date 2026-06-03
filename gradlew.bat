@@ -35,6 +35,20 @@ set APP_HOME=%DIRNAME%
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
+@rem Reuse the project-local Gradle cache when it is available.
+if not defined GRADLE_USER_HOME if exist "%APP_HOME%\.gradle-home" set "GRADLE_USER_HOME=%APP_HOME%\.gradle-home"
+
+@rem Prefer a locally installed JDK 21 when the current JAVA_HOME does not point to Java 21.
+set LOCAL_JDK21=
+for /d %%i in ("%USERPROFILE%\.jdks\openjdk-21*") do if exist "%%~fi\bin\java.exe" set "LOCAL_JDK21=%%~fi"
+if defined LOCAL_JDK21 (
+    if not defined JAVA_HOME set "JAVA_HOME=%LOCAL_JDK21%"
+    if defined JAVA_HOME (
+        >NUL 2>&1 findstr /B /C:"JAVA_VERSION=\"21" "%JAVA_HOME%\release"
+        if errorlevel 1 set "JAVA_HOME=%LOCAL_JDK21%"
+    )
+)
+
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 

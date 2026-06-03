@@ -1,6 +1,7 @@
 package com.kitschcatch.backend.domain.chat.service;
 
 import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
+import com.kitschcatch.backend.domain.chat.dto.ChatReadResponse;
 import com.kitschcatch.backend.domain.chat.entity.ChatMessage;
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
 import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
@@ -11,6 +12,7 @@ import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -86,6 +88,31 @@ public class ChatMessageService {
 		chatRoom.updateLastMessage(IMAGE_MESSAGE_PREVIEW_TEXT, chatMessage.getCreatedAt());
 		return ChatMessageResponse.from(chatMessage);
 	}
+
+	@Transactional
+	public ChatReadResponse markMessagesAsRead(Long userId, Long chatRoomId) {
+
+		ChatRoom chatRoom = getChatRoom(chatRoomId);
+		validateChatRoomParticipant(chatRoom, userId);
+
+		// 상대방이 보낸 안읽은 메세지들 조회
+		List<Long> unreadMessageIds = chatMessageRepository.findUnreadMessageIds(chatRoomId, userId);
+
+
+		// 읽음 처리
+		if (!unreadMessageIds.isEmpty()) {
+			chatMessageRepository.markAsReadByIds(unreadMessageIds);
+		}
+
+		return new ChatReadResponse(
+				chatRoomId,
+				userId,
+				unreadMessageIds,
+				unreadMessageIds.size(),
+				LocalDateTime.now()
+		);
+	}
+
 
 	private ChatRoom getChatRoom(Long chatRoomId) {
 		return chatRoomRepository.findChatRoomById(chatRoomId)

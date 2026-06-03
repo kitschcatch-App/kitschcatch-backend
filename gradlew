@@ -88,6 +88,34 @@ APP_BASE_NAME=${0##*/}
 # Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
 APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && printf '%s\n' "$PWD" ) || exit
 
+# Reuse the project-local Gradle cache when it is available.
+if [ -z "$GRADLE_USER_HOME" ] && [ -d "$APP_HOME/.gradle-home" ]; then
+    GRADLE_USER_HOME="$APP_HOME/.gradle-home"
+    export GRADLE_USER_HOME
+fi
+
+find_local_jdk21() {
+    for candidate in "$HOME"/.jdks/openjdk-21*; do
+        if [ -x "$candidate/bin/java" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+java_home_is_21() {
+    [ -f "$1/release" ] && grep -q '^JAVA_VERSION="21' "$1/release"
+}
+
+LOCAL_JDK21=$(find_local_jdk21 2>/dev/null || true)
+if [ -n "$LOCAL_JDK21" ]; then
+    if [ -z "$JAVA_HOME" ] || ! java_home_is_21 "$JAVA_HOME"; then
+        JAVA_HOME=$LOCAL_JDK21
+        export JAVA_HOME
+    fi
+fi
+
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
 

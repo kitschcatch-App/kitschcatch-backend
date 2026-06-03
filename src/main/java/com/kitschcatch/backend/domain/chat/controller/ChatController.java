@@ -1,5 +1,7 @@
 package com.kitschcatch.backend.domain.chat.controller;
 
+import com.kitschcatch.backend.domain.chat.dto.ChatRoomDetailResponse;
+import com.kitschcatch.backend.domain.chat.dto.ChatRoomListResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatRoomResponse;
 import com.kitschcatch.backend.domain.chat.dto.CreateChatRoomRequest;
 import com.kitschcatch.backend.domain.chat.service.ChatService;
@@ -11,10 +13,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/chat-rooms")
@@ -25,7 +26,15 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    // 채팅방 생성
+    // 채팅방 목록 조회 API
+    @GetMapping
+    public ApiResponse<List<ChatRoomListResponse>> getMyChatRooms(
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return ApiResponse.ok(chatService.getMyChatRooms(user.userId()));
+    }
+
+    // 채팅방 생성 API
     @PostMapping
     @Operation(summary = "채팅방 생성", description = "판매 게시글에 대해 구매자와 판매자 사이의 채팅방을 생성합니다.")
     public ApiResponse<ChatRoomResponse> createChatRoom(
@@ -34,6 +43,19 @@ public class ChatController {
     ) {
         return ApiResponse.created(chatService.createChatRoom(user.userId(), request));
     }
+
+    // 채팅방 상세 조회 API
+    @GetMapping("/{chatRoomId}")
+    public ApiResponse<ChatRoomDetailResponse> getChatRoom(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long chatRoomId
+    ) {
+        return ApiResponse.ok(chatService.getChatRoom(user.userId(), chatRoomId));
+    }
+
+
+
+
 
 
 }
