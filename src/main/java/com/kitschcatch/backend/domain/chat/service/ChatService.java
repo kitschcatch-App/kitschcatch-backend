@@ -125,12 +125,13 @@ public class ChatService {
      * 판매글의 대표 이미지 URL을 반환한다.
      */
     private String getPostThumbnailImageUrl(ChatRoom chatRoom) {
-        return chatRoom.getPost().getImages().stream()
-                .findFirst() // 대표사진
-                .map(PostImage::getObjectKey)
-                .map(postImageStorage::imageUrl)
-                .orElse(null);
+        List<PostImage> images = chatRoom.getPost().getImages();
 
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+
+        return postImageStorage.imageUrl(images.get(0).getObjectKey());
     }
 }
 
