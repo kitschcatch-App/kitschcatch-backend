@@ -10,7 +10,8 @@ public record S3Properties(
 	String bucket,
 	String publicBaseUrl,
 	Duration uploadUrlTtl,
-	String postImagePrefix
+	String postImagePrefix,
+	String chatImagePrefix
 ) {
 
 	public S3Properties {
@@ -18,6 +19,7 @@ public record S3Properties(
 		publicBaseUrl = trimTrailingSlash(publicBaseUrl);
 		uploadUrlTtl = uploadUrlTtl != null ? uploadUrlTtl : Duration.ofMinutes(5);
 		postImagePrefix = StringUtils.hasText(postImagePrefix) ? postImagePrefix : "posts";
+		chatImagePrefix = StringUtils.hasText(chatImagePrefix) ? chatImagePrefix : "chats";
 	}
 
 	private static String trimTrailingSlash(String value) {

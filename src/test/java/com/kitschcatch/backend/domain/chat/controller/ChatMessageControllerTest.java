@@ -1,16 +1,16 @@
 package com.kitschcatch.backend.domain.chat.controller;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.kitschcatch.backend.domain.chat.dto.ChatImageUploadUrl;
 import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
 import com.kitschcatch.backend.domain.chat.entity.MessageType;
 import com.kitschcatch.backend.domain.chat.service.ChatMessageService;
@@ -25,18 +25,22 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
-import org.springframework.web.multipart.MultipartFile;
 
 class ChatMessageControllerTest {
+
+	private static final String CHAT_IMAGE_UPLOAD_URL =
+		"https://upload.example.com/chats/100/1/chat-image.png?signature=abc";
+	private static final String CHAT_IMAGE_OBJECT_KEY = "chats/100/1/chat-image.png";
+	private static final String CHAT_IMAGE_URL = "https://cdn.example.com/chats/100/1/chat-image.png";
 
 	private ChatMessageService chatMessageService;
 	private SimpMessagingTemplate messagingTemplate;
@@ -91,82 +95,85 @@ class ChatMessageControllerTest {
 	}
 
 	@Test
-	@DisplayName("텍스트 메시지 전송 API는 저장 후 구독자에게도 메시지를 전달한다")
-	void sendTextMessageReturnsCreatedMessageAndBroadcasts() throws Exception {
-		ChatMessageResponse response = new ChatMessageResponse(
-			21L,
-			100L,
-			1L,
-			"buyer",
-			MessageType.TEXT,
-			"문의드립니다.",
-			null,
-			false,
-			LocalDateTime.of(2026, 5, 24, 20, 10)
-		);
-		when(chatMessageService.sendTextMessage(eq(1L), eq(100L), eq("문의드립니다.")))
-			.thenReturn(response);
+	@DisplayName("채팅 이미지 업로드 URL 발급 API는 생성 응답을 반환한다")
+	void createImageUploadUrlReturnsCreatedResponse() throws Exception {
+		when(chatMessageService.createChatImageUploadUrl(1L, 100L, "chat.png", "image/png"))
+			.thenReturn(new ChatImageUploadUrl(
+				CHAT_IMAGE_UPLOAD_URL,
+				CHAT_IMAGE_OBJECT_KEY,
+				CHAT_IMAGE_URL,
+				300L
+			));
 
-		mockMvc.perform(post("/api/chat-rooms/100/messages/text")
+		mockMvc.perform(post("/api/chat-rooms/100/messages/images/upload-url")
 				.principal(authentication)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{
-					  "content": "문의드립니다."
+					  "originalFileName": "chat.png",
+					  "contentType": "image/png"
 					}
 					"""))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.success").value(true))
-			.andExpect(jsonPath("$.data.messageId").value(21))
-			.andExpect(jsonPath("$.data.content").value("문의드립니다."));
-
-		verify(messagingTemplate).convertAndSend("/sub/chat-rooms/100", response);
+			.andExpect(jsonPath("$.data.uploadUrl").value(CHAT_IMAGE_UPLOAD_URL))
+			.andExpect(jsonPath("$.data.objectKey").value(CHAT_IMAGE_OBJECT_KEY))
+			.andExpect(jsonPath("$.data.imageUrl").value(CHAT_IMAGE_URL))
+			.andExpect(jsonPath("$.data.expiresInSeconds").value(300));
 	}
 
 	@Test
-	@DisplayName("텍스트 메시지 전송 API는 빈 내용을 검증 오류로 반환한다")
-	void sendTextMessageWithBlankContentReturnsBadRequest() throws Exception {
-		mockMvc.perform(post("/api/chat-rooms/100/messages/text")
-				.principal(authentication)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "content": " "
-					}
-					"""))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.success").value(false))
-			.andExpect(jsonPath("$.error.code").value("COMMON_001"))
-			.andExpect(jsonPath("$.error.fieldErrors[0].field").value("content"));
-	}
-
-	@Test
-	@DisplayName("이미지 메시지 전송 API는 저장 후 구독자에게도 이미지를 전달한다")
+	@DisplayName("이미지 메시지 저장 후 채팅방 구독자에게 WebSocket 메시지가 발행된다")
 	void sendImageMessageReturnsCreatedMessageAndBroadcasts() throws Exception {
-		MockMultipartFile file = new MockMultipartFile("image", "chat.png", "image/png", "image".getBytes());
 		ChatMessageResponse response = new ChatMessageResponse(
-			31L,
-			100L,
-			1L,
-			"buyer",
-			MessageType.IMAGE,
-			null,
-			"https://temp.kitschcatch.local/chat-images/sample-chat.png",
-			false,
-			LocalDateTime.of(2026, 5, 24, 20, 20)
+				21L,
+				100L,
+				1L,
+				"buyer",
+				MessageType.IMAGE,
+				null,
+				CHAT_IMAGE_URL,
+				false,
+				LocalDateTime.of(2026, 5, 24, 20, 10)
 		);
-		when(chatMessageService.sendImageMessage(eq(1L), eq(100L), any(MultipartFile.class)))
-			.thenReturn(response);
 
-		mockMvc.perform(multipart("/api/chat-rooms/100/messages/images")
-				.file(file)
-				.principal(authentication))
-			.andExpect(status().isCreated())
-			.andExpect(jsonPath("$.success").value(true))
-			.andExpect(jsonPath("$.data.messageId").value(31))
-			.andExpect(jsonPath("$.data.imageUrl").value("https://temp.kitschcatch.local/chat-images/sample-chat.png"));
+		when(chatMessageService.sendImageMessage(eq(1L), eq(100L), eq(CHAT_IMAGE_OBJECT_KEY)))
+				.thenReturn(response);
 
-		verify(messagingTemplate).convertAndSend("/sub/chat-rooms/100", response);
+		mockMvc.perform(post("/api/chat-rooms/100/messages/images")
+						.principal(authentication)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+				{
+				  "objectKey": "chats/100/1/chat-image.png"
+				}
+				"""))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.messageId").value(21))
+				.andExpect(jsonPath("$.data.messageType").value("IMAGE"))
+				.andExpect(jsonPath("$.data.imageUrl").value(CHAT_IMAGE_URL));
+
+		ArgumentCaptor<String> destinationCaptor = ArgumentCaptor.forClass(String.class);
+		verify(messagingTemplate).convertAndSend(destinationCaptor.capture(), eq(response));
+		assertThat(destinationCaptor.getValue()).isEqualTo("/sub/chat-rooms/100");
+	}
+
+	@Test
+	@DisplayName("이미지 메시지 저장 API는 빈 objectKey를 검증 오류로 반환한다")
+	void sendImageMessageWithBlankObjectKeyReturnsBadRequest() throws Exception {
+		mockMvc.perform(post("/api/chat-rooms/100/messages/images")
+						.principal(authentication)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+				{
+				  "objectKey": " "
+				}
+				"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.error.code").value("COMMON_001"))
+				.andExpect(jsonPath("$.error.fieldErrors[0].field").value("objectKey"));
 	}
 
 	@Test

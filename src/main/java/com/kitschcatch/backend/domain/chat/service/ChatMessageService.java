@@ -1,11 +1,13 @@
 package com.kitschcatch.backend.domain.chat.service;
 
+import com.kitschcatch.backend.domain.chat.dto.ChatImageUploadUrl;
 import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatReadResponse;
 import com.kitschcatch.backend.domain.chat.entity.ChatMessage;
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
 import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
 import com.kitschcatch.backend.domain.chat.repository.ChatRoomRepository;
+import com.kitschcatch.backend.domain.chat.storage.ChatImageStorage;
 import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
@@ -33,6 +35,8 @@ public class ChatMessageService {
 	private final ChatMessageRepository chatMessageRepository;
 	private final ChatRoomRepository chatRoomRepository;
 	private final UserRepository userRepository;
+	private final ChatImageStorage chatImageStorage;
+	private final ChatMessageCommandService chatMessageCommandService;
 
 
 	@Transactional(readOnly = true)
@@ -68,25 +72,44 @@ public class ChatMessageService {
 		return ChatMessageResponse.from(chatMessage);
 	}
 
-	// 이미지 저장
-	@Transactional
-	public ChatMessageResponse sendImageMessage(Long userId, Long chatRoomId, MultipartFile imageFile) {
-
-		// 이미지 파일 검증
-		validateImageFile(imageFile);
+	@Transactional(readOnly = true)
+	public ChatImageUploadUrl createChatImageUploadUrl(
+			Long userId,
+			Long chatRoomId,
+			String originalFileName,
+			String contentType
+	) {
 		ChatRoom chatRoom = getChatRoom(chatRoomId);
 		validateChatRoomParticipant(chatRoom, userId);
 
-
-		// 이미지 엔티티 생성
-		User sender = getUser(userId);
-		String imageUrl = uploadChatImage(imageFile);
-		ChatMessage chatMessage = chatMessageRepository.saveAndFlush(
-			ChatMessage.createImageMessage(chatRoom, sender, imageUrl)
+		return chatImageStorage.createUploadUrl(
+				userId,
+				chatRoomId,
+				originalFileName,
+				contentType
 		);
+	}
 
-		chatRoom.updateLastMessage(IMAGE_MESSAGE_PREVIEW_TEXT, chatMessage.getCreatedAt());
-		return ChatMessageResponse.from(chatMessage);
+	public ChatMessageResponse sendImageMessage(Long userId, Long chatRoomId, String objectKey) {
+
+		ChatRoom chatRoom = getChatRoom(chatRoomId);
+		validateChatRoomParticipant(chatRoom, userId);
+
+		if (!chatImageStorage.isOwnedChatImageKey(userId, chatRoomId, objectKey)) {
+			throw new BusinessException(ErrorCode.CHAT_IMAGE_FORBIDDEN);
+		}
+
+		if (!chatImageStorage.exists(objectKey)) {
+			throw new BusinessException(ErrorCode.CHAT_IMAGE_NOT_FOUND);
+		}
+
+		String imageUrl = chatImageStorage.imageUrl(objectKey);
+
+		return chatMessageCommandService.saveImageMessage(
+				userId,
+				chatRoomId,
+				imageUrl
+		);
 	}
 
 	@Transactional
@@ -143,26 +166,5 @@ public class ChatMessageService {
 		if (content.length() > MAX_TEXT_LENGTH) {
 			throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "메시지 내용은 1000자 이하여야 합니다.");
 		}
-	}
-
-	private void validateImageFile(MultipartFile imageFile) {
-
-		if (imageFile == null || imageFile.isEmpty()) {
-			throw new BusinessException(ErrorCode.IMAGE_FILE_EMPTY);
-		}
-		// 현재는 multipart 업로드만 받으므로 이미지 MIME 타입만 허용한다.
-		if (!StringUtils.hasText(imageFile.getContentType()) || !imageFile.getContentType().startsWith("image/")) {
-			throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "이미지 파일만 전송할 수 있습니다.");
-		}
-	}
-
-	private String uploadChatImage(MultipartFile imageFile) {
-		// TODO: 프로젝트의 실제 채팅 이미지 업로드 서비스가 준비되면 이 메서드에서 교체한다.
-		String originalFileName = StringUtils.hasText(imageFile.getOriginalFilename())
-			? imageFile.getOriginalFilename()
-			: "chat-image";
-		String encodedFileName = URLEncoder.encode(originalFileName, StandardCharsets.UTF_8);
-
-		return TEMP_CHAT_IMAGE_BASE_URL + "/" + UUID.randomUUID() + "-" + encodedFileName;
 	}
 }
