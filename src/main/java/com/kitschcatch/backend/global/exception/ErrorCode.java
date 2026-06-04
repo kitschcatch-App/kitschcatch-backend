@@ -19,6 +19,9 @@ public enum ErrorCode {
 	S3_BUCKET_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "S3_001", "S3 버킷 설정이 필요합니다."),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_999", "서버 내부 오류가 발생했습니다."),
 
+	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
+
+
 	//chatRoom
 	CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_001", "채팅방을 찾을 수 없습니다."),
 	CHAT_ROOM_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "CHAT_002", "자신의 판매 게시글에는 문의할 수 없습니다."),

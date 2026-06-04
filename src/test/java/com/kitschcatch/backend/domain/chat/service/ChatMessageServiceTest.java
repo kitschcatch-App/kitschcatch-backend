@@ -35,7 +35,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class ChatMessageServiceTest {
@@ -50,6 +49,7 @@ class ChatMessageServiceTest {
 	private ChatRoomRepository chatRoomRepository;
 	private UserRepository userRepository;
 	private ChatImageStorage chatImageStorage;
+	private ChatMessageCommandService chatMessageCommandService;
 	private ChatMessageService chatMessageService;
 	private User buyer;
 	private User seller;
@@ -62,11 +62,14 @@ class ChatMessageServiceTest {
 		chatRoomRepository = mock(ChatRoomRepository.class);
 		userRepository = mock(UserRepository.class);
 		chatImageStorage = mock(ChatImageStorage.class);
+		chatMessageCommandService = mock(ChatMessageCommandService.class);
+
 		chatMessageService = new ChatMessageService(
-			chatMessageRepository,
-			chatRoomRepository,
-			userRepository,
-			chatImageStorage
+				chatMessageRepository,
+				chatRoomRepository,
+				userRepository,
+				chatImageStorage,
+				chatMessageCommandService
 		);
 
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");
@@ -256,29 +259,35 @@ class ChatMessageServiceTest {
 	void sendImageMessageSavesImageMessageFromUploadedObjectKey() {
 		LocalDateTime createdAt = LocalDateTime.of(2026, 5, 24, 20, 40);
 
+		ChatMessageResponse commandResponse = new ChatMessageResponse(
+				300L,
+				100L,
+				1L,
+				"buyer",
+				MessageType.IMAGE,
+				null,
+				CHAT_IMAGE_URL,
+				false,
+				createdAt
+		);
+
 		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
 		when(chatImageStorage.isOwnedChatImageKey(1L, 100L, CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
 		when(chatImageStorage.exists(CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
 		when(chatImageStorage.imageUrl(CHAT_IMAGE_OBJECT_KEY)).thenReturn(CHAT_IMAGE_URL);
-		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
-		when(chatMessageRepository.saveAndFlush(any(ChatMessage.class))).thenAnswer(invocation -> {
-			ChatMessage savedMessage = invocation.getArgument(0);
-			ReflectionTestUtils.setField(savedMessage, "id", 300L);
-			ReflectionTestUtils.setField(savedMessage, "createdAt", createdAt);
-			return savedMessage;
-		});
+		when(chatMessageCommandService.saveImageMessage(1L, 100L, CHAT_IMAGE_URL))
+				.thenReturn(commandResponse);
 
 		ChatMessageResponse response = chatMessageService.sendImageMessage(1L, 100L, CHAT_IMAGE_OBJECT_KEY);
 
-		ArgumentCaptor<ChatMessage> chatMessageCaptor = ArgumentCaptor.forClass(ChatMessage.class);
-		verify(chatMessageRepository).saveAndFlush(chatMessageCaptor.capture());
-
-		ChatMessage savedMessage = chatMessageCaptor.getValue();
-		assertThat(savedMessage.getMessageType()).isEqualTo(MessageType.IMAGE);
-		assertThat(savedMessage.getImageUrl()).isEqualTo(CHAT_IMAGE_URL);
 		assertThat(response.messageId()).isEqualTo(300L);
 		assertThat(response.messageType()).isEqualTo(MessageType.IMAGE);
 		assertThat(response.imageUrl()).isEqualTo(CHAT_IMAGE_URL);
+
+		verify(chatImageStorage).exists(CHAT_IMAGE_OBJECT_KEY);
+		verify(chatImageStorage).imageUrl(CHAT_IMAGE_OBJECT_KEY);
+		verify(chatMessageCommandService).saveImageMessage(1L, 100L, CHAT_IMAGE_URL);
+		verify(chatMessageRepository, never()).saveAndFlush(any(ChatMessage.class));
 	}
 
 	@Test
@@ -311,28 +320,6 @@ class ChatMessageServiceTest {
 		verify(chatMessageRepository, never()).saveAndFlush(any(ChatMessage.class));
 	}
 
-	@Test
-	@DisplayName("이미지 메시지 저장 후 채팅방의 마지막 메시지가 갱신된다")
-	void sendImageMessageUpdatesChatRoomLastMessage() {
-		LocalDateTime createdAt = LocalDateTime.of(2026, 5, 24, 20, 41);
-
-		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
-		when(chatImageStorage.isOwnedChatImageKey(1L, 100L, CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
-		when(chatImageStorage.exists(CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
-		when(chatImageStorage.imageUrl(CHAT_IMAGE_OBJECT_KEY)).thenReturn(CHAT_IMAGE_URL);
-		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
-		when(chatMessageRepository.saveAndFlush(any(ChatMessage.class))).thenAnswer(invocation -> {
-			ChatMessage savedMessage = invocation.getArgument(0);
-			ReflectionTestUtils.setField(savedMessage, "id", 301L);
-			ReflectionTestUtils.setField(savedMessage, "createdAt", createdAt);
-			return savedMessage;
-		});
-
-		chatMessageService.sendImageMessage(1L, 100L, CHAT_IMAGE_OBJECT_KEY);
-
-		assertThat(chatRoom.getLastMessageContent()).isEqualTo("[이미지]");
-		assertThat(chatRoom.getLastMessageAt()).isEqualTo(createdAt);
-	}
 
 	private User user(Long id, String nickname, String email, String providerUserId) {
 		User user = User.builder()

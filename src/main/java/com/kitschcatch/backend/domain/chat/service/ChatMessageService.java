@@ -36,6 +36,7 @@ public class ChatMessageService {
 	private final ChatRoomRepository chatRoomRepository;
 	private final UserRepository userRepository;
 	private final ChatImageStorage chatImageStorage;
+	private final ChatMessageCommandService chatMessageCommandService;
 
 
 	@Transactional(readOnly = true)
@@ -89,7 +90,6 @@ public class ChatMessageService {
 		);
 	}
 
-	@Transactional
 	public ChatMessageResponse sendImageMessage(Long userId, Long chatRoomId, String objectKey) {
 
 		ChatRoom chatRoom = getChatRoom(chatRoomId);
@@ -103,16 +103,13 @@ public class ChatMessageService {
 			throw new BusinessException(ErrorCode.CHAT_IMAGE_NOT_FOUND);
 		}
 
-		User sender = getUser(userId);
 		String imageUrl = chatImageStorage.imageUrl(objectKey);
 
-		ChatMessage chatMessage = chatMessageRepository.saveAndFlush(
-				ChatMessage.createImageMessage(chatRoom, sender, imageUrl)
+		return chatMessageCommandService.saveImageMessage(
+				userId,
+				chatRoomId,
+				imageUrl
 		);
-
-		chatRoom.updateLastMessage(IMAGE_MESSAGE_PREVIEW_TEXT, chatMessage.getCreatedAt());
-
-		return ChatMessageResponse.from(chatMessage);
 	}
 
 	@Transactional

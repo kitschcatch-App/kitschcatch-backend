@@ -126,32 +126,33 @@ class ChatMessageControllerTest {
 	@DisplayName("이미지 메시지 저장 후 채팅방 구독자에게 WebSocket 메시지가 발행된다")
 	void sendImageMessageReturnsCreatedMessageAndBroadcasts() throws Exception {
 		ChatMessageResponse response = new ChatMessageResponse(
-			21L,
-			100L,
-			1L,
-			"buyer",
-			MessageType.IMAGE,
-			null,
-			CHAT_IMAGE_URL,
-			false,
-			LocalDateTime.of(2026, 5, 24, 20, 10)
+				21L,
+				100L,
+				1L,
+				"buyer",
+				MessageType.IMAGE,
+				null,
+				CHAT_IMAGE_URL,
+				false,
+				LocalDateTime.of(2026, 5, 24, 20, 10)
 		);
-		when(chatMessageService.sendImageMessage(eq(1L), eq(100L), eq(CHAT_IMAGE_OBJECT_KEY)))
-			.thenReturn(response);
 
-		mockMvc.perform(post("/api/chat-rooms/100/messages/images/messages")
-				.principal(authentication)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "objectKey": "chats/100/1/chat-image.png"
-					}
-					"""))
-			.andExpect(status().isCreated())
-			.andExpect(jsonPath("$.success").value(true))
-			.andExpect(jsonPath("$.data.messageId").value(21))
-			.andExpect(jsonPath("$.data.messageType").value("IMAGE"))
-			.andExpect(jsonPath("$.data.imageUrl").value(CHAT_IMAGE_URL));
+		when(chatMessageService.sendImageMessage(eq(1L), eq(100L), eq(CHAT_IMAGE_OBJECT_KEY)))
+				.thenReturn(response);
+
+		mockMvc.perform(post("/api/chat-rooms/100/messages/images")
+						.principal(authentication)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+				{
+				  "objectKey": "chats/100/1/chat-image.png"
+				}
+				"""))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.messageId").value(21))
+				.andExpect(jsonPath("$.data.messageType").value("IMAGE"))
+				.andExpect(jsonPath("$.data.imageUrl").value(CHAT_IMAGE_URL));
 
 		ArgumentCaptor<String> destinationCaptor = ArgumentCaptor.forClass(String.class);
 		verify(messagingTemplate).convertAndSend(destinationCaptor.capture(), eq(response));
@@ -161,18 +162,18 @@ class ChatMessageControllerTest {
 	@Test
 	@DisplayName("이미지 메시지 저장 API는 빈 objectKey를 검증 오류로 반환한다")
 	void sendImageMessageWithBlankObjectKeyReturnsBadRequest() throws Exception {
-		mockMvc.perform(post("/api/chat-rooms/100/messages/images/messages")
-				.principal(authentication)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "objectKey": " "
-					}
-					"""))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.success").value(false))
-			.andExpect(jsonPath("$.error.code").value("COMMON_001"))
-			.andExpect(jsonPath("$.error.fieldErrors[0].field").value("objectKey"));
+		mockMvc.perform(post("/api/chat-rooms/100/messages/images")
+						.principal(authentication)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+				{
+				  "objectKey": " "
+				}
+				"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.error.code").value("COMMON_001"))
+				.andExpect(jsonPath("$.error.fieldErrors[0].field").value("objectKey"));
 	}
 
 	@Test

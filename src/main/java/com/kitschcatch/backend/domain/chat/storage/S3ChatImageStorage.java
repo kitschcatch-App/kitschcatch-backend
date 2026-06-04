@@ -190,13 +190,15 @@ public class S3ChatImageStorage implements ChatImageStorage {
             throw new BusinessException(ErrorCode.CHAT_IMAGE_INVALID);
         }
 
-        String normalizedContentType = contentType.toLowerCase(Locale.ROOT);
+        String baseContentType = contentType.split(";")[0]
+                .trim()
+                .toLowerCase(Locale.ROOT);
 
-        if (!ALLOWED_CONTENT_TYPES.contains(normalizedContentType)) {
+        if (!ALLOWED_CONTENT_TYPES.contains(baseContentType)) {
             throw new BusinessException(ErrorCode.CHAT_IMAGE_INVALID);
         }
 
-        return normalizedContentType;
+        return baseContentType;
     }
 
     private void validateBucket() {

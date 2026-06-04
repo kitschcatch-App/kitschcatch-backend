@@ -1,9 +1,6 @@
 package com.kitschcatch.backend.domain.chat.controller;
 
-import com.kitschcatch.backend.domain.chat.dto.ChatImageUploadUrl;
-import com.kitschcatch.backend.domain.chat.dto.ChatImageUploadUrlRequest;
-import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
-import com.kitschcatch.backend.domain.chat.dto.SendChatImageMessageRequest;
+import com.kitschcatch.backend.domain.chat.dto.*;
 import com.kitschcatch.backend.domain.chat.service.ChatMessageService;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
@@ -32,6 +29,30 @@ public class ChatMessageController {
 
 	private final ChatMessageService chatMessageService;
 	private final SimpMessagingTemplate messagingTemplate;
+
+	@PostMapping("/text")
+	@Operation(
+			summary = "텍스트 메시지 전송",
+			description = "HTTP 요청으로 텍스트 메시지를 저장하고 같은 채팅방 구독자에게 전달합니다."
+	)
+	public ApiResponse<ChatMessageResponse> sendTextMessage(
+			@AuthenticationPrincipal AuthenticatedUser user,
+
+			@Parameter(description = "채팅방 ID", example = "1")
+			@PathVariable Long chatRoomId,
+
+			@Valid @RequestBody SendTextMessageRequest request
+	) {
+		ChatMessageResponse response = chatMessageService.sendTextMessage(
+				user.userId(),
+				chatRoomId,
+				request.content()
+		);
+
+		messagingTemplate.convertAndSend("/sub/chat-rooms/" + chatRoomId, response);
+
+		return ApiResponse.created(response);
+	}
 
 	@GetMapping
 	@Operation(
