@@ -8,9 +8,9 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "텍스트 메시지 전송 요청")
 public record SendTextMessageRequest(
 
-	@Schema(description = "전송할 텍스트 메시지 내용")
-	@NotBlank(message = "메시지 내용은 비어 있을 수 없습니다.")
-	@Size(max = 1000, message = "메시지 내용은 1000자 이하여야 합니다.")
-	String content
+		@Schema(description = "전송할 텍스트 메시지 내용", example = "안녕하세요. 아직 구매 가능한가요?")
+		@NotBlank(message = "메시지 내용은 비어 있을 수 없습니다.")
+		@Size(max = 1000, message = "메시지 내용은 1000자 이하여야 합니다.")
+		String content
 ) {
 }
