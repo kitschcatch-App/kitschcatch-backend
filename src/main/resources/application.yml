@@ -27,6 +27,7 @@ app:
     public-base-url: ${APP_S3_PUBLIC_BASE_URL:}
     upload-url-ttl: ${APP_S3_UPLOAD_URL_TTL:5m}
     post-image-prefix: ${APP_S3_POST_IMAGE_PREFIX:posts}
+    chat-image-prefix: ${APP_S3_CHAT_IMAGE_PREFIX:chats}
   toss-payments:
     base-url: ${APP_TOSS_PAYMENTS_BASE_URL:https://api.tosspayments.com}
     secret-key: ${APP_TOSS_PAYMENTS_SECRET_KEY:}

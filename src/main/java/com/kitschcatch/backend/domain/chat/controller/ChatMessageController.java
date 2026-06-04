@@ -1,7 +1,6 @@
 package com.kitschcatch.backend.domain.chat.controller;
 
-import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
-import com.kitschcatch.backend.domain.chat.dto.SendTextMessageRequest;
+import com.kitschcatch.backend.domain.chat.dto.*;
 import com.kitschcatch.backend.domain.chat.service.ChatMessageService;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
@@ -44,7 +43,7 @@ public class ChatMessageController {
 		return ApiResponse.success(chatMessageService.getMessages(user.userId(), chatRoomId));
 	}
 
-	// 텍스트 타입 메세지 전송
+	/*// 텍스트 타입 메세지 전송
 	@PostMapping("/text")
 	@Operation(summary = "텍스트 메시지 전송", description = "HTTP 요청으로 텍스트 메시지를 저장하고 같은 채팅방 구독자에게 전달합니다.")
 	public ApiResponse<ChatMessageResponse> sendTextMessage(
@@ -57,22 +56,48 @@ public class ChatMessageController {
 		ChatMessageResponse response = chatMessageService.sendTextMessage(user.userId(), chatRoomId, request.content());
 		messagingTemplate.convertAndSend("/sub/chat-rooms/" + chatRoomId, response);
 		return ApiResponse.created(response);
-	}
+	}*/
 
-	// 이미지 타입 메세지 전송
-	@PostMapping("/images")
-	@Operation(summary = "이미지 메시지 전송", description = "HTTP multipart 요청으로 이미지 메시지를 저장하고 같은 채팅방 구독자에게 전달합니다.")
-	public ApiResponse<ChatMessageResponse> sendImageMessage(
-		@AuthenticationPrincipal AuthenticatedUser user,
-		@Parameter(description = "채팅방 ID", example = "1")
-		@PathVariable Long chatRoomId,
-		@Parameter(description = "전송할 이미지 파일")
-		@RequestPart("image") MultipartFile imageFile
+	@PostMapping("/images/upload-url")
+	@Operation(
+			summary = "채팅 이미지 업로드 URL 발급",
+			description = "프론트에서 S3에 직접 이미지를 업로드할 수 있는 Presigned URL을 발급합니다."
+	)
+	public ApiResponse<ChatImageUploadUrl> createImageUploadUrl(
+			@AuthenticationPrincipal AuthenticatedUser user,
+			@PathVariable Long chatRoomId,
+			@Valid @RequestBody ChatImageUploadUrlRequest request
 	) {
-		// HTTP로 저장한 이미지 메시지도 같은 채팅방 구독자에게 즉시 전달한다.
-		ChatMessageResponse response = chatMessageService.sendImageMessage(user.userId(), chatRoomId, imageFile);
-		messagingTemplate.convertAndSend("/sub/chat-rooms/" + chatRoomId, response);
+		ChatImageUploadUrl response = chatMessageService.createChatImageUploadUrl(
+				user.userId(),
+				chatRoomId,
+				request.originalFileName(),
+				request.contentType()
+		);
+
 		return ApiResponse.created(response);
 	}
+
+	@PostMapping("/images/messages")
+	@Operation(
+			summary = "이미지 메시지 저장",
+			description = "S3 업로드가 완료된 이미지를 채팅 메시지로 저장하고 구독자에게 전달합니다."
+	)
+	public ApiResponse<ChatMessageResponse> sendImageMessage(
+			@AuthenticationPrincipal AuthenticatedUser user,
+			@PathVariable Long chatRoomId,
+			@Valid @RequestBody SendChatImageMessageRequest request
+	) {
+		ChatMessageResponse response = chatMessageService.sendImageMessage(
+				user.userId(),
+				chatRoomId,
+				request.objectKey()
+		);
+
+		messagingTemplate.convertAndSend("/sub/chat-rooms/" + chatRoomId, response);
+
+		return ApiResponse.created(response);
+	}
+
 
 }
