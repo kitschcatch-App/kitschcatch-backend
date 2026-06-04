@@ -5,17 +5,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.kitschcatch.backend.domain.chat.dto.ChatImageUploadUrl;
 import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatReadResponse;
 import com.kitschcatch.backend.domain.chat.entity.ChatMessage;
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
+import com.kitschcatch.backend.domain.chat.entity.MessageType;
 import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
 import com.kitschcatch.backend.domain.chat.repository.ChatRoomRepository;
+import com.kitschcatch.backend.domain.chat.storage.ChatImageStorage;
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
@@ -31,14 +35,21 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockMultipartFile;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class ChatMessageServiceTest {
 
+	private static final String CHAT_IMAGE_UPLOAD_URL =
+		"https://upload.example.com/chats/100/1/chat-image.png?signature=abc";
+	private static final String CHAT_IMAGE_OBJECT_KEY = "chats/100/1/chat-image.png";
+	private static final String CHAT_IMAGE_URL = "https://cdn.example.com/chats/100/1/chat-image.png";
+	private static final long CHAT_IMAGE_EXPIRES_IN_SECONDS = 300L;
+
 	private ChatMessageRepository chatMessageRepository;
 	private ChatRoomRepository chatRoomRepository;
 	private UserRepository userRepository;
+	private ChatImageStorage chatImageStorage;
 	private ChatMessageService chatMessageService;
 	private User buyer;
 	private User seller;
@@ -50,7 +61,13 @@ class ChatMessageServiceTest {
 		chatMessageRepository = mock(ChatMessageRepository.class);
 		chatRoomRepository = mock(ChatRoomRepository.class);
 		userRepository = mock(UserRepository.class);
-		chatMessageService = new ChatMessageService(chatMessageRepository, chatRoomRepository, userRepository);
+		chatImageStorage = mock(ChatImageStorage.class);
+		chatMessageService = new ChatMessageService(
+			chatMessageRepository,
+			chatRoomRepository,
+			userRepository,
+			chatImageStorage
+		);
 
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");
 		seller = user(2L, "seller", "seller@example.com", "seller-provider");
@@ -195,42 +212,126 @@ class ChatMessageServiceTest {
 	}
 
 	@Test
-	@DisplayName("이미지 메시지 전송은 URL을 저장하고 채팅방 마지막 메시지를 이미지로 갱신한다")
-	void sendImageMessageSavesImageUrlAndUpdatesChatRoom() {
-		MockMultipartFile imageFile = new MockMultipartFile(
-			"file",
-			"chat.png",
-			"image/png",
-			"image-content".getBytes()
-		);
+	@DisplayName("채팅방 참여자는 채팅 이미지 업로드 URL을 발급받을 수 있다")
+	void createChatImageUploadUrlReturnsUploadUrlForParticipant() {
 		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatImageStorage.createUploadUrl(1L, 100L, "chat.png", "image/png"))
+			.thenReturn(new ChatImageUploadUrl(
+				CHAT_IMAGE_UPLOAD_URL,
+				CHAT_IMAGE_OBJECT_KEY,
+				CHAT_IMAGE_URL,
+				CHAT_IMAGE_EXPIRES_IN_SECONDS
+			));
+
+		ChatImageUploadUrl response = chatMessageService.createChatImageUploadUrl(
+			1L,
+			100L,
+			"chat.png",
+			"image/png"
+		);
+
+		assertThat(response.uploadUrl()).isEqualTo(CHAT_IMAGE_UPLOAD_URL);
+		assertThat(response.objectKey()).isEqualTo(CHAT_IMAGE_OBJECT_KEY);
+		assertThat(response.imageUrl()).isEqualTo(CHAT_IMAGE_URL);
+		assertThat(response.expiresInSeconds()).isEqualTo(CHAT_IMAGE_EXPIRES_IN_SECONDS);
+
+		verify(chatImageStorage).createUploadUrl(1L, 100L, "chat.png", "image/png");
+	}
+
+	@Test
+	@DisplayName("채팅방 참여자가 아니면 채팅 이미지 업로드 URL을 발급받을 수 없다")
+	void createChatImageUploadUrlWithoutParticipantThrowsException() {
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+
+		assertThatThrownBy(() -> chatMessageService.createChatImageUploadUrl(3L, 100L, "chat.png", "image/png"))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+
+		verify(chatImageStorage, never()).createUploadUrl(anyLong(), anyLong(), anyString(), anyString());
+	}
+
+	@Test
+	@DisplayName("업로드된 채팅 이미지 objectKey로 이미지 메시지를 저장할 수 있다")
+	void sendImageMessageSavesImageMessageFromUploadedObjectKey() {
+		LocalDateTime createdAt = LocalDateTime.of(2026, 5, 24, 20, 40);
+
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatImageStorage.isOwnedChatImageKey(1L, 100L, CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
+		when(chatImageStorage.exists(CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
+		when(chatImageStorage.imageUrl(CHAT_IMAGE_OBJECT_KEY)).thenReturn(CHAT_IMAGE_URL);
 		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
 		when(chatMessageRepository.saveAndFlush(any(ChatMessage.class))).thenAnswer(invocation -> {
 			ChatMessage savedMessage = invocation.getArgument(0);
 			ReflectionTestUtils.setField(savedMessage, "id", 300L);
-			ReflectionTestUtils.setField(savedMessage, "createdAt", LocalDateTime.of(2026, 5, 24, 20, 40));
+			ReflectionTestUtils.setField(savedMessage, "createdAt", createdAt);
 			return savedMessage;
 		});
 
-		ChatMessageResponse response = chatMessageService.sendImageMessage(1L, 100L, imageFile);
+		ChatMessageResponse response = chatMessageService.sendImageMessage(1L, 100L, CHAT_IMAGE_OBJECT_KEY);
 
+		ArgumentCaptor<ChatMessage> chatMessageCaptor = ArgumentCaptor.forClass(ChatMessage.class);
+		verify(chatMessageRepository).saveAndFlush(chatMessageCaptor.capture());
+
+		ChatMessage savedMessage = chatMessageCaptor.getValue();
+		assertThat(savedMessage.getMessageType()).isEqualTo(MessageType.IMAGE);
+		assertThat(savedMessage.getImageUrl()).isEqualTo(CHAT_IMAGE_URL);
 		assertThat(response.messageId()).isEqualTo(300L);
-		assertThat(response.imageUrl()).contains("temp.kitschcatch.local/chat-images");
-		assertThat(response.content()).isNull();
-		assertThat(chatRoom.getLastMessageContent()).isEqualTo("[이미지]");
-		assertThat(chatRoom.getLastMessageAt()).isEqualTo(LocalDateTime.of(2026, 5, 24, 20, 40));
+		assertThat(response.messageType()).isEqualTo(MessageType.IMAGE);
+		assertThat(response.imageUrl()).isEqualTo(CHAT_IMAGE_URL);
 	}
 
 	@Test
-	@DisplayName("이미지 메시지 전송은 빈 파일을 허용하지 않는다")
-	void sendImageMessageWithEmptyFileThrowsException() {
-		MockMultipartFile emptyFile = new MockMultipartFile("file", "empty.png", "image/png", new byte[0]);
+	@DisplayName("본인이 발급받지 않은 objectKey로는 이미지 메시지를 저장할 수 없다")
+	void sendImageMessageWithForeignObjectKeyThrowsException() {
 		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatImageStorage.isOwnedChatImageKey(1L, 100L, CHAT_IMAGE_OBJECT_KEY)).thenReturn(false);
 
-		assertThatThrownBy(() -> chatMessageService.sendImageMessage(1L, 100L, emptyFile))
+		assertThatThrownBy(() -> chatMessageService.sendImageMessage(1L, 100L, CHAT_IMAGE_OBJECT_KEY))
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
-			.isEqualTo(ErrorCode.IMAGE_FILE_EMPTY);
+			.isEqualTo(ErrorCode.CHAT_IMAGE_FORBIDDEN);
+
+		verify(chatImageStorage, never()).exists(anyString());
+		verify(chatMessageRepository, never()).saveAndFlush(any(ChatMessage.class));
+	}
+
+	@Test
+	@DisplayName("존재하지 않는 S3 objectKey로는 이미지 메시지를 저장할 수 없다")
+	void sendImageMessageWithMissingObjectKeyThrowsException() {
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatImageStorage.isOwnedChatImageKey(1L, 100L, CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
+		when(chatImageStorage.exists(CHAT_IMAGE_OBJECT_KEY)).thenReturn(false);
+
+		assertThatThrownBy(() -> chatMessageService.sendImageMessage(1L, 100L, CHAT_IMAGE_OBJECT_KEY))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.CHAT_IMAGE_NOT_FOUND);
+
+		verify(chatMessageRepository, never()).saveAndFlush(any(ChatMessage.class));
+	}
+
+	@Test
+	@DisplayName("이미지 메시지 저장 후 채팅방의 마지막 메시지가 갱신된다")
+	void sendImageMessageUpdatesChatRoomLastMessage() {
+		LocalDateTime createdAt = LocalDateTime.of(2026, 5, 24, 20, 41);
+
+		when(chatRoomRepository.findChatRoomById(100L)).thenReturn(Optional.of(chatRoom));
+		when(chatImageStorage.isOwnedChatImageKey(1L, 100L, CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
+		when(chatImageStorage.exists(CHAT_IMAGE_OBJECT_KEY)).thenReturn(true);
+		when(chatImageStorage.imageUrl(CHAT_IMAGE_OBJECT_KEY)).thenReturn(CHAT_IMAGE_URL);
+		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
+		when(chatMessageRepository.saveAndFlush(any(ChatMessage.class))).thenAnswer(invocation -> {
+			ChatMessage savedMessage = invocation.getArgument(0);
+			ReflectionTestUtils.setField(savedMessage, "id", 301L);
+			ReflectionTestUtils.setField(savedMessage, "createdAt", createdAt);
+			return savedMessage;
+		});
+
+		chatMessageService.sendImageMessage(1L, 100L, CHAT_IMAGE_OBJECT_KEY);
+
+		assertThat(chatRoom.getLastMessageContent()).isEqualTo("[이미지]");
+		assertThat(chatRoom.getLastMessageAt()).isEqualTo(createdAt);
 	}
 
 	private User user(Long id, String nickname, String email, String providerUserId) {

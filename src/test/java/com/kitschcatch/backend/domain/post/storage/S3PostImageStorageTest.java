@@ -81,7 +81,8 @@ class S3PostImageStorageTest {
 			"kitschcatch-test",
 			"https://cdn.example.com",
 			Duration.ofMinutes(5),
-			"posts"
+			"posts",
+			"chats"
 		);
 	}
 }
