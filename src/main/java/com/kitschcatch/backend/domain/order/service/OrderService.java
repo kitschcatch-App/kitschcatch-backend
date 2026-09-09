@@ -18,40 +18,54 @@ import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.util.Locale;
+import java.util.List;
 import java.util.UUID;
+import java.time.LocalDateTime;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@EnableConfigurationProperties(OrderReservationProperties.class)
 public class OrderService {
 
 	private final PurchaseOrderRepository orderRepository;
 	private final PaymentRepository paymentRepository;
 	private final PostRepository postRepository;
 	private final UserRepository userRepository;
+	private final OrderReservationProperties reservationProperties;
 
 	public OrderService(
 		PurchaseOrderRepository orderRepository,
 		PaymentRepository paymentRepository,
 		PostRepository postRepository,
-		UserRepository userRepository
+		UserRepository userRepository,
+		OrderReservationProperties reservationProperties
 	) {
 		this.orderRepository = orderRepository;
 		this.paymentRepository = paymentRepository;
 		this.postRepository = postRepository;
 		this.userRepository = userRepository;
+		this.reservationProperties = reservationProperties;
 	}
 
 	@Transactional
 	public CreateOrderResponse createOrder(Long userId, CreateOrderRequest request) {
 		User buyer = userRepository.findById(userId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
-		Post post = postRepository.findByIdAndDeletedAtIsNull(request.postId())
+		Post post = postRepository.findByIdForUpdate(request.postId())
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+		if (post.getDeletedAt() != null) {
+			throw new BusinessException(ErrorCode.POST_NOT_FOUND);
+		}
 
 		validatePostOnSale(post);
 		validateNotSeller(userId, post);
 		validateAmount(request.amount(), post.getPrice());
+		if (post.getActiveOrderNumber() != null || orderRepository.existsByPostIdAndOrderStatusIn(
+			post.getId(), List.of(OrderStatus.PENDING, OrderStatus.PAID))) {
+			throw new BusinessException(ErrorCode.POST_TRANSACTION_IN_PROGRESS);
+		}
 
 		PurchaseOrder order = orderRepository.save(PurchaseOrder.builder()
 			.orderNumber(generateId("ORD"))
@@ -60,7 +74,9 @@ public class OrderService {
 			.amount(request.amount())
 			.pgProvider(PgProvider.TOSS_PAYMENTS)
 			.orderStatus(OrderStatus.PENDING)
+			.reservationExpiresAt(LocalDateTime.now().plus(reservationProperties.reservationTtl()))
 			.build());
+		post.reserve(order.getOrderNumber());
 		Payment payment = paymentRepository.save(Payment.builder()
 			.paymentId(generateId("PAY"))
 			.order(order)

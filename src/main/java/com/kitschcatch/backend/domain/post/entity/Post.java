@@ -1,6 +1,8 @@
 package com.kitschcatch.backend.domain.post.entity;
 
 import com.kitschcatch.backend.domain.user.entity.User;
+import com.kitschcatch.backend.global.exception.BusinessException;
+import com.kitschcatch.backend.global.exception.ErrorCode;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -61,6 +63,9 @@ public class Post {
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 30)
 	private ProductStatus productStatus;
+
+	@Column(length = 50)
+	private String activeOrderNumber;
 
 	@OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
 	@BatchSize(size = 20)
@@ -126,6 +131,35 @@ public class Post {
 
 	public void addImage(String objectKey, int sortOrder) {
 		images.add(PostImage.of(this, objectKey, sortOrder));
+	}
+
+	public void reserve(String orderNumber) {
+		if (activeOrderNumber != null || productStatus != ProductStatus.ON_SALE || deletedAt != null) {
+			throw new BusinessException(ErrorCode.POST_TRANSACTION_IN_PROGRESS);
+		}
+		this.activeOrderNumber = orderNumber;
+		this.productStatus = ProductStatus.RESERVED;
+	}
+
+	public boolean isOwnedByOrder(String orderNumber) {
+		return activeOrderNumber != null && activeOrderNumber.equals(orderNumber);
+	}
+
+	public void markSold(String orderNumber) {
+		validateOrderOwner(orderNumber);
+		this.productStatus = ProductStatus.SOLD_OUT;
+	}
+
+	public void releaseOrder(String orderNumber) {
+		validateOrderOwner(orderNumber);
+		this.activeOrderNumber = null;
+		this.productStatus = ProductStatus.ON_SALE;
+	}
+
+	private void validateOrderOwner(String orderNumber) {
+		if (!isOwnedByOrder(orderNumber)) {
+			throw new BusinessException(ErrorCode.ORDER_RESERVATION_INVALID);
+		}
 	}
 
 	public void replaceImages(List<String> objectKeys) {

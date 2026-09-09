@@ -16,10 +16,16 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 	Optional<Payment> findByPaymentIdAndOrderUserId(String paymentId, Long userId);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@EntityGraph(attributePaths = {"order", "order.user"})
 	@Query("select p from Payment p where p.paymentId = :paymentId and p.order.user.id = :userId")
 	Optional<Payment> findByPaymentIdAndOrderUserIdWithLock(
 		@Param("paymentId") String paymentId,
 		@Param("userId") Long userId
 	);
+
+	@Query("select p.order.id from Payment p where p.paymentId = :paymentId and p.order.user.id = :userId")
+	Optional<Long> findOrderIdByPaymentIdAndOrderUserId(@Param("paymentId") String paymentId, @Param("userId") Long userId);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from Payment p where p.order.id = :orderId")
+	Optional<Payment> findByOrderIdForUpdate(@Param("orderId") Long orderId);
 }

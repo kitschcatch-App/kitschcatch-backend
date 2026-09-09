@@ -17,6 +17,10 @@ kakao:
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 app:
+  orders:
+    reservation-ttl: 15m
+    expiration-scan-delay: 60s
+    expiration-enabled: true
   jwt:
     secret: ${APP_JWT_SECRET:dev-only-kitschcatch-jwt-secret-32-bytes}
     access-token-ttl: ${APP_JWT_ACCESS_TOKEN_TTL:30m}
