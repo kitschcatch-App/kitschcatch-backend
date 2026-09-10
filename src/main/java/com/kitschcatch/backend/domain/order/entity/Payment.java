@@ -24,7 +24,10 @@ import org.hibernate.annotations.CreationTimestamp;
 @Entity
 @Table(
 	name = "payments",
-	uniqueConstraints = @UniqueConstraint(name = "uk_payments_payment_id", columnNames = "payment_id")
+	uniqueConstraints = {
+		@UniqueConstraint(name = "uk_payments_payment_id", columnNames = "payment_id"),
+		@UniqueConstraint(name = "uk_payments_order_id", columnNames = "order_id")
+	}
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -91,8 +94,9 @@ public class Payment {
 		this.paymentStatus = PaymentStatus.PROCESSING;
 	}
 
-	public void restoreStatus(PaymentStatus paymentStatus) {
-		this.paymentStatus = paymentStatus;
+	public void startConfirmation(String paymentKey) {
+		this.paymentKey = paymentKey;
+		startProcessing();
 	}
 
 	public void cancel() {

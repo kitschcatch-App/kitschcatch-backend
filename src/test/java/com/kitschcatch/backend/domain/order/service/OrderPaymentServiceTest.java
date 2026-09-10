@@ -37,6 +37,7 @@ import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -51,6 +52,7 @@ class OrderPaymentServiceTest {
 	private PostRepository postRepository;
 	private UserRepository userRepository;
 	private OrderService orderService;
+	private OrderReservationService reservationService;
 	private PaymentTransactionService paymentTransactionService;
 	private PaymentService paymentService;
 	private User buyer;
@@ -64,8 +66,10 @@ class OrderPaymentServiceTest {
 		tossPaymentsClient = mock(TossPaymentsClient.class);
 		postRepository = mock(PostRepository.class);
 		userRepository = mock(UserRepository.class);
-		orderService = new OrderService(orderRepository, paymentRepository, postRepository, userRepository);
-		paymentTransactionService = new PaymentTransactionService(paymentRepository, orderRepository);
+		orderService = new OrderService(orderRepository, paymentRepository, postRepository, userRepository,
+			new OrderReservationProperties(Duration.ofMinutes(15)));
+		reservationService = mock(OrderReservationService.class);
+		paymentTransactionService = new PaymentTransactionService(paymentRepository, orderRepository, reservationService);
 		paymentService = new PaymentService(paymentTransactionService, tossPaymentsClient);
 
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");
@@ -77,7 +81,7 @@ class OrderPaymentServiceTest {
 	@DisplayName("주문 생성은 주문 번호와 결제 ID를 문자열로 저장한다")
 	void createOrderStoresStringOrderAndPaymentIds() {
 		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
-		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(post));
+		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(post));
 		when(orderRepository.save(any(PurchaseOrder.class))).thenAnswer(invocation -> {
 			PurchaseOrder order = invocation.getArgument(0);
 			ReflectionTestUtils.setField(order, "id", 1L);
@@ -103,7 +107,7 @@ class OrderPaymentServiceTest {
 	void createOrderWithNotOnSalePostThrowsException() {
 		Post reservedPost = post(10L, seller, 650000L, ProductStatus.RESERVED);
 		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
-		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(reservedPost));
+		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(reservedPost));
 
 		assertThatThrownBy(() -> orderService.createOrder(
 			1L,
@@ -119,7 +123,8 @@ class OrderPaymentServiceTest {
 	@DisplayName("결제 생성은 주문 번호로 주문을 찾아 결제 대기 상태를 저장한다")
 	void createPaymentStoresReadyPaymentForOrderNumber() {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PENDING);
-		when(orderRepository.findByOrderNumberAndUserId("ORD-123", 1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findIdByOrderNumberAndUserId("ORD-123", 1L)).thenReturn(Optional.of(100L));
+		when(reservationService.lockOrder(100L)).thenReturn(order);
 		when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		var response = paymentService.createPayment(
@@ -173,8 +178,8 @@ class OrderPaymentServiceTest {
 	}
 
 	@Test
-	@DisplayName("결제 승인은 토스 응답 상태가 DONE이 아니면 대기 상태로 되돌린다")
-	void confirmPaymentWithUnexpectedTossStatusRestoresReadyStatus() {
+	@DisplayName("결제 승인은 토스 응답 상태가 DONE이 아니면 처리 중 상태를 유지한다")
+	void confirmPaymentWithUnexpectedTossStatusKeepsProcessingStatus() {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PENDING);
 		Payment payment = payment("PAY-999", order, PaymentStatus.READY);
 		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
@@ -189,7 +194,7 @@ class OrderPaymentServiceTest {
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
-		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.READY);
+		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.PROCESSING);
 	}
 
 	@Test
@@ -210,8 +215,8 @@ class OrderPaymentServiceTest {
 	}
 
 	@Test
-	@DisplayName("결제 취소는 토스 응답 상태가 CANCELED가 아니면 성공 상태로 되돌린다")
-	void cancelPaymentWithUnexpectedTossStatusRestoresSuccessStatus() {
+	@DisplayName("결제 취소는 토스 응답 상태가 CANCELED가 아니면 처리 중 상태를 유지한다")
+	void cancelPaymentWithUnexpectedTossStatusKeepsProcessingStatus() {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PAID);
 		Payment payment = payment("PAY-999", order, PaymentStatus.SUCCESS, "toss-payment-key");
 		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
@@ -222,7 +227,7 @@ class OrderPaymentServiceTest {
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
-		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.SUCCESS);
+		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.PROCESSING);
 		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
 	}
 
@@ -230,7 +235,8 @@ class OrderPaymentServiceTest {
 	@DisplayName("결제 생성은 주문 금액과 결제 금액이 다르면 예외를 던진다")
 	void createPaymentWithDifferentAmountThrowsException() {
 		PurchaseOrder order = order("ORD-123", buyer, post, OrderStatus.PENDING);
-		when(orderRepository.findByOrderNumberAndUserId("ORD-123", 1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findIdByOrderNumberAndUserId("ORD-123", 1L)).thenReturn(Optional.of(100L));
+		when(reservationService.lockOrder(100L)).thenReturn(order);
 
 		assertThatThrownBy(() -> paymentService.createPayment(
 			1L,
@@ -271,6 +277,8 @@ class OrderPaymentServiceTest {
 	}
 
 	private PurchaseOrder order(String orderNumber, User user, Post post, OrderStatus orderStatus) {
+		post.reserve(orderNumber);
+		if (orderStatus == OrderStatus.PAID) post.markSold(orderNumber);
 		PurchaseOrder order = PurchaseOrder.builder()
 			.orderNumber(orderNumber)
 			.user(user)
@@ -288,6 +296,8 @@ class OrderPaymentServiceTest {
 	}
 
 	private Payment payment(String paymentId, PurchaseOrder order, PaymentStatus paymentStatus, String paymentKey) {
+		when(paymentRepository.findOrderIdByPaymentIdAndOrderUserId(paymentId, 1L)).thenReturn(Optional.of(100L));
+		when(reservationService.lockOrder(100L)).thenReturn(order);
 		Payment payment = Payment.builder()
 			.paymentId(paymentId)
 			.order(order)

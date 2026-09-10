@@ -1,5 +1,7 @@
 package com.kitschcatch.backend.domain.post.service;
 
+import com.kitschcatch.backend.domain.order.entity.OrderStatus;
+import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.dto.CreatePostImageUploadUrlRequest;
 import com.kitschcatch.backend.domain.post.dto.CreatePostImageUploadUrlResponse;
 import com.kitschcatch.backend.domain.post.dto.CreatePostRequest;
@@ -37,27 +39,31 @@ public class PostService {
 	private final UserRepository userRepository;
 	private final PostImageStorage postImageStorage;
 	private final TransactionOperations transactionOperations;
+	private final PurchaseOrderRepository orderRepository;
 
 	@Autowired
 	public PostService(
 		PostRepository postRepository,
 		UserRepository userRepository,
 		PostImageStorage postImageStorage,
-		PlatformTransactionManager transactionManager
+		PlatformTransactionManager transactionManager,
+		PurchaseOrderRepository orderRepository
 	) {
-		this(postRepository, userRepository, postImageStorage, new TransactionTemplate(transactionManager));
+		this(postRepository, userRepository, postImageStorage, new TransactionTemplate(transactionManager), orderRepository);
 	}
 
 	PostService(
 		PostRepository postRepository,
 		UserRepository userRepository,
 		PostImageStorage postImageStorage,
-		TransactionOperations transactionOperations
+		TransactionOperations transactionOperations,
+		PurchaseOrderRepository orderRepository
 	) {
 		this.postRepository = postRepository;
 		this.userRepository = userRepository;
 		this.postImageStorage = postImageStorage;
 		this.transactionOperations = transactionOperations;
+		this.orderRepository = orderRepository;
 	}
 
 	public CreatePostImageUploadUrlResponse createImageUploadUrls(
@@ -114,6 +120,7 @@ public class PostService {
 		return transactionOperations.execute(status -> {
 			Post post = findActivePost(postId);
 			validateOwner(userId, post);
+			validateNoActiveOrder(post);
 
 			post.update(
 				request.title(),
@@ -136,6 +143,7 @@ public class PostService {
 		transactionOperations.execute(status -> {
 			Post post = findActivePost(postId);
 			validateOwner(userId, post);
+			validateNoActiveOrder(post);
 			post.delete();
 			return null;
 		});
@@ -156,7 +164,8 @@ public class PostService {
 	}
 
 	private Post findActivePost(Long postId) {
-		return postRepository.findByIdAndDeletedAtIsNull(postId)
+		return postRepository.findByIdForUpdate(postId)
+			.filter(post -> post.getDeletedAt() == null)
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 	}
 
@@ -168,6 +177,13 @@ public class PostService {
 	private void validateOwner(Long userId, Post post) {
 		if (!post.getUser().getId().equals(userId)) {
 			throw new BusinessException(ErrorCode.POST_FORBIDDEN);
+		}
+	}
+
+	private void validateNoActiveOrder(Post post) {
+		if (post.getActiveOrderNumber() != null || orderRepository.existsByPostIdAndOrderStatusIn(
+			post.getId(), List.of(OrderStatus.PENDING, OrderStatus.PAID))) {
+			throw new BusinessException(ErrorCode.POST_TRANSACTION_IN_PROGRESS);
 		}
 	}
 

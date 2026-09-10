@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.dto.CreatePostImageUploadUrlRequest;
 import com.kitschcatch.backend.domain.post.dto.CreatePostImageUploadUrlResponse;
 import com.kitschcatch.backend.domain.post.dto.CreatePostRequest;
@@ -52,7 +53,8 @@ class PostServiceTest {
 		userRepository = mock(UserRepository.class);
 		postImageStorage = mock(PostImageStorage.class);
 		transactionOperations = new TrackingTransactionOperations();
-		postService = new PostService(postRepository, userRepository, postImageStorage, transactionOperations);
+		postService = new PostService(postRepository, userRepository, postImageStorage, transactionOperations,
+			mock(PurchaseOrderRepository.class));
 		seller = User.builder()
 			.nickname("seller")
 			.email("seller@example.com")
@@ -153,7 +155,7 @@ class PostServiceTest {
 	@DisplayName("판매 게시글 수정은 전달된 이미지 목록으로 교체한다")
 	void updatePostReplacesImages() {
 		Post post = postWithImage("posts/1/old.png");
-		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(post));
+		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(post));
 		when(postImageStorage.isOwnedPostImageKey(1L, "posts/1/new.png")).thenReturn(true);
 		when(postImageStorage.exists("posts/1/new.png")).thenAnswer(invocation -> {
 			assertThat(transactionOperations.isInTransaction()).isFalse();
@@ -182,7 +184,7 @@ class PostServiceTest {
 	@DisplayName("판매 게시글 삭제는 작성자만 소프트 삭제한다")
 	void deletePostSoftDeletesOwnedPost() {
 		Post post = postWithImage("posts/1/image.png");
-		when(postRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(post));
+		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(post));
 
 		postService.deletePost(1L, 10L);
 

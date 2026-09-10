@@ -36,18 +36,12 @@ public class PaymentService {
 
 	public PaymentResponse confirmPayment(Long userId, String paymentId, ConfirmPaymentRequest request) {
 		PaymentOperationContext context = paymentTransactionService.startConfirm(userId, paymentId, request);
-		try {
-			TossPaymentResponse tossResponse = tossPaymentsClient.confirm(new TossPaymentConfirmRequest(
-				context.paymentKey(),
-				context.orderId(),
-				context.amount()
-			));
-			validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
-			return paymentTransactionService.completeConfirm(userId, paymentId, tossResponse.paymentKey());
-		} catch (RuntimeException exception) {
-			restoreProcessing(userId, paymentId, context);
-			throw exception;
-		}
+		// 외부 호출 또는 DB 저장 실패 시 결과가 불확실하므로 PROCESSING과 예약을 유지한다.
+		TossPaymentResponse tossResponse = tossPaymentsClient.confirm(new TossPaymentConfirmRequest(
+			context.paymentKey(), context.orderId(), context.amount()
+		));
+		validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
+		return paymentTransactionService.completeConfirm(userId, paymentId, tossResponse.paymentKey());
 	}
 
 	public PaymentResponse getPayment(Long userId, String paymentId) {
@@ -56,17 +50,11 @@ public class PaymentService {
 
 	public PaymentResponse cancelPayment(Long userId, String paymentId) {
 		PaymentOperationContext context = paymentTransactionService.startCancel(userId, paymentId);
-		try {
-			TossPaymentResponse tossResponse = tossPaymentsClient.cancel(new TossPaymentCancelRequest(
-				context.paymentKey(),
-				"고객 요청"
-			));
-			validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
-			return paymentTransactionService.completeCancel(userId, paymentId);
-		} catch (RuntimeException exception) {
-			restoreProcessing(userId, paymentId, context);
-			throw exception;
-		}
+		TossPaymentResponse tossResponse = tossPaymentsClient.cancel(new TossPaymentCancelRequest(
+			context.paymentKey(), "고객 요청"
+		));
+		validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
+		return paymentTransactionService.completeCancel(userId, paymentId);
 	}
 
 	private void validateTossPayment(
@@ -80,14 +68,6 @@ public class PaymentService {
 			|| !context.amount().equals(tossResponse.totalAmount())
 			|| !expectedStatus.equals(tossResponse.status())) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
-		}
-	}
-
-	private void restoreProcessing(Long userId, String paymentId, PaymentOperationContext context) {
-		try {
-			paymentTransactionService.restoreProcessing(userId, paymentId, context.rollbackStatus());
-		} catch (RuntimeException ignored) {
-			// 복구 실패가 원래 결제 오류를 가리지 않도록 원래 예외를 유지한다.
 		}
 	}
 }
