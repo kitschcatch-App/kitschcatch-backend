@@ -11,6 +11,7 @@ import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,13 +22,24 @@ public class PaymentService {
 
 	private final PaymentTransactionService paymentTransactionService;
 	private final TossPaymentsClient tossPaymentsClient;
+	private final PaymentRecoveryService paymentRecoveryService;
 
 	public PaymentService(
 		PaymentTransactionService paymentTransactionService,
 		TossPaymentsClient tossPaymentsClient
 	) {
+		this(paymentTransactionService, tossPaymentsClient, null);
+	}
+
+	@Autowired
+	public PaymentService(
+		PaymentTransactionService paymentTransactionService,
+		TossPaymentsClient tossPaymentsClient,
+		PaymentRecoveryService paymentRecoveryService
+	) {
 		this.paymentTransactionService = paymentTransactionService;
 		this.tossPaymentsClient = tossPaymentsClient;
+		this.paymentRecoveryService = paymentRecoveryService;
 	}
 
 	public CreatePaymentResponse createPayment(Long userId, CreatePaymentRequest request) {
@@ -41,6 +53,9 @@ public class PaymentService {
 			context.paymentKey(), context.orderId(), context.amount()
 		));
 		validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
+		if (paymentRecoveryService != null && context.attemptId() != null) {
+			return paymentRecoveryService.recover(context.attemptId(), tossResponse);
+		}
 		return paymentTransactionService.completeConfirm(userId, paymentId, tossResponse.paymentKey());
 	}
 
@@ -54,6 +69,9 @@ public class PaymentService {
 			context.paymentKey(), "고객 요청"
 		));
 		validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
+		if (paymentRecoveryService != null && context.attemptId() != null) {
+			return paymentRecoveryService.recover(context.attemptId(), tossResponse);
+		}
 		return paymentTransactionService.completeCancel(userId, paymentId);
 	}
 

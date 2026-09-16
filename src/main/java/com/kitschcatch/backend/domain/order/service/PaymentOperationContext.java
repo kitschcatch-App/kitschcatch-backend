@@ -4,6 +4,12 @@ package com.kitschcatch.backend.domain.order.service;
 public record PaymentOperationContext(
 	String orderId,
 	Long amount,
-	String paymentKey
+	String paymentKey,
+	String attemptId,
+	long stateVersion
 ) {
+
+	public PaymentOperationContext(String orderId, Long amount, String paymentKey) {
+		this(orderId, amount, paymentKey, null, 0L);
+	}
 }

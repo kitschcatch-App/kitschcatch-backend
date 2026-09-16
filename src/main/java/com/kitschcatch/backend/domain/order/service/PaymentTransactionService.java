@@ -7,10 +7,14 @@ import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.Payment;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentOperation;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
+import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.global.exception.BusinessException;
@@ -18,6 +22,7 @@ import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,15 +32,27 @@ public class PaymentTransactionService {
 	private final PaymentRepository paymentRepository;
 	private final PurchaseOrderRepository orderRepository;
 	private final OrderReservationService reservationService;
+	private final PaymentAttemptRepository paymentAttemptRepository;
 
 	public PaymentTransactionService(
 		PaymentRepository paymentRepository,
 		PurchaseOrderRepository orderRepository,
 		OrderReservationService reservationService
 	) {
+		this(paymentRepository, orderRepository, reservationService, null);
+	}
+
+	@Autowired
+	public PaymentTransactionService(
+		PaymentRepository paymentRepository,
+		PurchaseOrderRepository orderRepository,
+		OrderReservationService reservationService,
+		PaymentAttemptRepository paymentAttemptRepository
+	) {
 		this.paymentRepository = paymentRepository;
 		this.orderRepository = orderRepository;
 		this.reservationService = reservationService;
+		this.paymentAttemptRepository = paymentAttemptRepository;
 	}
 
 	@Transactional
@@ -83,7 +100,7 @@ public class PaymentTransactionService {
 		validateNotExpired(payment.getOrder());
 
 		payment.startConfirmation(request.paymentKey());
-		return operationContext(payment);
+		return startAttempt(payment, PaymentAttemptOperation.CONFIRM, request.paymentKey(), null);
 	}
 
 	@Transactional
@@ -110,7 +127,7 @@ public class PaymentTransactionService {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 		}
 		payment.startProcessing(PaymentOperation.CANCEL);
-		return operationContext(payment);
+		return startAttempt(payment, PaymentAttemptOperation.CANCEL, payment.getPaymentKey(), "고객 요청");
 	}
 
 	@Transactional
@@ -164,8 +181,47 @@ public class PaymentTransactionService {
 		}
 	}
 
-	private PaymentOperationContext operationContext(Payment payment) {
-		return new PaymentOperationContext(payment.getOrder().getOrderNumber(), payment.getAmount(), payment.getPaymentKey());
+	private PaymentOperationContext startAttempt(
+		Payment payment,
+		PaymentAttemptOperation operation,
+		String paymentKey,
+		String cancelReason
+	) {
+		if (paymentAttemptRepository == null) {
+			return new PaymentOperationContext(payment.getOrder().getOrderNumber(), payment.getAmount(), paymentKey);
+		}
+		int sequence = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(payment.getId())
+			.map(attempt -> attempt.getSequenceNumber() + 1)
+			.orElse(1);
+		LocalDateTime now = LocalDateTime.now();
+		String attemptId = generateId("ATT");
+		PaymentAttempt attempt = paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(attemptId)
+			.payment(payment)
+			.sequenceNumber(sequence)
+			.operation(operation)
+			.attemptStatus(PaymentAttemptStatus.PROCESSING)
+			.pgOrderId(payment.getOrder().getOrderNumber())
+			.paymentKey(paymentKey)
+			.amount(payment.getAmount())
+			.cancelReason(cancelReason)
+			.pgIdempotencyKey(operation.name().toLowerCase(Locale.ROOT) + "-" + paymentKey)
+			.requestedAt(now)
+			.nextCheckAt(now)
+			.build());
+		payment.bindAttempt(attempt.getAttemptId(), operation == PaymentAttemptOperation.CONFIRM
+			? PaymentOperation.CONFIRM : PaymentOperation.CANCEL);
+		return new PaymentOperationContext(
+			payment.getOrder().getOrderNumber(), payment.getAmount(), paymentKey,
+			attempt.getAttemptId(), payment.getStateVersion()
+		);
+	}
+
+	private String generateId(String prefix) {
+		String suffix = UUID.randomUUID().toString()
+			.replace("-", "")
+			.toUpperCase(Locale.ROOT);
+		return prefix + "-" + suffix;
 	}
 
 	private PaymentResponse toResponse(Payment payment) {

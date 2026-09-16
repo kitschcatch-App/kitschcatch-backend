@@ -11,9 +11,13 @@ import com.kitschcatch.backend.domain.order.dto.CreateOrderRequest;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderResponse;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentMethod;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
+import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
+import com.kitschcatch.backend.domain.order.repository.PaymentWebhookEventRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
@@ -60,7 +64,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({OrderService.class, OrderReservationService.class, OrderReservationScheduler.class,
-	PaymentTransactionService.class, PaymentService.class, PostService.class})
+	PaymentTransactionService.class, PaymentService.class, PaymentRecoveryService.class, PostService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class OrderReservationIntegrationTest {
 
@@ -74,6 +78,8 @@ class OrderReservationIntegrationTest {
 	@Autowired private PostRepository postRepository;
 	@Autowired private PurchaseOrderRepository orderRepository;
 	@Autowired private PaymentRepository paymentRepository;
+	@Autowired private PaymentAttemptRepository paymentAttemptRepository;
+	@Autowired private PaymentWebhookEventRepository paymentWebhookEventRepository;
 	@Autowired private UserRepository userRepository;
 	@Autowired private PlatformTransactionManager transactionManager;
 	@MockitoBean private TossPaymentsClient tossPaymentsClient;
@@ -87,6 +93,8 @@ class OrderReservationIntegrationTest {
 	@BeforeEach
 	void setUp() {
 		new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+			paymentAttemptRepository.deleteAll();
+			paymentWebhookEventRepository.deleteAll();
 			paymentRepository.deleteAll();
 			orderRepository.deleteAll();
 			postRepository.deleteAll();
@@ -149,9 +157,20 @@ class OrderReservationIntegrationTest {
 		paymentService.confirmPayment(buyerId, order.paymentId(), new ConfirmPaymentRequest(order.paymentId(), "key"));
 		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.SOLD_OUT);
 		assertThat(orderRepository.findByOrderNumberAndUserId(order.orderId(), buyerId).orElseThrow().getOrderStatus()).isEqualTo(OrderStatus.PAID);
+		Long paymentId = paymentRepository.findByPaymentIdAndOrderUserId(order.paymentId(), buyerId).orElseThrow().getId();
+		assertThat(paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(paymentId).orElseThrow())
+			.satisfies(attempt -> {
+				assertThat(attempt.getOperation()).isEqualTo(PaymentAttemptOperation.CONFIRM);
+				assertThat(attempt.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
+			});
 		when(tossPaymentsClient.cancel(any())).thenReturn(new TossPaymentResponse("key", order.orderId(), 12000L, "CANCELED"));
 		paymentService.cancelPayment(buyerId, order.paymentId());
 		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+		assertThat(paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(paymentId).orElseThrow())
+			.satisfies(attempt -> {
+				assertThat(attempt.getOperation()).isEqualTo(PaymentAttemptOperation.CANCEL);
+				assertThat(attempt.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
+			});
 		createOrder();
 		assertThatThrownBy(() -> paymentService.cancelPayment(buyerId, order.paymentId())).isInstanceOf(BusinessException.class);
 		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
