@@ -3,6 +3,11 @@ package com.kitschcatch.backend.domain.order.toss;
 
 public record TossPaymentCancelRequest(
 	String paymentKey,
-	String cancelReason
+	String cancelReason,
+	String idempotencyKey
 ) {
+
+	public TossPaymentCancelRequest(String paymentKey, String cancelReason) {
+		this(paymentKey, cancelReason, null);
+	}
 }

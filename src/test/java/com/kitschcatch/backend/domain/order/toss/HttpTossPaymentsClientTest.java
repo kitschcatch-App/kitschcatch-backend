@@ -43,6 +43,7 @@ class HttpTossPaymentsClientTest {
 		server.expect(once(), requestTo("https://api.tosspayments.com/v1/payments/confirm"))
 			.andExpect(method(HttpMethod.POST))
 			.andExpect(header("Authorization", basicAuth()))
+			.andExpect(header("Idempotency-Key", "attempt-1"))
 			.andExpect(jsonPath("$.paymentKey").value("toss-payment-key"))
 			.andExpect(jsonPath("$.orderId").value("ORD-123"))
 			.andExpect(jsonPath("$.amount").value(650000))
@@ -56,7 +57,7 @@ class HttpTossPaymentsClientTest {
 				""", MediaType.APPLICATION_JSON));
 
 		TossPaymentResponse response = client.confirm(
-			new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)
+			new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L, "attempt-1")
 		);
 
 		assertThat(response.status()).isEqualTo("DONE");

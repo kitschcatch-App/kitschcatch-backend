@@ -32,7 +32,8 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 			return restClient.post()
 				.uri("/v1/payments/confirm")
 				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
-				.header(IDEMPOTENCY_KEY_HEADER, "confirm-" + request.paymentKey())
+				.header(IDEMPOTENCY_KEY_HEADER, request.idempotencyKey() == null
+					? "confirm-" + request.paymentKey() : request.idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.body(request)
 				.retrieve()
@@ -86,7 +87,8 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 			return restClient.post()
 				.uri("/v1/payments/{paymentKey}/cancel", request.paymentKey())
 				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
-				.header(IDEMPOTENCY_KEY_HEADER, "cancel-" + request.paymentKey())
+				.header(IDEMPOTENCY_KEY_HEADER, request.idempotencyKey() == null
+					? "cancel-" + request.paymentKey() : request.idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.body(new TossCancelBody(request.cancelReason()))
 				.retrieve()

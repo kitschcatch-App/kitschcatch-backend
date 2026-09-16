@@ -117,7 +117,7 @@ public class PaymentTransactionService {
 			payment.bindAttempt(attempt.getAttemptId(), PaymentOperation.CONFIRM);
 			return new PaymentOperationContext(
 				payment.getOrder().getOrderNumber(), attempt.getPgOrderId(), payment.getAmount(),
-				request.paymentKey(), attempt.getAttemptId(), payment.getStateVersion()
+				request.paymentKey(), attempt.getAttemptId(), payment.getStateVersion(), attempt.getPgIdempotencyKey()
 			);
 		}
 
@@ -303,7 +303,7 @@ public class PaymentTransactionService {
 			? PaymentOperation.CONFIRM : PaymentOperation.CANCEL);
 		return new PaymentOperationContext(
 			payment.getOrder().getOrderNumber(), pgOrderId, payment.getAmount(), paymentKey,
-			attempt.getAttemptId(), payment.getStateVersion()
+			attempt.getAttemptId(), payment.getStateVersion(), attempt.getPgIdempotencyKey()
 		);
 	}
 

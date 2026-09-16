@@ -7,10 +7,11 @@ public record PaymentOperationContext(
 	Long amount,
 	String paymentKey,
 	String attemptId,
-	long stateVersion
+	long stateVersion,
+	String pgIdempotencyKey
 ) {
 
 	public PaymentOperationContext(String orderId, Long amount, String paymentKey) {
-		this(orderId, orderId, amount, paymentKey, null, 0L);
+		this(orderId, orderId, amount, paymentKey, null, 0L, null);
 	}
 }

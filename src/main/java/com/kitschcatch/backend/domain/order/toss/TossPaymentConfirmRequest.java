@@ -4,6 +4,11 @@ package com.kitschcatch.backend.domain.order.toss;
 public record TossPaymentConfirmRequest(
 	String paymentKey,
 	String orderId,
-	Long amount
+	Long amount,
+	String idempotencyKey
 ) {
+
+	public TossPaymentConfirmRequest(String paymentKey, String orderId, Long amount) {
+		this(paymentKey, orderId, amount, null);
+	}
 }

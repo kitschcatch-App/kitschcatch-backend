@@ -51,9 +51,10 @@ public class PaymentService {
 	public PaymentResponse confirmPayment(Long userId, String paymentId, ConfirmPaymentRequest request) {
 		PaymentOperationContext context = paymentTransactionService.startConfirm(userId, paymentId, request);
 		// 외부 호출 또는 DB 저장 실패 시 결과가 불확실하므로 PROCESSING과 예약을 유지한다.
-		TossPaymentResponse tossResponse = tossPaymentsClient.confirm(new TossPaymentConfirmRequest(
-			context.paymentKey(), context.pgOrderId(), context.amount()
-		));
+		TossPaymentConfirmRequest confirmRequest = context.pgIdempotencyKey() == null
+			? new TossPaymentConfirmRequest(context.paymentKey(), context.pgOrderId(), context.amount())
+			: new TossPaymentConfirmRequest(context.paymentKey(), context.pgOrderId(), context.amount(), context.pgIdempotencyKey());
+		TossPaymentResponse tossResponse = tossPaymentsClient.confirm(confirmRequest);
 		validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
 		if (paymentRecoveryService != null && context.attemptId() != null) {
 			return paymentRecoveryService.recover(context.attemptId(), tossResponse);
@@ -71,9 +72,10 @@ public class PaymentService {
 
 	public PaymentResponse cancelPayment(Long userId, String paymentId) {
 		PaymentOperationContext context = paymentTransactionService.startCancel(userId, paymentId);
-		TossPaymentResponse tossResponse = tossPaymentsClient.cancel(new TossPaymentCancelRequest(
-			context.paymentKey(), "고객 요청"
-		));
+		TossPaymentCancelRequest cancelRequest = context.pgIdempotencyKey() == null
+			? new TossPaymentCancelRequest(context.paymentKey(), "고객 요청")
+			: new TossPaymentCancelRequest(context.paymentKey(), "고객 요청", context.pgIdempotencyKey());
+		TossPaymentResponse tossResponse = tossPaymentsClient.cancel(cancelRequest);
 		validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
 		if (paymentRecoveryService != null && context.attemptId() != null) {
 			return paymentRecoveryService.recover(context.attemptId(), tossResponse);
