@@ -72,4 +72,33 @@ public class PaymentRecoveryScheduler {
 			}
 		}
 	}
+
+	@Scheduled(
+		fixedDelayString = "${app.payments.recovery.success-scan-delay:1h}",
+		initialDelayString = "${app.payments.recovery.success-scan-delay:1h}"
+	)
+	public void scanSuccessfulPayments() {
+		LocalDateTime now = LocalDateTime.now();
+		List<PaymentAttempt> candidates = paymentAttemptRepository.findSuccessfulRecoveryCandidates(
+			now.minusHours(1), PageRequest.of(0, batchSize));
+		for (PaymentAttempt attempt : candidates) {
+			String leaseToken = UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
+			try {
+				if (!paymentRecoveryService.claim(attempt.getAttemptId(), leaseToken, now.plusSeconds(45))) {
+					continue;
+				}
+				TossPaymentResponse response = attempt.getPaymentKey() == null
+					? tossPaymentsClient.getPaymentByOrderId(attempt.getPgOrderId())
+					: tossPaymentsClient.getPayment(attempt.getPaymentKey());
+				paymentRecoveryService.recover(attempt.getAttemptId(), response, leaseToken);
+			} catch (RuntimeException exception) {
+				log.warn("성공 결제 외부 취소 점검 실패. attemptId={}", attempt.getAttemptId(), exception);
+				try {
+					paymentRecoveryService.recordLookupFailure(attempt.getAttemptId(), exception.getMessage(), leaseToken);
+				} catch (RuntimeException stateException) {
+					log.warn("성공 결제 점검 상태 저장 실패. attemptId={}", attempt.getAttemptId(), stateException);
+				}
+			}
+		}
+	}
 }

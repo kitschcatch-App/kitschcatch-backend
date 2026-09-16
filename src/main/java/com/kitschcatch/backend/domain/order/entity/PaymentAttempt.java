@@ -242,6 +242,10 @@ public class PaymentAttempt {
 		this.leaseUntil = leaseUntil;
 	}
 
+	public void releaseLease() {
+		clearLease();
+	}
+
 	private void clearLease() {
 		this.leaseToken = null;
 		this.leaseUntil = null;

@@ -24,6 +24,7 @@ app:
   payments:
     recovery:
       scan-delay: 30s
+      success-scan-delay: 1h
       batch-size: 100
       enabled: false
   jwt:

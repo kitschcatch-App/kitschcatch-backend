@@ -45,6 +45,19 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
 
 	List<PaymentAttempt> findByPaymentIdAndAttemptStatusIn(Long paymentId, Collection<PaymentAttemptStatus> statuses);
 
+	@Query("""
+		select a from PaymentAttempt a
+		where a.operation = com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation.CONFIRM
+		and a.attemptStatus = com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus.SUCCEEDED
+		and a.payment.paymentStatus = com.kitschcatch.backend.domain.order.entity.PaymentStatus.SUCCESS
+		and (a.payment.lastVerifiedAt is null or a.payment.lastVerifiedAt <= :cutoff)
+		order by a.payment.lastVerifiedAt, a.id
+		""")
+	List<PaymentAttempt> findSuccessfulRecoveryCandidates(
+		@Param("cutoff") LocalDateTime cutoff,
+		Pageable pageable
+	);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select a from PaymentAttempt a where a.attemptId = :attemptId")
 	Optional<PaymentAttempt> findByAttemptIdForUpdate(@Param("attemptId") String attemptId);

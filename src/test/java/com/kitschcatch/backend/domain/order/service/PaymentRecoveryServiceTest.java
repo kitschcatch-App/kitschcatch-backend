@@ -169,6 +169,26 @@ class PaymentRecoveryServiceTest {
 		assertThat(attempt.getFailureReason()).isEqualTo("오래된 결제 시도의 응답입니다.");
 	}
 
+	@Test
+	@DisplayName("성공 결제의 외부 전액 취소도 동일한 복구 규칙으로 반영한다")
+	void recoversExternalCancellationOfSuccessfulPayment() {
+		payment.confirm("key-1");
+		PaymentAttempt attempt = attempt(PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.SUCCEEDED, "key-1");
+		payment.bindAttempt("ATT-1", com.kitschcatch.backend.domain.order.entity.PaymentOperation.CONFIRM);
+		stub(attempt);
+
+		PaymentResponse response = recoveryService.recover(
+			"ATT-1",
+			new TossPaymentResponse("key-1", "ORD-1", 12000L, "CANCELED", 0L,
+				null, "2026-09-16T10:20:30+09:00", "tx-2")
+		);
+
+		assertThat(response.status()).isEqualTo(PaymentStatus.CANCELED);
+		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.CANCELED);
+		assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.CANCELED);
+		assertThat(order.getPost().getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+	}
+
 	private void stub(PaymentAttempt attempt) {
 		when(attemptRepository.findOrderIdByAttemptId("ATT-1")).thenReturn(Optional.of(order.getId()));
 		when(attemptRepository.findPaymentIdByAttemptId("ATT-1")).thenReturn(Optional.of("PAY-1"));

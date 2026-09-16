@@ -68,6 +68,18 @@ public class PaymentRecoveryService {
 			return toResponse(payment);
 		}
 
+		if (lockedAttempt.getAttemptStatus() == PaymentAttemptStatus.SUCCEEDED
+			&& lockedAttempt.getOperation() == PaymentAttemptOperation.CONFIRM
+			&& payment.getPaymentStatus() == PaymentStatus.SUCCESS) {
+			payment.markVerified(LocalDateTime.now());
+			if (TOSS_CANCELED.equals(tossResponse.status()) && isFullyCanceled(tossResponse)) {
+				payment.cancel();
+				payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+			}
+			lockedAttempt.releaseLease();
+			return toResponse(payment);
+		}
+
 		if (!samePayment(lockedAttempt, tossResponse)) {
 			lockedAttempt.markReviewRequired("PG 응답 식별자 또는 금액이 일치하지 않습니다.");
 			payment.markReviewRequired("PG_IDENTIFIER_MISMATCH");
@@ -120,7 +132,9 @@ public class PaymentRecoveryService {
 		PaymentAttempt attempt = paymentAttemptRepository.findByAttemptIdForUpdate(attemptId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 		LocalDateTime now = LocalDateTime.now();
-		if (!attempt.isActive()
+		boolean successfulApproval = attempt.getAttemptStatus() == PaymentAttemptStatus.SUCCEEDED
+			&& attempt.getOperation() == PaymentAttemptOperation.CONFIRM;
+		if ((!attempt.isActive() && !successfulApproval)
 			|| attempt.getNextCheckAt().isAfter(now)
 			|| (attempt.getLeaseUntil() != null && attempt.getLeaseUntil().isAfter(now))) {
 			return false;
