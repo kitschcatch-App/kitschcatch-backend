@@ -3,6 +3,7 @@ package com.kitschcatch.backend.domain.order.service;
 
 public record PaymentOperationContext(
 	String orderId,
+	String pgOrderId,
 	Long amount,
 	String paymentKey,
 	String attemptId,
@@ -10,6 +11,6 @@ public record PaymentOperationContext(
 ) {
 
 	public PaymentOperationContext(String orderId, Long amount, String paymentKey) {
-		this(orderId, amount, paymentKey, null, 0L);
+		this(orderId, orderId, amount, paymentKey, null, 0L);
 	}
 }

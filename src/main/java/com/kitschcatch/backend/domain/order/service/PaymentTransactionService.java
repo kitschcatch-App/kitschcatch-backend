@@ -5,6 +5,8 @@ import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentRequest;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.Payment;
 import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
@@ -99,8 +101,78 @@ public class PaymentTransactionService {
 		validateReservation(payment.getOrder(), ProductStatus.RESERVED);
 		validateNotExpired(payment.getOrder());
 
+		if (request.attemptId() != null && !request.attemptId().isBlank()) {
+			if (paymentAttemptRepository == null) {
+				throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+			}
+			PaymentAttempt attempt = paymentAttemptRepository.findByAttemptIdForUpdate(request.attemptId())
+				.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED));
+			if (!paymentId.equals(attempt.getPayment().getPaymentId())
+				|| attempt.getOperation() != PaymentAttemptOperation.CONFIRM
+				|| attempt.getAttemptStatus() != PaymentAttemptStatus.PREPARED) {
+				throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+			}
+			payment.startConfirmation(request.paymentKey());
+			attempt.startConfirmation(request.paymentKey());
+			payment.bindAttempt(attempt.getAttemptId(), PaymentOperation.CONFIRM);
+			return new PaymentOperationContext(
+				payment.getOrder().getOrderNumber(), attempt.getPgOrderId(), payment.getAmount(),
+				request.paymentKey(), attempt.getAttemptId(), payment.getStateVersion()
+			);
+		}
+
 		payment.startConfirmation(request.paymentKey());
 		return startAttempt(payment, PaymentAttemptOperation.CONFIRM, request.paymentKey(), null);
+	}
+
+	@Transactional
+	public RetryPaymentResponse prepareRetry(Long userId, String paymentId, RetryPaymentRequest request) {
+		if (paymentAttemptRepository == null) {
+			throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+		}
+		Payment payment = findPaymentWithLock(paymentId, userId);
+		PaymentAttempt failedAttempt = paymentAttemptRepository.findByAttemptIdForUpdate(request.failedAttemptId())
+			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED));
+		if (!paymentId.equals(failedAttempt.getPayment().getPaymentId())
+			|| failedAttempt.getOperation() != PaymentAttemptOperation.CONFIRM
+			|| failedAttempt.getAttemptStatus() != PaymentAttemptStatus.FAILED
+			|| payment.getPaymentStatus() != PaymentStatus.FAILED
+			|| payment.getOrder().getOrderStatus() != OrderStatus.PENDING
+			|| !payment.getOrder().getPost().isOwnedByOrder(payment.getOrder().getOrderNumber())
+			|| payment.getOrder().getPost().getProductStatus() != ProductStatus.RESERVED
+			|| payment.getOrder().getPost().getDeletedAt() != null
+			|| payment.isRecoveryReviewRequired()
+			|| payment.getOrder().isReservationExpired(LocalDateTime.now())) {
+			throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+		}
+
+		PaymentAttempt existing = paymentAttemptRepository
+			.findByPaymentIdAndSourceAttemptAttemptId(payment.getId(), failedAttempt.getAttemptId())
+			.orElse(null);
+		if (existing != null) {
+			return toRetryResponse(payment, existing);
+		}
+
+		int sequence = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(payment.getId())
+			.map(attempt -> attempt.getSequenceNumber() + 1)
+			.orElse(1);
+		LocalDateTime now = LocalDateTime.now();
+		String attemptId = generateId("ATT");
+		PaymentAttempt retryAttempt = paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(attemptId)
+			.payment(payment)
+			.sequenceNumber(sequence)
+			.operation(PaymentAttemptOperation.CONFIRM)
+			.attemptStatus(PaymentAttemptStatus.PREPARED)
+			.sourceAttempt(failedAttempt)
+			.pgOrderId(generateId("PG"))
+			.amount(payment.getAmount())
+			.pgIdempotencyKey("confirm-" + attemptId)
+			.requestedAt(now)
+			.nextCheckAt(now)
+			.build());
+		payment.prepareRetry(retryAttempt.getAttemptId());
+		return toRetryResponse(payment, retryAttempt);
 	}
 
 	@Transactional
@@ -212,8 +284,17 @@ public class PaymentTransactionService {
 		payment.bindAttempt(attempt.getAttemptId(), operation == PaymentAttemptOperation.CONFIRM
 			? PaymentOperation.CONFIRM : PaymentOperation.CANCEL);
 		return new PaymentOperationContext(
-			payment.getOrder().getOrderNumber(), payment.getAmount(), paymentKey,
+			payment.getOrder().getOrderNumber(), payment.getOrder().getOrderNumber(), payment.getAmount(), paymentKey,
 			attempt.getAttemptId(), payment.getStateVersion()
+		);
+	}
+
+	private RetryPaymentResponse toRetryResponse(Payment payment, PaymentAttempt attempt) {
+		return new RetryPaymentResponse(
+			payment.getPaymentId(), payment.getOrder().getOrderNumber(), attempt.getAttemptId(), attempt.getPgOrderId(),
+			payment.getAmount(), payment.getOrder().getReservationExpiresAt(), payment.getPaymentStatus(),
+			attempt.getAttemptStatus(), attempt.getAttemptStatus() == PaymentAttemptStatus.PREPARED
+				? "OPEN_PAYMENT_WINDOW" : "NONE"
 		);
 	}
 

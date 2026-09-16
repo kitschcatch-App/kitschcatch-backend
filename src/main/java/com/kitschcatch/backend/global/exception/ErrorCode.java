@@ -41,7 +41,8 @@ public enum ErrorCode {
 	PAYMENT_INVALID_STATUS(HttpStatus.BAD_REQUEST, "PAYMENT_003", "결제를 처리할 수 없는 상태입니다."),
 	TOSS_PAYMENTS_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "PAYMENT_004", "토스페이먼츠 설정이 필요합니다."),
 	TOSS_PAYMENTS_REQUEST_FAILED(HttpStatus.BAD_REQUEST, "PAYMENT_005", "토스페이먼츠 요청에 실패했습니다."),
-	PAYMENT_WEBHOOK_INVALID(HttpStatus.BAD_REQUEST, "PAYMENT_006", "결제 웹훅 요청이 올바르지 않습니다.");
+	PAYMENT_WEBHOOK_INVALID(HttpStatus.BAD_REQUEST, "PAYMENT_006", "결제 웹훅 요청이 올바르지 않습니다."),
+	PAYMENT_RETRY_NOT_ALLOWED(HttpStatus.CONFLICT, "PAYMENT_007", "현재 결제는 재시도할 수 없습니다.");
 
 
 	private final HttpStatus httpStatus;

@@ -5,6 +5,8 @@ import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentRequest;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentResponse;
 import com.kitschcatch.backend.domain.order.service.PaymentService;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
@@ -61,6 +63,17 @@ public class PaymentController {
 		@PathVariable String paymentId
 	) {
 		return ApiResponse.success(paymentService.getPayment(user.userId(), paymentId));
+	}
+
+	@PostMapping("/{paymentId}/retry")
+	@Operation(summary = "결제 재시도 준비", description = "실패한 결제를 재시도할 수 있도록 새 결제 시도와 PG 주문 번호를 발급합니다.")
+	public ApiResponse<RetryPaymentResponse> prepareRetry(
+		@AuthenticationPrincipal AuthenticatedUser user,
+		@Parameter(description = "내부 결제 ID", example = "pay_123456")
+		@PathVariable String paymentId,
+		@Valid @RequestBody RetryPaymentRequest request
+	) {
+		return ApiResponse.success(paymentService.prepareRetry(user.userId(), paymentId, request));
 	}
 
 	@PostMapping("/{paymentId}/cancel")

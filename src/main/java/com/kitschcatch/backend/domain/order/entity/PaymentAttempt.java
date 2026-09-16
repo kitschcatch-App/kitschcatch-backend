@@ -194,6 +194,11 @@ public class PaymentAttempt {
 		this.attemptStatus = PaymentAttemptStatus.PROCESSING;
 	}
 
+	public void startConfirmation(String paymentKey) {
+		this.paymentKey = paymentKey;
+		this.attemptStatus = PaymentAttemptStatus.PROCESSING;
+	}
+
 	public void markUnknown() {
 		this.attemptStatus = PaymentAttemptStatus.UNKNOWN;
 	}

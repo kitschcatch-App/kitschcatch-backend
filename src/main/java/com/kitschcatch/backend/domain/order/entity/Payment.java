@@ -134,6 +134,14 @@ public class Payment {
 		this.recoveryState = PaymentRecoveryState.PENDING;
 	}
 
+	public void prepareRetry(String attemptId) {
+		this.currentAttemptId = attemptId;
+		this.paymentStatus = PaymentStatus.READY;
+		this.processingOperation = PaymentOperation.NONE;
+		this.recoveryState = PaymentRecoveryState.NONE;
+		this.lastFailureCode = null;
+	}
+
 	public void markFailed(String failureCode) {
 		this.paymentStatus = PaymentStatus.FAILED;
 		this.processingOperation = PaymentOperation.NONE;
@@ -143,6 +151,10 @@ public class Payment {
 
 	public void markRecoveryPending() {
 		this.recoveryState = PaymentRecoveryState.PENDING;
+	}
+
+	public boolean isRecoveryReviewRequired() {
+		return this.recoveryState == PaymentRecoveryState.REVIEW_REQUIRED;
 	}
 
 	public void markVerified(LocalDateTime verifiedAt) {
