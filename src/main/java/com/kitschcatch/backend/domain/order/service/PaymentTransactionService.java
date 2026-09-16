@@ -199,7 +199,15 @@ public class PaymentTransactionService {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 		}
 		payment.startProcessing(PaymentOperation.CANCEL);
-		return startAttempt(payment, PaymentAttemptOperation.CANCEL, payment.getPaymentKey(), "고객 요청");
+		String pgOrderId = payment.getOrder().getOrderNumber();
+		if (paymentAttemptRepository != null) {
+			pgOrderId = paymentAttemptRepository
+				.findFirstByPaymentIdAndOperationAndAttemptStatusOrderBySequenceNumberDesc(
+					payment.getId(), PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.SUCCEEDED)
+				.map(PaymentAttempt::getPgOrderId)
+				.orElse(pgOrderId);
+		}
+		return startAttempt(payment, PaymentAttemptOperation.CANCEL, payment.getPaymentKey(), "고객 요청", pgOrderId);
 	}
 
 	@Transactional
@@ -259,6 +267,16 @@ public class PaymentTransactionService {
 		String paymentKey,
 		String cancelReason
 	) {
+		return startAttempt(payment, operation, paymentKey, cancelReason, payment.getOrder().getOrderNumber());
+	}
+
+	private PaymentOperationContext startAttempt(
+		Payment payment,
+		PaymentAttemptOperation operation,
+		String paymentKey,
+		String cancelReason,
+		String pgOrderId
+	) {
 		if (paymentAttemptRepository == null) {
 			return new PaymentOperationContext(payment.getOrder().getOrderNumber(), payment.getAmount(), paymentKey);
 		}
@@ -273,7 +291,7 @@ public class PaymentTransactionService {
 			.sequenceNumber(sequence)
 			.operation(operation)
 			.attemptStatus(PaymentAttemptStatus.PROCESSING)
-			.pgOrderId(payment.getOrder().getOrderNumber())
+			.pgOrderId(pgOrderId)
 			.paymentKey(paymentKey)
 			.amount(payment.getAmount())
 			.cancelReason(cancelReason)
@@ -284,7 +302,7 @@ public class PaymentTransactionService {
 		payment.bindAttempt(attempt.getAttemptId(), operation == PaymentAttemptOperation.CONFIRM
 			? PaymentOperation.CONFIRM : PaymentOperation.CANCEL);
 		return new PaymentOperationContext(
-			payment.getOrder().getOrderNumber(), payment.getOrder().getOrderNumber(), payment.getAmount(), paymentKey,
+			payment.getOrder().getOrderNumber(), pgOrderId, payment.getAmount(), paymentKey,
 			attempt.getAttemptId(), payment.getStateVersion()
 		);
 	}

@@ -2,6 +2,7 @@
 package com.kitschcatch.backend.domain.order.repository;
 
 import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
 import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
@@ -30,6 +31,12 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
 	);
 
 	Optional<PaymentAttempt> findTopByPaymentIdOrderBySequenceNumberDesc(Long paymentId);
+
+	Optional<PaymentAttempt> findFirstByPaymentIdAndOperationAndAttemptStatusOrderBySequenceNumberDesc(
+		Long paymentId,
+		PaymentAttemptOperation operation,
+		PaymentAttemptStatus attemptStatus
+	);
 
 	Optional<PaymentAttempt> findFirstByPaymentKeyOrPgOrderIdOrderBySequenceNumberDesc(
 		String paymentKey,

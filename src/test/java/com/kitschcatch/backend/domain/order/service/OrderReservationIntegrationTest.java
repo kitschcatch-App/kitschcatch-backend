@@ -242,6 +242,17 @@ class OrderReservationIntegrationTest {
 		assertThat(paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(
 			paymentRepository.findByPaymentIdAndOrderUserId(order.paymentId(), buyerId).orElseThrow().getId()
 		).orElseThrow().getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
+		when(tossPaymentsClient.cancel(any())).thenReturn(
+			new TossPaymentResponse("second-key", retry.pgOrderId(), 12000L, "CANCELED"));
+		paymentService.cancelPayment(buyerId, order.paymentId());
+		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+		assertThat(paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(
+			paymentRepository.findByPaymentIdAndOrderUserId(order.paymentId(), buyerId).orElseThrow().getId()
+		).orElseThrow()).satisfies(attempt -> {
+			assertThat(attempt.getOperation()).isEqualTo(PaymentAttemptOperation.CANCEL);
+			assertThat(attempt.getPgOrderId()).isEqualTo(retry.pgOrderId());
+			assertThat(attempt.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
+		});
 	}
 
 	@Test
