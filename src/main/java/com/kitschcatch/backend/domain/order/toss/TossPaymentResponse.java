@@ -13,6 +13,6 @@ public record TossPaymentResponse(
 ) {
 
 	public TossPaymentResponse(String paymentKey, String orderId, Long totalAmount, String status) {
-		this(paymentKey, orderId, totalAmount, status, null, null, null, null);
+		this(paymentKey, orderId, totalAmount, status, "CANCELED".equals(status) ? 0L : null, null, null, null);
 	}
 }

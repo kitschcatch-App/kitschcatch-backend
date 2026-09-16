@@ -225,7 +225,7 @@ public class PaymentRecoveryService {
 	}
 
 	private boolean isFullyCanceled(TossPaymentResponse response) {
-		return response.balanceAmount() == null || response.balanceAmount() == 0L;
+		return response.balanceAmount() != null && response.balanceAmount() == 0L;
 	}
 
 	private LocalDateTime parseTime(String value) {
