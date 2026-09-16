@@ -18,6 +18,12 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
 
 	Optional<PaymentAttempt> findByAttemptId(String attemptId);
 
+	@Query("select a.payment.order.id from PaymentAttempt a where a.attemptId = :attemptId")
+	Optional<Long> findOrderIdByAttemptId(@Param("attemptId") String attemptId);
+
+	@Query("select a.payment.paymentId from PaymentAttempt a where a.attemptId = :attemptId")
+	Optional<String> findPaymentIdByAttemptId(@Param("attemptId") String attemptId);
+
 	Optional<PaymentAttempt> findByPaymentIdAndSourceAttemptAttemptId(
 		Long paymentId,
 		String sourceAttemptId

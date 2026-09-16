@@ -15,6 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -113,6 +114,10 @@ public class PaymentAttempt {
 	@Column(nullable = false)
 	private int checkCount;
 
+	@Version
+	@Column(nullable = false)
+	private long stateVersion;
+
 	@Column(length = 50)
 	private String leaseToken;
 
@@ -206,6 +211,11 @@ public class PaymentAttempt {
 		this.pgErrorCode = errorCode;
 		this.failureReason = reason;
 		this.completedAt = LocalDateTime.now();
+	}
+
+	public void markReviewRequired(String reason) {
+		this.attemptStatus = PaymentAttemptStatus.UNKNOWN;
+		this.failureReason = reason;
 	}
 
 	public void markExpired() {
