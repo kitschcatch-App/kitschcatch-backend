@@ -72,7 +72,8 @@ public class PaymentTransactionService {
 			if (existing.getPaymentStatus() != PaymentStatus.READY || existing.getPaymentMethod() != request.paymentMethod()) {
 				throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 			}
-			return new CreatePaymentResponse(existing.getPaymentId(), existing.getPaymentStatus());
+			PaymentAttempt attempt = ensurePreparedAttempt(existing);
+			return toCreatePaymentResponse(existing, attempt);
 		}
 		Payment payment = paymentRepository.save(Payment.builder()
 			.paymentId(generatePaymentId())
@@ -81,7 +82,8 @@ public class PaymentTransactionService {
 			.paymentMethod(request.paymentMethod())
 			.paymentStatus(PaymentStatus.READY)
 			.build());
-		return new CreatePaymentResponse(payment.getPaymentId(), payment.getPaymentStatus());
+		PaymentAttempt attempt = ensurePreparedAttempt(payment);
+		return toCreatePaymentResponse(payment, attempt);
 	}
 
 	@Transactional(readOnly = true)
@@ -100,6 +102,21 @@ public class PaymentTransactionService {
 		validateOrderStatus(payment.getOrder(), OrderStatus.PENDING);
 		validateReservation(payment.getOrder(), ProductStatus.RESERVED);
 		validateNotExpired(payment.getOrder());
+
+		if ((request.attemptId() == null || request.attemptId().isBlank()) && paymentAttemptRepository != null) {
+			PaymentAttempt prepared = paymentAttemptRepository
+				.findFirstByPaymentIdAndOperationAndAttemptStatusOrderBySequenceNumberDesc(
+					payment.getId(), PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.PREPARED)
+				.orElse(null);
+			if (prepared != null) {
+				payment.startConfirmation(request.paymentKey());
+				prepared.startConfirmation(request.paymentKey());
+				payment.bindAttempt(prepared.getAttemptId(), PaymentOperation.CONFIRM);
+				return new PaymentOperationContext(payment.getOrder().getOrderNumber(), prepared.getPgOrderId(),
+					payment.getAmount(), request.paymentKey(), prepared.getAttemptId(), payment.getStateVersion(),
+					prepared.getPgIdempotencyKey());
+			}
+		}
 
 		if (request.attemptId() != null && !request.attemptId().isBlank()) {
 			if (paymentAttemptRepository == null) {
@@ -314,6 +331,36 @@ public class PaymentTransactionService {
 			attempt.getAttemptStatus(), attempt.getAttemptStatus() == PaymentAttemptStatus.PREPARED
 				? "OPEN_PAYMENT_WINDOW" : "NONE"
 		);
+	}
+
+	private PaymentAttempt ensurePreparedAttempt(Payment payment) {
+		if (paymentAttemptRepository == null) {
+			return null;
+		}
+		PaymentAttempt prepared = paymentAttemptRepository
+			.findFirstByPaymentIdAndOperationAndAttemptStatusOrderBySequenceNumberDesc(
+				payment.getId(), PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.PREPARED)
+			.orElse(null);
+		if (prepared != null) {
+			return prepared;
+		}
+		int sequence = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(payment.getId())
+			.map(attempt -> attempt.getSequenceNumber() + 1).orElse(1);
+		String attemptId = generateId("ATT");
+		LocalDateTime now = LocalDateTime.now();
+		PaymentAttempt attempt = paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(attemptId).payment(payment).sequenceNumber(sequence)
+			.operation(PaymentAttemptOperation.CONFIRM).attemptStatus(PaymentAttemptStatus.PREPARED)
+			.pgOrderId(payment.getOrder().getOrderNumber()).amount(payment.getAmount())
+			.pgIdempotencyKey("confirm-" + attemptId).requestedAt(now).nextCheckAt(now).build());
+		payment.prepareInitialAttempt(attempt.getAttemptId());
+		return attempt;
+	}
+
+	private CreatePaymentResponse toCreatePaymentResponse(Payment payment, PaymentAttempt attempt) {
+		return new CreatePaymentResponse(payment.getPaymentId(), payment.getPaymentStatus(),
+			attempt == null ? null : attempt.getAttemptId(), attempt == null ? null : attempt.getPgOrderId(),
+			payment.getOrder().getReservationExpiresAt());
 	}
 
 	private String generateId(String prefix) {

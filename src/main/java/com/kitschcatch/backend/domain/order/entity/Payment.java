@@ -142,6 +142,12 @@ public class Payment {
 		this.lastFailureCode = null;
 	}
 
+	public void prepareInitialAttempt(String attemptId) {
+		this.currentAttemptId = attemptId;
+		this.processingOperation = PaymentOperation.NONE;
+		this.recoveryState = PaymentRecoveryState.NONE;
+	}
+
 	public void markFailed(String failureCode) {
 		this.paymentStatus = PaymentStatus.FAILED;
 		this.processingOperation = PaymentOperation.NONE;

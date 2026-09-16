@@ -118,7 +118,10 @@ class OrderReservationIntegrationTest {
 
 	@Test
 	void creatingOrderReservesPostAndRejectsAnotherOrder() {
-		createOrder();
+		CreateOrderResponse response = createOrder();
+		assertThat(response.attemptId()).startsWith("ATT-");
+		assertThat(response.pgOrderId()).isEqualTo(response.orderId());
+		assertThat(response.reservationExpiresAt()).isNotNull();
 		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
 		assertThatThrownBy(this::createOrder).isInstanceOf(BusinessException.class);
 		assertThat(orderRepository.count()).isEqualTo(1);

@@ -5,10 +5,14 @@ import com.kitschcatch.backend.domain.order.dto.CreateOrderRequest;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.Payment;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.entity.PgProvider;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
+import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
@@ -22,6 +26,7 @@ import java.util.List;
 import java.util.UUID;
 import java.time.LocalDateTime;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +39,7 @@ public class OrderService {
 	private final PostRepository postRepository;
 	private final UserRepository userRepository;
 	private final OrderReservationProperties reservationProperties;
+	private final PaymentAttemptRepository paymentAttemptRepository;
 
 	public OrderService(
 		PurchaseOrderRepository orderRepository,
@@ -42,11 +48,24 @@ public class OrderService {
 		UserRepository userRepository,
 		OrderReservationProperties reservationProperties
 	) {
+		this(orderRepository, paymentRepository, postRepository, userRepository, reservationProperties, null);
+	}
+
+	@Autowired
+	public OrderService(
+		PurchaseOrderRepository orderRepository,
+		PaymentRepository paymentRepository,
+		PostRepository postRepository,
+		UserRepository userRepository,
+		OrderReservationProperties reservationProperties,
+		PaymentAttemptRepository paymentAttemptRepository
+	) {
 		this.orderRepository = orderRepository;
 		this.paymentRepository = paymentRepository;
 		this.postRepository = postRepository;
 		this.userRepository = userRepository;
 		this.reservationProperties = reservationProperties;
+		this.paymentAttemptRepository = paymentAttemptRepository;
 	}
 
 	@Transactional
@@ -84,8 +103,33 @@ public class OrderService {
 			.paymentMethod(request.paymentMethod())
 			.paymentStatus(PaymentStatus.READY)
 			.build());
+		PaymentAttempt attempt = prepareInitialAttempt(payment);
 
-		return new CreateOrderResponse(order.getOrderNumber(), payment.getPaymentId(), payment.getPaymentStatus());
+		return new CreateOrderResponse(order.getOrderNumber(), payment.getPaymentId(), payment.getPaymentStatus(),
+			attempt == null ? null : attempt.getAttemptId(), attempt == null ? null : attempt.getPgOrderId(),
+			order.getReservationExpiresAt());
+	}
+
+	private PaymentAttempt prepareInitialAttempt(Payment payment) {
+		if (paymentAttemptRepository == null) {
+			return null;
+		}
+		String attemptId = generateId("ATT");
+		LocalDateTime now = LocalDateTime.now();
+		PaymentAttempt attempt = paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(attemptId)
+			.payment(payment)
+			.sequenceNumber(1)
+			.operation(PaymentAttemptOperation.CONFIRM)
+			.attemptStatus(PaymentAttemptStatus.PREPARED)
+			.pgOrderId(payment.getOrder().getOrderNumber())
+			.amount(payment.getAmount())
+			.pgIdempotencyKey("confirm-" + attemptId)
+			.requestedAt(now)
+			.nextCheckAt(now)
+			.build());
+		payment.prepareInitialAttempt(attempt.getAttemptId());
+		return attempt;
 	}
 
 	private void validatePostOnSale(Post post) {
