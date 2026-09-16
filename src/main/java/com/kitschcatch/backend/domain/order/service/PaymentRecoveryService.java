@@ -130,6 +130,10 @@ public class PaymentRecoveryService {
 			payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
 			return;
 		}
+		if (TOSS_CANCELED.equals(response.status())) {
+			markReview(payment, attempt, "부분 취소 또는 잔액이 남은 PG 결과입니다.");
+			return;
+		}
 		if (TOSS_ABORTED.equals(response.status()) || TOSS_EXPIRED.equals(response.status())) {
 			attempt.markFailed(response.status(), "PG 결제 승인이 확정적으로 실패했습니다.");
 			payment.markFailed(response.status());
@@ -145,15 +149,30 @@ public class PaymentRecoveryService {
 			payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
 			return;
 		}
+		if (TOSS_CANCELED.equals(response.status())) {
+			markReview(payment, attempt, "부분 취소 또는 잔액이 남은 PG 결과입니다.");
+			return;
+		}
 		markUnknown(payment, attempt, response.status());
 	}
 
 	private void markUnknown(Payment payment, PaymentAttempt attempt, String pgStatus) {
 		attempt.markUnknown();
-		payment.markRecoveryPending();
-		if (pgStatus != null) {
-			attempt.markReviewRequired("PG 상태 확인이 더 필요합니다: " + pgStatus);
+		if (isTransientStatus(pgStatus)) {
+			payment.markRecoveryPending();
+			return;
 		}
+		markReview(payment, attempt, "지원하지 않는 PG 상태입니다: " + pgStatus);
+	}
+
+	private void markReview(Payment payment, PaymentAttempt attempt, String reason) {
+		attempt.markReviewRequired(reason);
+		payment.markReviewRequired("PG_STATUS_REVIEW");
+	}
+
+	private boolean isTransientStatus(String pgStatus) {
+		return pgStatus == null || "READY".equals(pgStatus) || "IN_PROGRESS".equals(pgStatus)
+			|| "WAITING_FOR_DEPOSIT".equals(pgStatus) || TOSS_DONE.equals(pgStatus);
 	}
 
 	private boolean samePayment(PaymentAttempt attempt, TossPaymentResponse response) {
