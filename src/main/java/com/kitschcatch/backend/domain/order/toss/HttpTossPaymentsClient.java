@@ -47,6 +47,40 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 	}
 
 	@Override
+	public TossPaymentResponse getPayment(String paymentKey) {
+		try {
+			return restClient.get()
+				.uri("/v1/payments/{paymentKey}", paymentKey)
+				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
+				.retrieve()
+				.body(TossPaymentResponse.class);
+		} catch (IllegalStateException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
+		} catch (RestClientResponseException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+		} catch (RestClientException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+		}
+	}
+
+	@Override
+	public TossPaymentResponse getPaymentByOrderId(String orderId) {
+		try {
+			return restClient.get()
+				.uri("/v1/payments/orders/{orderId}", orderId)
+				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
+				.retrieve()
+				.body(TossPaymentResponse.class);
+		} catch (IllegalStateException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
+		} catch (RestClientResponseException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+		} catch (RestClientException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+		}
+	}
+
+	@Override
 	public TossPaymentResponse cancel(TossPaymentCancelRequest request) {
 		try {
 			return restClient.post()
