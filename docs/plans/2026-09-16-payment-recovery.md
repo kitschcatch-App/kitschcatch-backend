@@ -262,10 +262,10 @@ Toss 테스트 환경에서는 새 PG 주문 번호로 재인증 → 승인 → 
 - [x] 복구 스케줄러 lease/backoff, 실패 확정 결제와 미리 준비된 시도의 예약 만료 연결.
 - [x] 응답 메타데이터(`attemptId`, `processingOperation`, `recoveryState`, `retryAllowed` 등)와 HTTP·통합 테스트.
 - [x] 수동 PostgreSQL 변경 SQL 초안(`029_payment_recovery.sql`). 운영 데이터 사전 점검과 실제 적용은 별도 실행.
-- [ ] 성공 결제의 외부 전액 취소를 느린 순환 조회로 점검하는 별도 스캔.
+- [x] 성공 결제의 외부 전액 취소를 느린 순환 조회로 점검하는 별도 스캔.
 - [ ] 처리 중 API의 202 응답 계약과 PG 오류 코드별 확정 실패 분류.
 - [ ] 격리된 PostgreSQL에서 수동 SQL·다중 작업자·점유 만료를 실행하는 검증.
 - [ ] Toss 테스트 키와 등록된 HTTPS 웹훅을 사용한 실제 연동 검증.
 
-주요 구현 커밋: `f4958c0`, `fa33364`, `85cf196`, `1cd9229`, `5ffd1f9`, `21ce921`, `7db2912`, `92f2eda`.
+주요 구현 커밋: `f4958c0`, `fa33364`, `85cf196`, `1cd9229`, `5ffd1f9`, `21ce921`, `7db2912`, `92f2eda`, `a445684`, `727dc62`, `b7274ba`.
 로컬 검증은 각 변경 후 `./gradlew test` 또는 대상 테스트로 실행했으며, 최종 `./gradlew test`와 `./gradlew build`가 모두 통과했다.
