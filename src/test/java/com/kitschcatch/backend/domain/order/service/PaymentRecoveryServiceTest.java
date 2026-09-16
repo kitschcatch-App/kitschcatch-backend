@@ -148,6 +148,7 @@ class PaymentRecoveryServiceTest {
 
 		assertThat(response.status()).isEqualTo(PaymentStatus.PROCESSING);
 		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.PROCESSING);
+		assertThat(payment.isRecoveryReviewRequired()).isTrue();
 		assertThat(attempt.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.UNKNOWN);
 	}
 
@@ -167,6 +168,7 @@ class PaymentRecoveryServiceTest {
 		assertThat(payment.getPaymentStatus()).isEqualTo(PaymentStatus.PROCESSING);
 		assertThat(attempt.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.UNKNOWN);
 		assertThat(attempt.getFailureReason()).isEqualTo("오래된 결제 시도의 응답입니다.");
+		assertThat(payment.isRecoveryReviewRequired()).isTrue();
 	}
 
 	@Test

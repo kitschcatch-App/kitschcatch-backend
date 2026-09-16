@@ -98,6 +98,9 @@ public class PaymentTransactionService {
 			throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);
 		}
 		Payment payment = findPaymentWithLock(paymentId, userId);
+		if (payment.isRecoveryReviewRequired()) {
+			throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+		}
 		validatePaymentStatus(payment, PaymentStatus.READY);
 		validateOrderStatus(payment.getOrder(), OrderStatus.PENDING);
 		validateReservation(payment.getOrder(), ProductStatus.RESERVED);

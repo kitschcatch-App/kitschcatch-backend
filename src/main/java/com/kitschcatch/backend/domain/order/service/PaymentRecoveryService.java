@@ -65,6 +65,7 @@ public class PaymentRecoveryService {
 		}
 		if (payment.getCurrentAttemptId() != null && !attemptId.equals(payment.getCurrentAttemptId())) {
 			lockedAttempt.markReviewRequired("오래된 결제 시도의 응답입니다.");
+			payment.markReviewRequired("STALE_ATTEMPT_RESULT");
 			return toResponse(payment);
 		}
 
