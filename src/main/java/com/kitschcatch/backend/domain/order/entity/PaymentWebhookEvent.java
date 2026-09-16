@@ -137,4 +137,12 @@ public class PaymentWebhookEvent {
 		this.failureReason = reason;
 		this.processedAt = LocalDateTime.now();
 	}
+
+	public boolean isClaimable(LocalDateTime now) {
+		return (processingStatus == PaymentWebhookProcessingStatus.RECEIVED
+			|| processingStatus == PaymentWebhookProcessingStatus.RETRY_WAIT
+			|| processingStatus == PaymentWebhookProcessingStatus.PROCESSING)
+			&& !nextProcessAt.isAfter(now)
+			&& (leaseUntil == null || !leaseUntil.isAfter(now));
+	}
 }

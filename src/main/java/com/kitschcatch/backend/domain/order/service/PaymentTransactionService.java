@@ -312,8 +312,25 @@ public class PaymentTransactionService {
 			payment.getAmount(),
 			payment.getPaymentStatus(),
 			payment.getCreatedAt(),
-			payment.getApprovedAt()
+			payment.getApprovedAt(),
+			payment.getCurrentAttemptId(),
+			payment.getProcessingOperation(),
+			payment.getRecoveryState(),
+			isRetryAllowed(payment),
+			payment.getOrder().getReservationExpiresAt(),
+			payment.getLastVerifiedAt(),
+			payment.getLastFailureCode()
 		);
+	}
+
+	private boolean isRetryAllowed(Payment payment) {
+		return payment.getPaymentStatus() == PaymentStatus.FAILED
+			&& !payment.isRecoveryReviewRequired()
+			&& payment.getOrder().getOrderStatus() == OrderStatus.PENDING
+			&& payment.getOrder().getPost().isOwnedByOrder(payment.getOrder().getOrderNumber())
+			&& payment.getOrder().getPost().getProductStatus() == ProductStatus.RESERVED
+			&& payment.getOrder().getPost().getDeletedAt() == null
+			&& !payment.getOrder().isReservationExpired(LocalDateTime.now());
 	}
 
 	private String generatePaymentId() {

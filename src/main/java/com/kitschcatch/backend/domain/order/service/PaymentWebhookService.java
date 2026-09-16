@@ -28,6 +28,32 @@ public class PaymentWebhookService {
 	}
 
 	@Transactional
+	public PaymentWebhookEvent claim(Long eventId, String leaseToken, LocalDateTime leaseUntil) {
+		PaymentWebhookEvent event = eventRepository.findByIdForUpdate(eventId).orElse(null);
+		if (event == null || !event.isClaimable(LocalDateTime.now())) {
+			return null;
+		}
+		event.markProcessing(leaseToken, leaseUntil);
+		return event;
+	}
+
+	@Transactional
+	public void markProcessed(Long eventId) {
+		eventRepository.findByIdForUpdate(eventId).ifPresent(PaymentWebhookEvent::markProcessed);
+	}
+
+	@Transactional
+	public void scheduleRetry(Long eventId, String failureReason) {
+		eventRepository.findByIdForUpdate(eventId).ifPresent(event ->
+			event.scheduleRetry(LocalDateTime.now().plusSeconds(nextDelaySeconds(event.getReceiveCount())), failureReason)
+		);
+	}
+
+	private long nextDelaySeconds(int receiveCount) {
+		return Math.min(1800L, 30L * (1L << Math.min(receiveCount, 6)));
+	}
+
+	@Transactional
 	public void receive(String transmissionId, TossPaymentWebhookRequest request) {
 		if (!StringUtils.hasText(transmissionId) || request == null
 			|| !StringUtils.hasText(request.eventType())

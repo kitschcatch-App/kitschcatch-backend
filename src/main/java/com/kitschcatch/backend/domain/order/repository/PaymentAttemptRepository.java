@@ -31,6 +31,11 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
 
 	Optional<PaymentAttempt> findTopByPaymentIdOrderBySequenceNumberDesc(Long paymentId);
 
+	Optional<PaymentAttempt> findFirstByPaymentKeyOrPgOrderIdOrderBySequenceNumberDesc(
+		String paymentKey,
+		String pgOrderId
+	);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select a from PaymentAttempt a where a.attemptId = :attemptId")
 	Optional<PaymentAttempt> findByAttemptIdForUpdate(@Param("attemptId") String attemptId);

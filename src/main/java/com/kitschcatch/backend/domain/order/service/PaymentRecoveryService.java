@@ -7,7 +7,10 @@ import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
 import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
 import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentRecoveryState;
+import com.kitschcatch.backend.domain.order.entity.OrderStatus;
+import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
+import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
@@ -185,7 +188,24 @@ public class PaymentRecoveryService {
 			payment.getAmount(),
 			payment.getPaymentStatus(),
 			payment.getCreatedAt(),
-			payment.getApprovedAt()
+			payment.getApprovedAt(),
+			payment.getCurrentAttemptId(),
+			payment.getProcessingOperation(),
+			payment.getRecoveryState(),
+			isRetryAllowed(payment),
+			order.getReservationExpiresAt(),
+			payment.getLastVerifiedAt(),
+			payment.getLastFailureCode()
 		);
+	}
+
+	private boolean isRetryAllowed(Payment payment) {
+		return payment.getPaymentStatus() == PaymentStatus.FAILED
+			&& payment.getRecoveryState() == PaymentRecoveryState.NONE
+			&& payment.getOrder().getOrderStatus() == OrderStatus.PENDING
+			&& payment.getOrder().getPost().isOwnedByOrder(payment.getOrder().getOrderNumber())
+			&& payment.getOrder().getPost().getProductStatus() == ProductStatus.RESERVED
+			&& payment.getOrder().getPost().getDeletedAt() == null
+			&& !payment.getOrder().isReservationExpired(LocalDateTime.now());
 	}
 }

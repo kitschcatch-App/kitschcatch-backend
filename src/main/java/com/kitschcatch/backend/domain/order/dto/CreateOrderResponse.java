@@ -3,6 +3,7 @@ package com.kitschcatch.backend.domain.order.dto;
 
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDateTime;
 
 @Schema(description = "주문 생성 응답")
 public record CreateOrderResponse(
@@ -13,6 +14,13 @@ public record CreateOrderResponse(
 	String paymentId,
 
 	@Schema(description = "초기 결제 상태")
-	PaymentStatus status
+	PaymentStatus status,
+	String attemptId,
+	String pgOrderId,
+	LocalDateTime reservationExpiresAt
 ) {
+
+	public CreateOrderResponse(String orderId, String paymentId, PaymentStatus status) {
+		this(orderId, paymentId, status, null, null, null);
+	}
 }
