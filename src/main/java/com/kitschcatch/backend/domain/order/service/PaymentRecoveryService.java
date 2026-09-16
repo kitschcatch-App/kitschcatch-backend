@@ -79,6 +79,27 @@ public class PaymentRecoveryService {
 		return toResponse(payment);
 	}
 
+	@Transactional
+	public void recordLookupFailure(String attemptId, String failureReason) {
+		String paymentId = paymentAttemptRepository.findPaymentIdByAttemptId(attemptId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+		Payment payment = paymentRepository.findByPaymentIdForUpdate(paymentId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+		PaymentAttempt attempt = paymentAttemptRepository.findByAttemptIdForUpdate(attemptId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+		if (!attempt.isActive()) {
+			return;
+		}
+		attempt.markUnknown();
+		attempt.scheduleNextCheck(LocalDateTime.now().plusSeconds(nextDelaySeconds(attempt.getCheckCount())));
+		attempt.markReviewRequired(failureReason);
+		payment.markRecoveryPending();
+	}
+
+	private long nextDelaySeconds(int checkCount) {
+		return Math.min(900L, 30L * (1L << Math.min(checkCount, 5)));
+	}
+
 	private void recoverConfirmation(Payment payment, PaymentAttempt attempt, TossPaymentResponse response) {
 		if (TOSS_DONE.equals(response.status())) {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));

@@ -38,6 +38,7 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
 	@Query("""
 		select a from PaymentAttempt a
 		where a.attemptStatus in :statuses
+		and a.payment.recoveryState <> com.kitschcatch.backend.domain.order.entity.PaymentRecoveryState.REVIEW_REQUIRED
 		and a.nextCheckAt <= :now
 		and (a.leaseUntil is null or a.leaseUntil <= :now)
 		order by a.nextCheckAt, a.id
