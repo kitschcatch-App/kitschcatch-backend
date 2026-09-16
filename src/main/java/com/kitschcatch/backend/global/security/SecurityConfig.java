@@ -34,6 +34,7 @@ public class SecurityConfig {
 			.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers(
 					"/api/auth/**",
+					"/api/payments/webhooks/toss",
 					"/ws",
 					"/ws/**",
 					"/v3/api-docs",

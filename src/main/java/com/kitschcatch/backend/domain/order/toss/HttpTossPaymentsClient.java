@@ -32,9 +32,44 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 			return restClient.post()
 				.uri("/v1/payments/confirm")
 				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
-				.header(IDEMPOTENCY_KEY_HEADER, "confirm-" + request.paymentKey())
+				.header(IDEMPOTENCY_KEY_HEADER, request.idempotencyKey() == null
+					? "confirm-" + request.paymentKey() : request.idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.body(request)
+				.retrieve()
+				.body(TossPaymentResponse.class);
+		} catch (IllegalStateException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
+		} catch (RestClientResponseException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+		} catch (RestClientException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+		}
+	}
+
+	@Override
+	public TossPaymentResponse getPayment(String paymentKey) {
+		try {
+			return restClient.get()
+				.uri("/v1/payments/{paymentKey}", paymentKey)
+				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
+				.retrieve()
+				.body(TossPaymentResponse.class);
+		} catch (IllegalStateException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
+		} catch (RestClientResponseException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+		} catch (RestClientException exception) {
+			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+		}
+	}
+
+	@Override
+	public TossPaymentResponse getPaymentByOrderId(String orderId) {
+		try {
+			return restClient.get()
+				.uri("/v1/payments/orders/{orderId}", orderId)
+				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
 				.retrieve()
 				.body(TossPaymentResponse.class);
 		} catch (IllegalStateException exception) {
@@ -52,7 +87,8 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 			return restClient.post()
 				.uri("/v1/payments/{paymentKey}/cancel", request.paymentKey())
 				.header(HttpHeaders.AUTHORIZATION, properties.authorizationHeader())
-				.header(IDEMPOTENCY_KEY_HEADER, "cancel-" + request.paymentKey())
+				.header(IDEMPOTENCY_KEY_HEADER, request.idempotencyKey() == null
+					? "cancel-" + request.paymentKey() : request.idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.body(new TossCancelBody(request.cancelReason()))
 				.retrieve()

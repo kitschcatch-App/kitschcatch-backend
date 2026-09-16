@@ -12,6 +12,13 @@ public record ConfirmPaymentRequest(
 
 	@Schema(description = "토스페이먼츠 결제 키")
 	@NotBlank(message = "토스 결제 키는 필수입니다.")
-	String paymentKey
+	String paymentKey,
+
+	@Schema(description = "재시도 승인에 사용할 결제 시도 ID")
+	String attemptId
 ) {
+
+	public ConfirmPaymentRequest(String paymentId, String paymentKey) {
+		this(paymentId, paymentKey, null);
+	}
 }

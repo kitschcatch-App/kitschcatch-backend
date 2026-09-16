@@ -2,6 +2,8 @@
 package com.kitschcatch.backend.domain.order.dto;
 
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
+import com.kitschcatch.backend.domain.order.entity.PaymentOperation;
+import com.kitschcatch.backend.domain.order.entity.PaymentRecoveryState;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
@@ -23,6 +25,25 @@ public record PaymentResponse(
 	LocalDateTime createdAt,
 
 	@Schema(description = "결제 승인 시각")
-	LocalDateTime approvedAt
+	LocalDateTime approvedAt,
+	String attemptId,
+	PaymentOperation processingOperation,
+	PaymentRecoveryState recoveryState,
+	boolean retryAllowed,
+	LocalDateTime reservationExpiresAt,
+	LocalDateTime lastVerifiedAt,
+	String failureCode
 ) {
+
+	public PaymentResponse(
+		String paymentId,
+		String orderId,
+		Long amount,
+		PaymentStatus status,
+		LocalDateTime createdAt,
+		LocalDateTime approvedAt
+	) {
+		this(paymentId, orderId, amount, status, createdAt, approvedAt, null,
+			PaymentOperation.NONE, PaymentRecoveryState.NONE, false, null, null, null);
+	}
 }

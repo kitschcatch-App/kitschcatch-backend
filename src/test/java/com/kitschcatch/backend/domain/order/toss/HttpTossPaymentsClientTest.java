@@ -43,9 +43,11 @@ class HttpTossPaymentsClientTest {
 		server.expect(once(), requestTo("https://api.tosspayments.com/v1/payments/confirm"))
 			.andExpect(method(HttpMethod.POST))
 			.andExpect(header("Authorization", basicAuth()))
+			.andExpect(header("Idempotency-Key", "attempt-1"))
 			.andExpect(jsonPath("$.paymentKey").value("toss-payment-key"))
 			.andExpect(jsonPath("$.orderId").value("ORD-123"))
 			.andExpect(jsonPath("$.amount").value(650000))
+			.andExpect(jsonPath("$.idempotencyKey").doesNotExist())
 			.andRespond(withSuccess("""
 				{
 				  "paymentKey": "toss-payment-key",
@@ -56,7 +58,7 @@ class HttpTossPaymentsClientTest {
 				""", MediaType.APPLICATION_JSON));
 
 		TossPaymentResponse response = client.confirm(
-			new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)
+			new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L, "attempt-1")
 		);
 
 		assertThat(response.status()).isEqualTo("DONE");
@@ -84,6 +86,56 @@ class HttpTossPaymentsClientTest {
 		);
 
 		assertThat(response.status()).isEqualTo("CANCELED");
+		server.verify();
+	}
+
+	@Test
+	@DisplayName("결제 조회 요청은 paymentKey 경로와 Basic 인증을 전송한다")
+	void getPaymentSendsLookupRequest() {
+		server.expect(once(), requestTo("https://api.tosspayments.com/v1/payments/toss-payment-key"))
+			.andExpect(method(HttpMethod.GET))
+			.andExpect(header("Authorization", basicAuth()))
+			.andRespond(withSuccess("""
+				{
+				  "paymentKey": "toss-payment-key",
+				  "orderId": "ORD-123",
+				  "totalAmount": 650000,
+				  "balanceAmount": 0,
+				  "status": "CANCELED",
+				  "approvedAt": "2026-09-16T10:15:30+09:00",
+				  "canceledAt": "2026-09-16T10:20:30+09:00",
+				  "lastTransactionKey": "transaction-key"
+				}
+				""", MediaType.APPLICATION_JSON));
+
+		TossPaymentResponse response = client.getPayment("toss-payment-key");
+
+		assertThat(response.status()).isEqualTo("CANCELED");
+		assertThat(response.balanceAmount()).isZero();
+		assertThat(response.approvedAt()).isEqualTo("2026-09-16T10:15:30+09:00");
+		assertThat(response.canceledAt()).isEqualTo("2026-09-16T10:20:30+09:00");
+		server.verify();
+	}
+
+	@Test
+	@DisplayName("결제 키가 없는 결제는 주문 번호로 조회할 수 있다")
+	void getPaymentByOrderIdSendsLookupRequest() {
+		server.expect(once(), requestTo("https://api.tosspayments.com/v1/payments/orders/ORD-123"))
+			.andExpect(method(HttpMethod.GET))
+			.andExpect(header("Authorization", basicAuth()))
+			.andRespond(withSuccess("""
+				{
+				  "paymentKey": "toss-payment-key",
+				  "orderId": "ORD-123",
+				  "totalAmount": 650000,
+				  "status": "DONE"
+				}
+				""", MediaType.APPLICATION_JSON));
+
+		TossPaymentResponse response = client.getPaymentByOrderId("ORD-123");
+
+		assertThat(response.paymentKey()).isEqualTo("toss-payment-key");
+		assertThat(response.status()).isEqualTo("DONE");
 		server.verify();
 	}
 

@@ -36,7 +36,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 		where o.orderStatus = com.kitschcatch.backend.domain.order.entity.OrderStatus.PENDING
 		and o.reservationExpiresAt <= :now
 		and exists (select p.id from Payment p where p.order = o
-			and p.paymentStatus = com.kitschcatch.backend.domain.order.entity.PaymentStatus.READY)
+			and p.paymentStatus in (com.kitschcatch.backend.domain.order.entity.PaymentStatus.READY,
+				com.kitschcatch.backend.domain.order.entity.PaymentStatus.FAILED))
 		order by o.reservationExpiresAt, o.id
 		""")
 	List<Long> findExpiredReservationIds(@Param("now") LocalDateTime now, Pageable pageable);

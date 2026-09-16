@@ -5,11 +5,18 @@ import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentRequest;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.Payment;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
+import com.kitschcatch.backend.domain.order.entity.PaymentOperation;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
+import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.global.exception.BusinessException;
@@ -17,6 +24,7 @@ import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +34,27 @@ public class PaymentTransactionService {
 	private final PaymentRepository paymentRepository;
 	private final PurchaseOrderRepository orderRepository;
 	private final OrderReservationService reservationService;
+	private final PaymentAttemptRepository paymentAttemptRepository;
 
 	public PaymentTransactionService(
 		PaymentRepository paymentRepository,
 		PurchaseOrderRepository orderRepository,
 		OrderReservationService reservationService
 	) {
+		this(paymentRepository, orderRepository, reservationService, null);
+	}
+
+	@Autowired
+	public PaymentTransactionService(
+		PaymentRepository paymentRepository,
+		PurchaseOrderRepository orderRepository,
+		OrderReservationService reservationService,
+		PaymentAttemptRepository paymentAttemptRepository
+	) {
 		this.paymentRepository = paymentRepository;
 		this.orderRepository = orderRepository;
 		this.reservationService = reservationService;
+		this.paymentAttemptRepository = paymentAttemptRepository;
 	}
 
 	@Transactional
@@ -52,7 +72,8 @@ public class PaymentTransactionService {
 			if (existing.getPaymentStatus() != PaymentStatus.READY || existing.getPaymentMethod() != request.paymentMethod()) {
 				throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 			}
-			return new CreatePaymentResponse(existing.getPaymentId(), existing.getPaymentStatus());
+			PaymentAttempt attempt = ensurePreparedAttempt(existing);
+			return toCreatePaymentResponse(existing, attempt);
 		}
 		Payment payment = paymentRepository.save(Payment.builder()
 			.paymentId(generatePaymentId())
@@ -61,7 +82,8 @@ public class PaymentTransactionService {
 			.paymentMethod(request.paymentMethod())
 			.paymentStatus(PaymentStatus.READY)
 			.build());
-		return new CreatePaymentResponse(payment.getPaymentId(), payment.getPaymentStatus());
+		PaymentAttempt attempt = ensurePreparedAttempt(payment);
+		return toCreatePaymentResponse(payment, attempt);
 	}
 
 	@Transactional(readOnly = true)
@@ -76,13 +98,101 @@ public class PaymentTransactionService {
 			throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);
 		}
 		Payment payment = findPaymentWithLock(paymentId, userId);
+		if (payment.isRecoveryReviewRequired()) {
+			throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+		}
 		validatePaymentStatus(payment, PaymentStatus.READY);
 		validateOrderStatus(payment.getOrder(), OrderStatus.PENDING);
 		validateReservation(payment.getOrder(), ProductStatus.RESERVED);
 		validateNotExpired(payment.getOrder());
 
+		if ((request.attemptId() == null || request.attemptId().isBlank()) && paymentAttemptRepository != null) {
+			PaymentAttempt prepared = paymentAttemptRepository
+				.findFirstByPaymentIdAndOperationAndAttemptStatusOrderBySequenceNumberDesc(
+					payment.getId(), PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.PREPARED)
+				.orElse(null);
+			if (prepared != null) {
+				payment.startConfirmation(request.paymentKey());
+				prepared.startConfirmation(request.paymentKey());
+				payment.bindAttempt(prepared.getAttemptId(), PaymentOperation.CONFIRM);
+				return new PaymentOperationContext(payment.getOrder().getOrderNumber(), prepared.getPgOrderId(),
+					payment.getAmount(), request.paymentKey(), prepared.getAttemptId(), payment.getStateVersion(),
+					prepared.getPgIdempotencyKey());
+			}
+		}
+
+		if (request.attemptId() != null && !request.attemptId().isBlank()) {
+			if (paymentAttemptRepository == null) {
+				throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+			}
+			PaymentAttempt attempt = paymentAttemptRepository.findByAttemptIdForUpdate(request.attemptId())
+				.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED));
+			if (!paymentId.equals(attempt.getPayment().getPaymentId())
+				|| attempt.getOperation() != PaymentAttemptOperation.CONFIRM
+				|| attempt.getAttemptStatus() != PaymentAttemptStatus.PREPARED) {
+				throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+			}
+			payment.startConfirmation(request.paymentKey());
+			attempt.startConfirmation(request.paymentKey());
+			payment.bindAttempt(attempt.getAttemptId(), PaymentOperation.CONFIRM);
+			return new PaymentOperationContext(
+				payment.getOrder().getOrderNumber(), attempt.getPgOrderId(), payment.getAmount(),
+				request.paymentKey(), attempt.getAttemptId(), payment.getStateVersion(), attempt.getPgIdempotencyKey()
+			);
+		}
+
 		payment.startConfirmation(request.paymentKey());
-		return operationContext(payment);
+		return startAttempt(payment, PaymentAttemptOperation.CONFIRM, request.paymentKey(), null);
+	}
+
+	@Transactional
+	public RetryPaymentResponse prepareRetry(Long userId, String paymentId, RetryPaymentRequest request) {
+		if (paymentAttemptRepository == null) {
+			throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+		}
+		Payment payment = findPaymentWithLock(paymentId, userId);
+		PaymentAttempt failedAttempt = paymentAttemptRepository.findByAttemptIdForUpdate(request.failedAttemptId())
+			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED));
+		if (!paymentId.equals(failedAttempt.getPayment().getPaymentId())
+			|| failedAttempt.getOperation() != PaymentAttemptOperation.CONFIRM
+			|| failedAttempt.getAttemptStatus() != PaymentAttemptStatus.FAILED
+			|| payment.getPaymentStatus() != PaymentStatus.FAILED
+			|| payment.getOrder().getOrderStatus() != OrderStatus.PENDING
+			|| !payment.getOrder().getPost().isOwnedByOrder(payment.getOrder().getOrderNumber())
+			|| payment.getOrder().getPost().getProductStatus() != ProductStatus.RESERVED
+			|| payment.getOrder().getPost().getDeletedAt() != null
+			|| payment.isRecoveryReviewRequired()
+			|| payment.getOrder().isReservationExpired(LocalDateTime.now())) {
+			throw new BusinessException(ErrorCode.PAYMENT_RETRY_NOT_ALLOWED);
+		}
+
+		PaymentAttempt existing = paymentAttemptRepository
+			.findByPaymentIdAndSourceAttemptAttemptId(payment.getId(), failedAttempt.getAttemptId())
+			.orElse(null);
+		if (existing != null) {
+			return toRetryResponse(payment, existing);
+		}
+
+		int sequence = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(payment.getId())
+			.map(attempt -> attempt.getSequenceNumber() + 1)
+			.orElse(1);
+		LocalDateTime now = LocalDateTime.now();
+		String attemptId = generateId("ATT");
+		PaymentAttempt retryAttempt = paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(attemptId)
+			.payment(payment)
+			.sequenceNumber(sequence)
+			.operation(PaymentAttemptOperation.CONFIRM)
+			.attemptStatus(PaymentAttemptStatus.PREPARED)
+			.sourceAttempt(failedAttempt)
+			.pgOrderId(generateId("PG"))
+			.amount(payment.getAmount())
+			.pgIdempotencyKey("confirm-" + attemptId)
+			.requestedAt(now)
+			.nextCheckAt(now)
+			.build());
+		payment.prepareRetry(retryAttempt.getAttemptId());
+		return toRetryResponse(payment, retryAttempt);
 	}
 
 	@Transactional
@@ -108,8 +218,16 @@ public class PaymentTransactionService {
 		if (payment.getPaymentKey() == null) {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 		}
-		payment.startProcessing();
-		return operationContext(payment);
+		payment.startProcessing(PaymentOperation.CANCEL);
+		String pgOrderId = payment.getOrder().getOrderNumber();
+		if (paymentAttemptRepository != null) {
+			pgOrderId = paymentAttemptRepository
+				.findFirstByPaymentIdAndOperationAndAttemptStatusOrderBySequenceNumberDesc(
+					payment.getId(), PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.SUCCEEDED)
+				.map(PaymentAttempt::getPgOrderId)
+				.orElse(pgOrderId);
+		}
+		return startAttempt(payment, PaymentAttemptOperation.CANCEL, payment.getPaymentKey(), "고객 요청", pgOrderId);
 	}
 
 	@Transactional
@@ -163,8 +281,96 @@ public class PaymentTransactionService {
 		}
 	}
 
-	private PaymentOperationContext operationContext(Payment payment) {
-		return new PaymentOperationContext(payment.getOrder().getOrderNumber(), payment.getAmount(), payment.getPaymentKey());
+	private PaymentOperationContext startAttempt(
+		Payment payment,
+		PaymentAttemptOperation operation,
+		String paymentKey,
+		String cancelReason
+	) {
+		return startAttempt(payment, operation, paymentKey, cancelReason, payment.getOrder().getOrderNumber());
+	}
+
+	private PaymentOperationContext startAttempt(
+		Payment payment,
+		PaymentAttemptOperation operation,
+		String paymentKey,
+		String cancelReason,
+		String pgOrderId
+	) {
+		if (paymentAttemptRepository == null) {
+			return new PaymentOperationContext(payment.getOrder().getOrderNumber(), payment.getAmount(), paymentKey);
+		}
+		int sequence = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(payment.getId())
+			.map(attempt -> attempt.getSequenceNumber() + 1)
+			.orElse(1);
+		LocalDateTime now = LocalDateTime.now();
+		String attemptId = generateId("ATT");
+		PaymentAttempt attempt = paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(attemptId)
+			.payment(payment)
+			.sequenceNumber(sequence)
+			.operation(operation)
+			.attemptStatus(PaymentAttemptStatus.PROCESSING)
+			.pgOrderId(pgOrderId)
+			.paymentKey(paymentKey)
+			.amount(payment.getAmount())
+			.cancelReason(cancelReason)
+			.pgIdempotencyKey(operation.name().toLowerCase(Locale.ROOT) + "-" + paymentKey)
+			.requestedAt(now)
+			.nextCheckAt(now)
+			.build());
+		payment.bindAttempt(attempt.getAttemptId(), operation == PaymentAttemptOperation.CONFIRM
+			? PaymentOperation.CONFIRM : PaymentOperation.CANCEL);
+		return new PaymentOperationContext(
+			payment.getOrder().getOrderNumber(), pgOrderId, payment.getAmount(), paymentKey,
+			attempt.getAttemptId(), payment.getStateVersion(), attempt.getPgIdempotencyKey()
+		);
+	}
+
+	private RetryPaymentResponse toRetryResponse(Payment payment, PaymentAttempt attempt) {
+		return new RetryPaymentResponse(
+			payment.getPaymentId(), payment.getOrder().getOrderNumber(), attempt.getAttemptId(), attempt.getPgOrderId(),
+			payment.getAmount(), payment.getOrder().getReservationExpiresAt(), payment.getPaymentStatus(),
+			attempt.getAttemptStatus(), attempt.getAttemptStatus() == PaymentAttemptStatus.PREPARED
+				? "OPEN_PAYMENT_WINDOW" : "NONE"
+		);
+	}
+
+	private PaymentAttempt ensurePreparedAttempt(Payment payment) {
+		if (paymentAttemptRepository == null) {
+			return null;
+		}
+		PaymentAttempt prepared = paymentAttemptRepository
+			.findFirstByPaymentIdAndOperationAndAttemptStatusOrderBySequenceNumberDesc(
+				payment.getId(), PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.PREPARED)
+			.orElse(null);
+		if (prepared != null) {
+			return prepared;
+		}
+		int sequence = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(payment.getId())
+			.map(attempt -> attempt.getSequenceNumber() + 1).orElse(1);
+		String attemptId = generateId("ATT");
+		LocalDateTime now = LocalDateTime.now();
+		PaymentAttempt attempt = paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(attemptId).payment(payment).sequenceNumber(sequence)
+			.operation(PaymentAttemptOperation.CONFIRM).attemptStatus(PaymentAttemptStatus.PREPARED)
+			.pgOrderId(payment.getOrder().getOrderNumber()).amount(payment.getAmount())
+			.pgIdempotencyKey("confirm-" + attemptId).requestedAt(now).nextCheckAt(now).build());
+		payment.prepareInitialAttempt(attempt.getAttemptId());
+		return attempt;
+	}
+
+	private CreatePaymentResponse toCreatePaymentResponse(Payment payment, PaymentAttempt attempt) {
+		return new CreatePaymentResponse(payment.getPaymentId(), payment.getPaymentStatus(),
+			attempt == null ? null : attempt.getAttemptId(), attempt == null ? null : attempt.getPgOrderId(),
+			payment.getOrder().getReservationExpiresAt());
+	}
+
+	private String generateId(String prefix) {
+		String suffix = UUID.randomUUID().toString()
+			.replace("-", "")
+			.toUpperCase(Locale.ROOT);
+		return prefix + "-" + suffix;
 	}
 
 	private PaymentResponse toResponse(Payment payment) {
@@ -174,8 +380,25 @@ public class PaymentTransactionService {
 			payment.getAmount(),
 			payment.getPaymentStatus(),
 			payment.getCreatedAt(),
-			payment.getApprovedAt()
+			payment.getApprovedAt(),
+			payment.getCurrentAttemptId(),
+			payment.getProcessingOperation(),
+			payment.getRecoveryState(),
+			isRetryAllowed(payment),
+			payment.getOrder().getReservationExpiresAt(),
+			payment.getLastVerifiedAt(),
+			payment.getLastFailureCode()
 		);
+	}
+
+	private boolean isRetryAllowed(Payment payment) {
+		return payment.getPaymentStatus() == PaymentStatus.FAILED
+			&& !payment.isRecoveryReviewRequired()
+			&& payment.getOrder().getOrderStatus() == OrderStatus.PENDING
+			&& payment.getOrder().getPost().isOwnedByOrder(payment.getOrder().getOrderNumber())
+			&& payment.getOrder().getPost().getProductStatus() == ProductStatus.RESERVED
+			&& payment.getOrder().getPost().getDeletedAt() == null
+			&& !payment.getOrder().isReservationExpired(LocalDateTime.now());
 	}
 
 	private String generatePaymentId() {
