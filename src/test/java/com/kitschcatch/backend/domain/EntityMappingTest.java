@@ -8,8 +8,13 @@ import com.kitschcatch.backend.domain.chat.entity.MessageType;
 import com.kitschcatch.backend.domain.auth.entity.RefreshToken;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.Payment;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentMethod;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
+import com.kitschcatch.backend.domain.order.entity.PaymentWebhookEvent;
+import com.kitschcatch.backend.domain.order.entity.PaymentWebhookProcessingStatus;
 import com.kitschcatch.backend.domain.order.entity.PgProvider;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.post.entity.Post;
@@ -90,6 +95,34 @@ class EntityMappingTest {
 			.build();
 		entityManager.persist(payment);
 
+		LocalDateTime now = LocalDateTime.now();
+		PaymentAttempt paymentAttempt = PaymentAttempt.builder()
+			.attemptId("ATT-999")
+			.payment(payment)
+			.sequenceNumber(1)
+			.operation(PaymentAttemptOperation.CONFIRM)
+			.attemptStatus(PaymentAttemptStatus.SUCCEEDED)
+			.pgOrderId("ORD-123")
+			.paymentKey("toss-payment-key")
+			.amount(12000L)
+			.pgIdempotencyKey("confirm-toss-payment-key")
+			.requestedAt(now)
+			.nextCheckAt(now)
+			.build();
+		entityManager.persist(paymentAttempt);
+
+		PaymentWebhookEvent webhookEvent = PaymentWebhookEvent.builder()
+			.transmissionId("transmission-999")
+			.eventType("PAYMENT_STATUS_CHANGED")
+			.eventHash("event-hash")
+			.pgOrderId("ORD-123")
+			.paymentKey("toss-payment-key")
+			.pgStatus("DONE")
+			.processingStatus(PaymentWebhookProcessingStatus.RECEIVED)
+			.nextProcessAt(now)
+			.build();
+		entityManager.persist(webhookEvent);
+
 		ChatRoom chatRoom = ChatRoom.builder()
 			.post(post)
 			.buyer(buyer)
@@ -119,6 +152,10 @@ class EntityMappingTest {
 		assertThat(savedMessage.getSender().getNickname()).isEqualTo("buyer");
 		assertThat(entityManager.find(PurchaseOrder.class, order.getId()).getOrderStatus()).isEqualTo(OrderStatus.PAID);
 		assertThat(entityManager.find(Payment.class, payment.getId()).getPaymentId()).isEqualTo("PAY-999");
+		assertThat(entityManager.find(PaymentAttempt.class, paymentAttempt.getId()).getPayment().getPaymentId())
+			.isEqualTo("PAY-999");
+		assertThat(entityManager.find(PaymentWebhookEvent.class, webhookEvent.getId()).getEventType())
+			.isEqualTo("PAYMENT_STATUS_CHANGED");
 	}
 
 	@Test

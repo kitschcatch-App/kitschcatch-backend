@@ -7,6 +7,7 @@ import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.Payment;
+import com.kitschcatch.backend.domain.order.entity.PaymentOperation;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
@@ -108,7 +109,7 @@ public class PaymentTransactionService {
 		if (payment.getPaymentKey() == null) {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 		}
-		payment.startProcessing();
+		payment.startProcessing(PaymentOperation.CANCEL);
 		return operationContext(payment);
 	}
 

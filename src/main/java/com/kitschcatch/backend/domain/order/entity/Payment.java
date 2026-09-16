@@ -55,8 +55,28 @@ public class Payment {
 	@Column(nullable = false, length = 30)
 	private PaymentStatus paymentStatus;
 
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 30)
+	private PaymentOperation processingOperation = PaymentOperation.NONE;
+
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 30)
+	private PaymentRecoveryState recoveryState = PaymentRecoveryState.NONE;
+
+	@Column(length = 50)
+	private String currentAttemptId;
+
 	@Column(length = 255)
 	private String paymentKey;
+
+	@Column(length = 100)
+	private String lastFailureCode;
+
+	private LocalDateTime lastVerifiedAt;
+
+	@jakarta.persistence.Version
+	@Column(nullable = false)
+	private long stateVersion;
 
 	@CreationTimestamp
 	@Column(nullable = false, updatable = false)
@@ -86,21 +106,58 @@ public class Payment {
 	public void confirm(String paymentKey) {
 		this.paymentKey = paymentKey;
 		this.paymentStatus = PaymentStatus.SUCCESS;
+		this.processingOperation = PaymentOperation.NONE;
+		this.recoveryState = PaymentRecoveryState.NONE;
+		this.lastFailureCode = null;
 		this.approvedAt = LocalDateTime.now();
 		this.order.markPaid(paymentKey);
 	}
 
 	public void startProcessing() {
+		startProcessing(PaymentOperation.CONFIRM);
+	}
+
+	public void startProcessing(PaymentOperation operation) {
 		this.paymentStatus = PaymentStatus.PROCESSING;
+		this.processingOperation = operation;
+		this.recoveryState = PaymentRecoveryState.PENDING;
 	}
 
 	public void startConfirmation(String paymentKey) {
 		this.paymentKey = paymentKey;
-		startProcessing();
+		startProcessing(PaymentOperation.CONFIRM);
+	}
+
+	public void bindAttempt(String attemptId, PaymentOperation operation) {
+		this.currentAttemptId = attemptId;
+		this.processingOperation = operation;
+		this.recoveryState = PaymentRecoveryState.PENDING;
+	}
+
+	public void markFailed(String failureCode) {
+		this.paymentStatus = PaymentStatus.FAILED;
+		this.processingOperation = PaymentOperation.NONE;
+		this.recoveryState = PaymentRecoveryState.NONE;
+		this.lastFailureCode = failureCode;
+	}
+
+	public void markRecoveryPending() {
+		this.recoveryState = PaymentRecoveryState.PENDING;
+	}
+
+	public void markVerified(LocalDateTime verifiedAt) {
+		this.lastVerifiedAt = verifiedAt;
+	}
+
+	public void markReviewRequired(String failureCode) {
+		this.recoveryState = PaymentRecoveryState.REVIEW_REQUIRED;
+		this.lastFailureCode = failureCode;
 	}
 
 	public void cancel() {
 		this.paymentStatus = PaymentStatus.CANCELED;
+		this.processingOperation = PaymentOperation.NONE;
+		this.recoveryState = PaymentRecoveryState.NONE;
 		this.canceledAt = LocalDateTime.now();
 		this.order.cancel();
 	}
