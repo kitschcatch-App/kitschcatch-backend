@@ -5,13 +5,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.reset;
 
 import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderRequest;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderResponse;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentRequest;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
 import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentMethod;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
@@ -74,6 +78,7 @@ class OrderReservationIntegrationTest {
 	@Autowired private PaymentTransactionService paymentTransactionService;
 	@Autowired private JdbcTemplate jdbc;
 	@Autowired private PaymentService paymentService;
+	@Autowired private PaymentRecoveryService paymentRecoveryService;
 	@Autowired private PostService postService;
 	@Autowired private PostRepository postRepository;
 	@Autowired private PurchaseOrderRepository orderRepository;
@@ -206,6 +211,37 @@ class OrderReservationIntegrationTest {
 			new ConfirmPaymentRequest(order.paymentId(), "key"))).isInstanceOf(IllegalStateException.class);
 		assertThat(paymentService.getPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.PROCESSING);
 		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
+	}
+
+	@Test
+	void failedPaymentCanBeRetriedWithANewPgOrderId() {
+		CreateOrderResponse order = createOrder();
+		when(tossPaymentsClient.confirm(any())).thenThrow(new IllegalStateException("외부 결제 응답 유실"));
+		assertThatThrownBy(() -> paymentService.confirmPayment(buyerId, order.paymentId(),
+			new ConfirmPaymentRequest(order.paymentId(), "first-key"))).isInstanceOf(IllegalStateException.class);
+
+		PaymentAttempt failedAttempt = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(
+			paymentRepository.findByPaymentIdAndOrderUserId(order.paymentId(), buyerId).orElseThrow().getId()
+		).orElseThrow();
+		paymentRecoveryService.recover(failedAttempt.getAttemptId(),
+			new TossPaymentResponse("first-key", order.orderId(), 12000L, "ABORTED"));
+
+		RetryPaymentResponse retry = paymentService.prepareRetry(buyerId, order.paymentId(),
+			new RetryPaymentRequest(failedAttempt.getAttemptId()));
+		assertThat(retry.status()).isEqualTo(PaymentStatus.READY);
+		assertThat(retry.pgOrderId()).isNotEqualTo(order.orderId());
+		reset(tossPaymentsClient);
+		when(tossPaymentsClient.confirm(any())).thenReturn(
+			new TossPaymentResponse("second-key", retry.pgOrderId(), 12000L, "DONE"));
+
+		paymentService.confirmPayment(buyerId, order.paymentId(),
+			new ConfirmPaymentRequest(order.paymentId(), "second-key", retry.attemptId()));
+
+		assertThat(paymentService.getPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.SUCCESS);
+		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.SOLD_OUT);
+		assertThat(paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(
+			paymentRepository.findByPaymentIdAndOrderUserId(order.paymentId(), buyerId).orElseThrow().getId()
+		).orElseThrow().getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
 	}
 
 	@Test

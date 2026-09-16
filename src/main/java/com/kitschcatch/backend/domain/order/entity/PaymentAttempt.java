@@ -209,6 +209,7 @@ public class PaymentAttempt {
 		this.pgApprovedAt = approvedAt;
 		this.pgCanceledAt = canceledAt;
 		this.completedAt = LocalDateTime.now();
+		clearLease();
 	}
 
 	public void markFailed(String errorCode, String reason) {
@@ -216,6 +217,7 @@ public class PaymentAttempt {
 		this.pgErrorCode = errorCode;
 		this.failureReason = reason;
 		this.completedAt = LocalDateTime.now();
+		clearLease();
 	}
 
 	public void markReviewRequired(String reason) {
@@ -226,15 +228,22 @@ public class PaymentAttempt {
 	public void markExpired() {
 		this.attemptStatus = PaymentAttemptStatus.EXPIRED;
 		this.completedAt = LocalDateTime.now();
+		clearLease();
 	}
 
 	public void scheduleNextCheck(LocalDateTime nextCheckAt) {
 		this.nextCheckAt = nextCheckAt;
 		this.checkCount++;
+		clearLease();
 	}
 
 	public void claim(String leaseToken, LocalDateTime leaseUntil) {
 		this.leaseToken = leaseToken;
 		this.leaseUntil = leaseUntil;
+	}
+
+	private void clearLease() {
+		this.leaseToken = null;
+		this.leaseUntil = null;
 	}
 }

@@ -96,6 +96,20 @@ public class PaymentRecoveryService {
 		payment.markRecoveryPending();
 	}
 
+	@Transactional
+	public boolean claim(String attemptId, String leaseToken, LocalDateTime leaseUntil) {
+		PaymentAttempt attempt = paymentAttemptRepository.findByAttemptIdForUpdate(attemptId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+		LocalDateTime now = LocalDateTime.now();
+		if (!attempt.isActive()
+			|| attempt.getNextCheckAt().isAfter(now)
+			|| (attempt.getLeaseUntil() != null && attempt.getLeaseUntil().isAfter(now))) {
+			return false;
+		}
+		attempt.claim(leaseToken, leaseUntil);
+		return true;
+	}
+
 	private long nextDelaySeconds(int checkCount) {
 		return Math.min(900L, 30L * (1L << Math.min(checkCount, 5)));
 	}

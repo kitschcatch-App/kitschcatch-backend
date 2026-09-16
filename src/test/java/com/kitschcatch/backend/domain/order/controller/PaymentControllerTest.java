@@ -14,6 +14,9 @@ import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentRequest;
+import com.kitschcatch.backend.domain.order.dto.RetryPaymentResponse;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.service.PaymentService;
 import com.kitschcatch.backend.global.exception.GlobalExceptionHandler;
@@ -129,6 +132,29 @@ class PaymentControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.paymentId").value("PAY-999"))
 			.andExpect(jsonPath("$.data.status").value("CANCELED"));
+	}
+
+	@Test
+	@DisplayName("결제 재시도 준비 API는 새 결제 시도 정보를 반환한다")
+	void retryPaymentReturnsPreparedAttempt() throws Exception {
+		when(paymentService.prepareRetry(eq(1L), eq("PAY-999"), any(RetryPaymentRequest.class)))
+			.thenReturn(new RetryPaymentResponse("PAY-999", "ORD-123", "ATT-2", "PG-2", 650000L,
+				LocalDateTime.of(2026, 4, 13, 15, 15), PaymentStatus.READY,
+				PaymentAttemptStatus.PREPARED, "OPEN_PAYMENT_WINDOW"));
+
+		mockMvc.perform(post("/api/payments/PAY-999/retry")
+				.principal(authentication)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "failedAttemptId": "ATT-1"
+					}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.paymentId").value("PAY-999"))
+			.andExpect(jsonPath("$.data.attemptId").value("ATT-2"))
+			.andExpect(jsonPath("$.data.pgOrderId").value("PG-2"))
+			.andExpect(jsonPath("$.data.attemptStatus").value("PREPARED"));
 	}
 
 	private PaymentResponse paymentResponse(PaymentStatus status) {

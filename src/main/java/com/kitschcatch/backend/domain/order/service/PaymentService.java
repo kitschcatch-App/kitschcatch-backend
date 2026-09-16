@@ -88,7 +88,7 @@ public class PaymentService {
 	) {
 		if (tossResponse == null
 			|| !context.paymentKey().equals(tossResponse.paymentKey())
-			|| !context.orderId().equals(tossResponse.orderId())
+			|| !context.pgOrderId().equals(tossResponse.orderId())
 			|| !context.amount().equals(tossResponse.totalAmount())
 			|| !expectedStatus.equals(tossResponse.status())) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);

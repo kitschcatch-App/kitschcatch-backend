@@ -8,6 +8,8 @@ import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,7 +52,12 @@ public class PaymentRecoveryScheduler {
 			PageRequest.of(0, batchSize)
 		);
 		for (PaymentAttempt attempt : candidates) {
+			String leaseToken = UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
 			try {
+				if (!paymentRecoveryService.claim(
+					attempt.getAttemptId(), leaseToken, LocalDateTime.now().plusSeconds(45))) {
+					continue;
+				}
 				TossPaymentResponse response = attempt.getPaymentKey() == null
 					? tossPaymentsClient.getPaymentByOrderId(attempt.getPgOrderId())
 					: tossPaymentsClient.getPayment(attempt.getPaymentKey());
