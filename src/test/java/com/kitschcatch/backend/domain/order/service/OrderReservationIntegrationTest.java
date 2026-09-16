@@ -385,6 +385,23 @@ class OrderReservationIntegrationTest {
 	}
 
 	@Test
+	void expiredFailedPaymentClosesOrderAndReleasesReservation() {
+		CreateOrderResponse order = createOrder();
+		when(tossPaymentsClient.confirm(any())).thenThrow(new IllegalStateException("외부 결제 응답 유실"));
+		assertThatThrownBy(() -> paymentService.confirmPayment(buyerId, order.paymentId(),
+			new ConfirmPaymentRequest(order.paymentId(), "key"))).isInstanceOf(IllegalStateException.class);
+		Long paymentId = paymentRepository.findByPaymentIdAndOrderUserId(order.paymentId(), buyerId).orElseThrow().getId();
+		String attemptId = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(paymentId).orElseThrow().getAttemptId();
+		paymentRecoveryService.recover(attemptId, new TossPaymentResponse("key", order.orderId(), 12000L, "ABORTED"));
+		makeExpired(order.orderId());
+
+		Long orderId = orderRepository.findIdByOrderNumberAndUserId(order.orderId(), buyerId).orElseThrow();
+		assertThat(reservationService.expireOrder(orderId)).isTrue();
+		assertThat(paymentService.getPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.CANCELED);
+		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+	}
+
+	@Test
 	void orderLevelDatabaseConstraintRejectsAnotherPayment() {
 		CreateOrderResponse response = createOrder();
 		var order = orderRepository.findByOrderNumberAndUserId(response.orderId(), buyerId).orElseThrow();
