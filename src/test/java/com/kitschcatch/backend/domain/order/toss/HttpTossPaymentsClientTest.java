@@ -47,6 +47,7 @@ class HttpTossPaymentsClientTest {
 			.andExpect(jsonPath("$.paymentKey").value("toss-payment-key"))
 			.andExpect(jsonPath("$.orderId").value("ORD-123"))
 			.andExpect(jsonPath("$.amount").value(650000))
+			.andExpect(jsonPath("$.idempotencyKey").doesNotExist())
 			.andRespond(withSuccess("""
 				{
 				  "paymentKey": "toss-payment-key",
