@@ -72,9 +72,19 @@ public class PaymentRecoveryService {
 			&& lockedAttempt.getOperation() == PaymentAttemptOperation.CONFIRM
 			&& payment.getPaymentStatus() == PaymentStatus.SUCCESS) {
 			payment.markVerified(LocalDateTime.now());
-			if (TOSS_CANCELED.equals(tossResponse.status()) && isFullyCanceled(tossResponse)) {
-				payment.cancel();
-				payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+			if (TOSS_DONE.equals(tossResponse.status())) {
+				lockedAttempt.releaseLease();
+				return toResponse(payment);
+			}
+			if (TOSS_CANCELED.equals(tossResponse.status())) {
+				if (isFullyCanceled(tossResponse)) {
+					payment.cancel();
+					payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+				} else {
+					markReview(payment, lockedAttempt, "부분 취소 또는 잔액이 남은 PG 결과입니다.");
+				}
+			} else {
+				markReview(payment, lockedAttempt, "성공 결제와 모순되는 PG 상태입니다: " + tossResponse.status());
 			}
 			lockedAttempt.releaseLease();
 			return toResponse(payment);
