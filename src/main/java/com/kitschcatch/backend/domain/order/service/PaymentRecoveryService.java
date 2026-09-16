@@ -46,6 +46,11 @@ public class PaymentRecoveryService {
 
 	@Transactional
 	public PaymentResponse recover(String attemptId, TossPaymentResponse tossResponse) {
+		return recover(attemptId, tossResponse, null);
+	}
+
+	@Transactional
+	public PaymentResponse recover(String attemptId, TossPaymentResponse tossResponse, String leaseToken) {
 		Long orderId = paymentAttemptRepository.findOrderIdByAttemptId(attemptId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 		String paymentId = paymentAttemptRepository.findPaymentIdByAttemptId(attemptId)
@@ -55,6 +60,9 @@ public class PaymentRecoveryService {
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 		PaymentAttempt lockedAttempt = paymentAttemptRepository.findByAttemptIdForUpdate(attemptId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+		if (leaseToken != null && !leaseToken.equals(lockedAttempt.getLeaseToken())) {
+			return toResponse(payment);
+		}
 		if (payment.getCurrentAttemptId() != null && !attemptId.equals(payment.getCurrentAttemptId())) {
 			lockedAttempt.markReviewRequired("오래된 결제 시도의 응답입니다.");
 			return toResponse(payment);
@@ -84,12 +92,20 @@ public class PaymentRecoveryService {
 
 	@Transactional
 	public void recordLookupFailure(String attemptId, String failureReason) {
+		recordLookupFailure(attemptId, failureReason, null);
+	}
+
+	@Transactional
+	public void recordLookupFailure(String attemptId, String failureReason, String leaseToken) {
 		String paymentId = paymentAttemptRepository.findPaymentIdByAttemptId(attemptId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 		Payment payment = paymentRepository.findByPaymentIdForUpdate(paymentId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 		PaymentAttempt attempt = paymentAttemptRepository.findByAttemptIdForUpdate(attemptId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+		if (leaseToken != null && !leaseToken.equals(attempt.getLeaseToken())) {
+			return;
+		}
 		if (!attempt.isActive()) {
 			return;
 		}

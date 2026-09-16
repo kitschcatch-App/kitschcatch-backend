@@ -61,11 +61,11 @@ public class PaymentRecoveryScheduler {
 				TossPaymentResponse response = attempt.getPaymentKey() == null
 					? tossPaymentsClient.getPaymentByOrderId(attempt.getPgOrderId())
 					: tossPaymentsClient.getPayment(attempt.getPaymentKey());
-				paymentRecoveryService.recover(attempt.getAttemptId(), response);
+				paymentRecoveryService.recover(attempt.getAttemptId(), response, leaseToken);
 			} catch (RuntimeException exception) {
 				log.warn("결제 결과 복구 조회 실패. attemptId={}", attempt.getAttemptId(), exception);
 				try {
-					paymentRecoveryService.recordLookupFailure(attempt.getAttemptId(), exception.getMessage());
+					paymentRecoveryService.recordLookupFailure(attempt.getAttemptId(), exception.getMessage(), leaseToken);
 				} catch (RuntimeException stateException) {
 					log.warn("결제 복구 실패 상태 저장 실패. attemptId={}", attempt.getAttemptId(), stateException);
 				}
