@@ -8,6 +8,7 @@ import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +49,7 @@ public class UserService {
 		try {
 			return toResponse(transactionService.registerProfile(userId, nickname, profileImageKey));
 		} catch (DataIntegrityViolationException exception) {
-			throw new BusinessException(ErrorCode.USER_NICKNAME_DUPLICATED);
+			throw translateConstraintViolation(exception);
 		}
 	}
 
@@ -68,8 +69,18 @@ public class UserService {
 			return toResponse(transactionService.updateProfile(
 				userId, nickname, request.nicknameProvided(), profileImageKey, request.profileImageKeyProvided()));
 		} catch (DataIntegrityViolationException exception) {
-			throw new BusinessException(ErrorCode.USER_NICKNAME_DUPLICATED);
+			throw translateConstraintViolation(exception);
 		}
+	}
+
+	private RuntimeException translateConstraintViolation(DataIntegrityViolationException exception) {
+		for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+			if (cause instanceof ConstraintViolationException violation
+				&& "uk_users_nickname_key".equals(violation.getConstraintName())) {
+				return new BusinessException(ErrorCode.USER_NICKNAME_DUPLICATED);
+			}
+		}
+		return exception;
 	}
 
 	private User findUser(Long userId) {

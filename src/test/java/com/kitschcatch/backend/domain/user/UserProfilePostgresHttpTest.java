@@ -218,6 +218,25 @@ class UserProfilePostgresHttpTest {
 		}
 	}
 
+	@Test
+	void unrelatedConstraintFailureIsNotReportedAsDuplicateNickname() throws Exception {
+		User user = saveUser("other-constraint");
+		try (var connection = database.connect(); var statement = connection.createStatement()) {
+			statement.execute("ALTER TABLE users ADD CONSTRAINT ck_test_nickname CHECK (nickname <> 'blocked')");
+			try {
+				Response response = register(user.getId(), Map.of("nickname", "blocked"));
+				assertThat(response.status()).isEqualTo(500);
+				assertThat(response.errorCode()).isEqualTo("COMMON_999");
+				User saved = userRepository.findById(user.getId()).orElseThrow();
+				assertThat(saved.getNickname()).isEqualTo("카카오기본닉네임");
+				assertThat(saved.getNicknameKey()).isNull();
+				assertThat(saved.getProfileRegisteredAt()).isNull();
+			} finally {
+				statement.execute("ALTER TABLE users DROP CONSTRAINT ck_test_nickname");
+			}
+		}
+	}
+
 	private User saveUser(String providerId) {
 		return userRepository.saveAndFlush(User.builder().nickname("카카오기본닉네임")
 			.email(providerId + "@example.com").authProvider(AuthProvider.KAKAO).providerUserId(providerId).build());

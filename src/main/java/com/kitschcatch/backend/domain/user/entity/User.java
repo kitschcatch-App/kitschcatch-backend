@@ -20,10 +20,13 @@ import org.hibernate.annotations.CreationTimestamp;
 @Entity
 @Table(
 	name = "users",
-	uniqueConstraints = @UniqueConstraint(
+	uniqueConstraints = {
+		@UniqueConstraint(name = "uk_users_nickname_key", columnNames = "nickname_key"),
+		@UniqueConstraint(
 		name = "uk_users_auth_provider_provider_user_id",
 		columnNames = {"auth_provider", "provider_user_id"}
-	)
+		)
+	}
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -36,7 +39,7 @@ public class User {
 	@Column(nullable = false, length = 50)
 	private String nickname;
 
-	@Column(name = "nickname_key", unique = true, length = 50)
+	@Column(name = "nickname_key", length = 50)
 	private String nicknameKey;
 
 	@Column(name = "profile_image_key", length = 512)
