@@ -4,7 +4,7 @@
 - 이슈: [#31 내 정보 조회, 프로필 등록 및 수정 API 구현](https://github.com/kitschcatch-App/kitschcatch-backend/issues/31).
 - 작업 브랜치: `feat/31`.
 - 기준 코드: 최신화한 `develop`의 `d623c00efbab60c47fe0fa305067248ec71eac06`.
-- 상태: 1차 구현 완료. API·DB·테스트를 반영했으며, 실제 Notion 명세 대조·업로드 URL 발급 연동·PostgreSQL 운영 검증은 후속 확인 대상이다.
+- 상태: API 구현과 격리 PostgreSQL 검증 완료. 실제 Notion 명세 대조와 S3 업로드 URL 발급 API 연동 검증은 미완료다. 검증 결과와 차단 원인은 [검증 기록](../user-profile-verification.md)에 정리했다.
 - 명세 확인 상태: GitHub 이슈 본문과 현재 코드를 확인했다. 연결된 Notion에서 `키치캐치`, `kitschcatch`, `프로필`로 검색했으나 해당 프로젝트 명세를 찾지 못했다. 아래 필드·검증 정책은 구현 가능한 제안이며, Notion 확정 명세로 간주하지 않는다.
 
 ## 1. 목표와 범위
@@ -273,5 +273,7 @@ POST 응답이 유실되면 GET으로 등록 상태와 저장값을 확인한다
 - [x] 서비스·컨트롤러·실제 인증 필터 경로 테스트를 추가했다.
 - [x] `./gradlew test` 통과를 확인했다.
 - [ ] 실제 Notion API 명세와 필드·닉네임 정책을 대조한다.
-- [ ] 실제 S3 업로드 URL 발급 API와 연동한다.
-- [ ] 격리 PostgreSQL에서 수동 SQL과 동시 닉네임 등록을 검증한다.
+- [ ] 실제 S3 업로드 URL 발급 API와 연동한다. 현재 브랜치에 프로필용 발급 API가 없고, 테스트 버킷과 유효한 프로젝트 AWS 접근 설정이 확인되지 않았다.
+- [x] 격리 PostgreSQL 14.18에서 수동 SQL 적용·재실행·제약·롤백과 실제 JWT HTTP 동시 등록·수정 등 13건을 검증했다.
+- [x] 재현된 CHECK 제약 확인 범위 오류, S3 호출 중 사용자 행 잠금, 닉네임 외 제약 오류의 잘못된 409 변환을 수정했다.
+- [x] PostgreSQL 검증을 활성화한 `./gradlew test build --console=plain`에서 전체 193개 테스트와 빌드가 통과했다. 실패·오류·건너뜀은 모두 0건이다.
