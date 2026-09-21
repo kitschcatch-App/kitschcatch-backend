@@ -16,6 +16,7 @@ BEGIN
         SELECT 1
         FROM pg_constraint
         WHERE conname = 'ck_users_profile_registration_fields'
+          AND conrelid = 'users'::regclass
     ) THEN
         ALTER TABLE users
             ADD CONSTRAINT ck_users_profile_registration_fields
