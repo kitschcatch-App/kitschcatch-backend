@@ -31,7 +31,8 @@ class UserServiceTest {
 	void setUp() {
 		userRepository = org.mockito.Mockito.mock(UserRepository.class);
 		profileImageStorage = org.mockito.Mockito.mock(ProfileImageStorage.class);
-		userService = new UserService(userRepository, new NicknamePolicy(), profileImageStorage);
+		userService = new UserService(userRepository, new NicknamePolicy(), profileImageStorage,
+			new UserProfileTransactionService(userRepository));
 		user = User.builder()
 			.nickname("kakao-default")
 			.email("user@example.com")
@@ -39,6 +40,7 @@ class UserServiceTest {
 			.providerUserId("provider-1")
 			.build();
 		ReflectionTestUtils.setField(user, "id", 1L);
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 	}
 
 	@Test

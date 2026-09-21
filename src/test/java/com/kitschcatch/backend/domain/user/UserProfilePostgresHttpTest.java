@@ -16,6 +16,7 @@ import com.kitschcatch.backend.global.security.JwtTokenProvider;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -181,6 +182,40 @@ class UserProfilePostgresHttpTest {
 		assertThat(unchanged.getNickname()).isEqualTo("original");
 		assertThat(unchanged.getNicknameKey()).isEqualTo("original");
 		assertThat(unchanged.getProfileImageKey()).isNull();
+	}
+
+	@Test
+	void slowS3ValidationDoesNotHoldUserRowLock() throws Exception {
+		User user = saveUser("slow-s3");
+		String imageKey = "profiles/" + user.getId() + "/slow.png";
+		CountDownLatch enteredS3 = new CountDownLatch(1);
+		CountDownLatch releaseS3 = new CountDownLatch(1);
+		when(profileImageStorage.isOwnedProfileImageKey(user.getId(), imageKey)).thenReturn(true);
+		when(profileImageStorage.exists(imageKey)).thenAnswer(invocation -> {
+			enteredS3.countDown();
+			assertThat(releaseS3.await(10, TimeUnit.SECONDS)).isTrue();
+			return true;
+		});
+		var executor = Executors.newSingleThreadExecutor();
+		try {
+			var registering = executor.submit(() -> register(user.getId(), Map.of("nickname", "slow", "profileImageKey", imageKey)));
+			try {
+				assertThat(enteredS3.await(10, TimeUnit.SECONDS)).isTrue();
+				try (var connection = database.connect(); var statement = connection.prepareStatement(
+					"SELECT id FROM users WHERE id = ? FOR UPDATE NOWAIT")) {
+					statement.setLong(1, user.getId());
+					try (var result = statement.executeQuery()) {
+						assertThat(result.next()).isTrue();
+					}
+				}
+			} finally {
+				releaseS3.countDown();
+			}
+			assertThat(registering.get(15, TimeUnit.SECONDS).status()).isEqualTo(201);
+		} finally {
+			releaseS3.countDown();
+			executor.shutdownNow();
+		}
 	}
 
 	private User saveUser(String providerId) {

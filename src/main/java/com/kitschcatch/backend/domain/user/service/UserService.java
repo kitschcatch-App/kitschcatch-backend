@@ -8,7 +8,6 @@ import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
-import java.time.Instant;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,15 +19,18 @@ public class UserService {
 	private final UserRepository userRepository;
 	private final NicknamePolicy nicknamePolicy;
 	private final ProfileImageStorage profileImageStorage;
+	private final UserProfileTransactionService transactionService;
 
 	public UserService(
 		UserRepository userRepository,
 		NicknamePolicy nicknamePolicy,
-		ProfileImageStorage profileImageStorage
+		ProfileImageStorage profileImageStorage,
+		UserProfileTransactionService transactionService
 	) {
 		this.userRepository = userRepository;
 		this.nicknamePolicy = nicknamePolicy;
 		this.profileImageStorage = profileImageStorage;
+		this.transactionService = transactionService;
 	}
 
 	@Transactional(readOnly = true)
@@ -36,66 +38,43 @@ public class UserService {
 		return toResponse(findUser(userId));
 	}
 
-	@Transactional
 	public UserMeResponse registerProfile(Long userId, RegisterUserProfileRequest request) {
 		String nickname = nicknamePolicy.normalize(request.nickname());
-		User user = findUserForUpdate(userId);
+		User user = findUser(userId);
 		if (user.isProfileRegistered()) {
 			throw new BusinessException(ErrorCode.USER_PROFILE_ALREADY_REGISTERED);
 		}
-		validateNicknameAvailability(nickname, userId);
 		String profileImageKey = validateProfileImage(userId, request.profileImageKey());
 		try {
-			user.registerProfile(nickname, nickname, profileImageKey, Instant.now());
-			userRepository.saveAndFlush(user);
+			return toResponse(transactionService.registerProfile(userId, nickname, profileImageKey));
 		} catch (DataIntegrityViolationException exception) {
 			throw new BusinessException(ErrorCode.USER_NICKNAME_DUPLICATED);
 		}
-		return toResponse(user);
 	}
 
-	@Transactional
 	public UserMeResponse updateProfile(Long userId, UpdateUserProfileRequest request) {
 		if (!request.hasChanges()) {
 			throw new BusinessException(ErrorCode.BAD_REQUEST, "변경할 프로필 필드가 없습니다.");
 		}
-		User user = findUserForUpdate(userId);
+		User user = findUser(userId);
 		if (!user.isProfileRegistered()) {
 			throw new BusinessException(ErrorCode.USER_PROFILE_NOT_REGISTERED);
 		}
 
-		String nickname = user.getNickname();
-		if (request.nicknameProvided()) {
-			nickname = nicknamePolicy.normalize(request.nickname());
-			validateNicknameAvailability(nickname, userId);
-		}
-		String profileImageKey = user.getProfileImageKey();
-		if (request.profileImageKeyProvided()) {
-			profileImageKey = validateProfileImage(userId, request.profileImageKey());
-		}
+		String nickname = request.nicknameProvided() ? nicknamePolicy.normalize(request.nickname()) : null;
+		String profileImageKey = request.profileImageKeyProvided()
+			? validateProfileImage(userId, request.profileImageKey()) : null;
 		try {
-			user.updateProfile(nickname, nickname, profileImageKey, request.profileImageKeyProvided());
-			userRepository.saveAndFlush(user);
+			return toResponse(transactionService.updateProfile(
+				userId, nickname, request.nicknameProvided(), profileImageKey, request.profileImageKeyProvided()));
 		} catch (DataIntegrityViolationException exception) {
 			throw new BusinessException(ErrorCode.USER_NICKNAME_DUPLICATED);
 		}
-		return toResponse(user);
 	}
 
 	private User findUser(Long userId) {
 		return userRepository.findById(userId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-	}
-
-	private User findUserForUpdate(Long userId) {
-		return userRepository.findByIdForUpdate(userId)
-			.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-	}
-
-	private void validateNicknameAvailability(String nickname, Long userId) {
-		if (userRepository.existsByNicknameKeyAndIdNot(nickname, userId)) {
-			throw new BusinessException(ErrorCode.USER_NICKNAME_DUPLICATED);
-		}
 	}
 
 	private String validateProfileImage(Long userId, String profileImageKey) {
