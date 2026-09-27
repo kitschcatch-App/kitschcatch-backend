@@ -12,7 +12,6 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 @Service
 public class UserService {
@@ -21,17 +20,20 @@ public class UserService {
 	private final NicknamePolicy nicknamePolicy;
 	private final ProfileImageStorage profileImageStorage;
 	private final UserProfileTransactionService transactionService;
+	private final ProfileImagePolicy profileImagePolicy;
 
 	public UserService(
 		UserRepository userRepository,
 		NicknamePolicy nicknamePolicy,
 		ProfileImageStorage profileImageStorage,
-		UserProfileTransactionService transactionService
+		UserProfileTransactionService transactionService,
+		ProfileImagePolicy profileImagePolicy
 	) {
 		this.userRepository = userRepository;
 		this.nicknamePolicy = nicknamePolicy;
 		this.profileImageStorage = profileImageStorage;
 		this.transactionService = transactionService;
+		this.profileImagePolicy = profileImagePolicy;
 	}
 
 	@Transactional(readOnly = true)
@@ -92,13 +94,10 @@ public class UserService {
 		if (profileImageKey == null) {
 			return null;
 		}
-		if (!StringUtils.hasText(profileImageKey)
-			|| !profileImageStorage.isOwnedProfileImageKey(userId, profileImageKey)) {
-			throw new BusinessException(ErrorCode.USER_PROFILE_IMAGE_INVALID);
-		}
-		if (!profileImageStorage.exists(profileImageKey)) {
-			throw new BusinessException(ErrorCode.USER_PROFILE_IMAGE_NOT_UPLOADED);
-		}
+		profileImagePolicy.validateOwnedKey(userId, profileImageKey);
+		ProfileImageMetadata metadata = profileImageStorage.metadata(profileImageKey)
+			.orElseThrow(() -> new BusinessException(ErrorCode.USER_PROFILE_IMAGE_NOT_UPLOADED));
+		profileImagePolicy.validateMetadata(profileImageKey, metadata.contentType(), metadata.contentLength());
 		return profileImageKey;
 	}
 

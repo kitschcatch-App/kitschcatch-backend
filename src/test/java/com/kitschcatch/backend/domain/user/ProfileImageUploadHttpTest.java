@@ -3,6 +3,10 @@ package com.kitschcatch.backend.domain.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import com.kitschcatch.backend.domain.user.entity.User;
@@ -37,6 +41,10 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import org.junit.jupiter.params.provider.Arguments;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
@@ -166,6 +174,106 @@ class ProfileImageUploadHttpTest {
 		var claims = JwtClaimsSet.builder().issuer("kitschcatch").subject(user.getId().toString()).claim("type", "access")
 			.issuedAt(Instant.now().minusSeconds(600)).expiresAt(Instant.now().minusSeconds(120)).build();
 		return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+	}
+
+	@Test
+	void issuedKeyCanBeRegisteredReadReplacedOmittedAndCleared() {
+		String firstKey = issue(VALID).data().get("imageKey").toString();
+		when(s3Client.headObject(any(HeadObjectRequest.class))).thenReturn(HeadObjectResponse.builder()
+			.contentType("image/png").contentLength(1024L).build());
+		Response registered = profile(HttpMethod.POST, "/api/users/me/profile",
+			Map.of("nickname", "collector", "profileImageKey", firstKey));
+		assertThat(registered.status()).isEqualTo(201);
+		assertThat(registered.data().get("profileImageKey")).isEqualTo(firstKey);
+		verify(s3Client).headObject(HeadObjectRequest.builder().bucket("test-bucket").key(firstKey).build());
+		Object registeredAt = registered.data().get("profileRegisteredAt");
+
+		Map<?, ?> me = RestClient.create("http://127.0.0.1:" + port).get().uri("/api/users/me")
+			.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.createAccessToken(user.getId()))
+			.retrieve().body(Map.class);
+		assertThat(((Map<?, ?>) me.get("data")).get("profileImageUrl")).isEqualTo("https://cdn.example.com/" + firstKey);
+
+		String secondKey = issue(VALID).data().get("imageKey").toString();
+		Response replaced = profile(HttpMethod.PATCH, "/api/users/me", Map.of("profileImageKey", secondKey));
+		assertThat(replaced.status()).isEqualTo(200);
+		assertThat(replaced.data().get("profileImageKey")).isEqualTo(secondKey);
+		assertThat(replaced.data().get("profileRegisteredAt")).isEqualTo(registeredAt);
+		verify(s3Client).headObject(HeadObjectRequest.builder().bucket("test-bucket").key(secondKey).build());
+
+		clearInvocations(s3Client);
+		Response omitted = profile(HttpMethod.PATCH, "/api/users/me", Map.of("nickname", "renamed"));
+		assertThat(omitted.status()).isEqualTo(200);
+		assertThat(omitted.data().get("profileImageKey")).isEqualTo(secondKey);
+		Response cleared = profile(HttpMethod.PATCH, "/api/users/me", "{\"profileImageKey\":null}");
+		assertThat(cleared.status()).isEqualTo(200);
+		assertThat(cleared.data().get("profileImageKey")).isNull();
+		assertThat(cleared.data().get("profileRegisteredAt")).isEqualTo(registeredAt);
+		verifyNoInteractions(s3Client);
+	}
+
+	@Test
+	void rejectsForeignAndMalformedKeysBeforeCallingS3() {
+		assertError(profile(HttpMethod.POST, "/api/users/me/profile",
+			Map.of("nickname", "changed", "profileImageKey", "profiles/" + (user.getId() + 1) + "/image.png")), 403, "USER_007");
+		for (String key : new String[]{"posts/1/image.png", "chats/1/image.png", "https://cdn/image.png",
+			"profiles/" + user.getId() + "/nested/image.png", "profiles/999999999999999999999999/image.png", "profiles/x/image.png"}) {
+			assertError(profile(HttpMethod.POST, "/api/users/me/profile",
+				Map.of("nickname", "changed", "profileImageKey", key)), 400, "USER_005");
+		}
+		verifyNoInteractions(s3Client);
+		assertThat(users.findById(user.getId()).orElseThrow().getProfileRegisteredAt()).isNull();
+	}
+
+	@ParameterizedTest
+	@MethodSource("invalidMetadata")
+	void invalidUploadedMetadataCannotPartiallyRegisterOrUpdate(String contentType, long length) {
+		String key = "profiles/" + user.getId() + "/image.png";
+		when(s3Client.headObject(any(HeadObjectRequest.class))).thenReturn(HeadObjectResponse.builder()
+			.contentType(contentType).contentLength(length).build());
+		assertError(profile(HttpMethod.POST, "/api/users/me/profile",
+			Map.of("nickname", "changed", "profileImageKey", key)), 400, "USER_005");
+		User unchanged = users.findById(user.getId()).orElseThrow();
+		assertThat(unchanged.getNickname()).isEqualTo("카카오닉네임");
+		assertThat(unchanged.getProfileRegisteredAt()).isNull();
+		assertThat(unchanged.getNicknameKey()).isNull();
+		assertThat(unchanged.getProfileImageKey()).isNull();
+
+		user.registerProfile("original", "original", "profiles/" + user.getId() + "/old.png", Instant.now());
+		users.saveAndFlush(user);
+		User before = users.findById(user.getId()).orElseThrow();
+		assertError(profile(HttpMethod.PATCH, "/api/users/me",
+			Map.of("nickname", "changed", "profileImageKey", key)), 400, "USER_005");
+		unchanged = users.findById(user.getId()).orElseThrow();
+		assertThat(unchanged.getNickname()).isEqualTo(before.getNickname());
+		assertThat(unchanged.getNicknameKey()).isEqualTo(before.getNicknameKey());
+		assertThat(unchanged.getProfileImageKey()).isEqualTo(before.getProfileImageKey());
+		assertThat(unchanged.getProfileRegisteredAt()).isEqualTo(before.getProfileRegisteredAt());
+	}
+
+	static Stream<Arguments> invalidMetadata() {
+		return Stream.of(Arguments.of("image/png", 0L), Arguments.of("image/png", 5_000_001L),
+			Arguments.of("image/jpeg", 1024L), Arguments.of("text/plain", 1024L), Arguments.of(null, 1024L));
+	}
+
+	@Test
+	void distinguishesNotUploadedImageFromS3PermissionFailure() {
+		String key = issue(VALID).data().get("imageKey").toString();
+		when(s3Client.headObject(any(HeadObjectRequest.class)))
+			.thenThrow(S3Exception.builder().statusCode(404).build())
+			.thenThrow(S3Exception.builder().statusCode(403).build());
+		Map<String, String> body = Map.of("nickname", "changed", "profileImageKey", key);
+		assertError(profile(HttpMethod.POST, "/api/users/me/profile", body), 400, "USER_006");
+		assertError(profile(HttpMethod.POST, "/api/users/me/profile", body), 500, "COMMON_999");
+		User unchanged = users.findById(user.getId()).orElseThrow();
+		assertThat(unchanged.getNickname()).isEqualTo("카카오닉네임");
+		assertThat(unchanged.getProfileRegisteredAt()).isNull();
+	}
+
+	private Response profile(HttpMethod method, String path, Object body) {
+		return RestClient.create("http://127.0.0.1:" + port).method(method).uri(path)
+			.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.createAccessToken(user.getId()))
+			.contentType(MediaType.APPLICATION_JSON).body(body)
+			.exchange((request, response) -> new Response(response.getStatusCode().value(), response.bodyTo(Map.class)));
 	}
 
 	private Response issue(String body) {

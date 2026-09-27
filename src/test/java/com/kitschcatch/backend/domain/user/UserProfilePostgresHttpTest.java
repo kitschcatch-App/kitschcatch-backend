@@ -12,6 +12,8 @@ import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.domain.user.service.ProfileImageStorage;
+import com.kitschcatch.backend.domain.user.service.ProfileImageMetadata;
+import java.util.Optional;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
 import java.util.List;
 import java.util.Map;
@@ -147,8 +149,7 @@ class UserProfilePostgresHttpTest {
 		assertThat(register(user.getId(), Map.of("nickname", "original")).status()).isEqualTo(201);
 		var registeredAt = userRepository.findById(user.getId()).orElseThrow().getProfileRegisteredAt();
 		String imageKey = "profiles/" + user.getId() + "/new.png";
-		when(profileImageStorage.isOwnedProfileImageKey(user.getId(), imageKey)).thenReturn(true);
-		when(profileImageStorage.exists(imageKey)).thenReturn(true);
+		when(profileImageStorage.metadata(imageKey)).thenReturn(Optional.of(new ProfileImageMetadata("image/png", 1024)));
 		when(profileImageStorage.imageUrl(imageKey)).thenReturn("https://cdn.example/" + imageKey);
 
 		List<Response> responses = concurrently(
@@ -167,8 +168,7 @@ class UserProfilePostgresHttpTest {
 	void s3PermissionFailureDoesNotRegisterOrPartiallyUpdateUser() {
 		User user = saveUser("s3-error");
 		String imageKey = "profiles/" + user.getId() + "/denied.png";
-		when(profileImageStorage.isOwnedProfileImageKey(user.getId(), imageKey)).thenReturn(true);
-		when(profileImageStorage.exists(imageKey)).thenThrow(S3Exception.builder().statusCode(403).build());
+		when(profileImageStorage.metadata(imageKey)).thenThrow(S3Exception.builder().statusCode(403).build());
 
 		assertThat(register(user.getId(), Map.of("nickname", "failed", "profileImageKey", imageKey)).status()).isEqualTo(500);
 		User unregistered = userRepository.findById(user.getId()).orElseThrow();
@@ -190,11 +190,10 @@ class UserProfilePostgresHttpTest {
 		String imageKey = "profiles/" + user.getId() + "/slow.png";
 		CountDownLatch enteredS3 = new CountDownLatch(1);
 		CountDownLatch releaseS3 = new CountDownLatch(1);
-		when(profileImageStorage.isOwnedProfileImageKey(user.getId(), imageKey)).thenReturn(true);
-		when(profileImageStorage.exists(imageKey)).thenAnswer(invocation -> {
+		when(profileImageStorage.metadata(imageKey)).thenAnswer(invocation -> {
 			enteredS3.countDown();
 			assertThat(releaseS3.await(10, TimeUnit.SECONDS)).isTrue();
-			return true;
+			return Optional.of(new ProfileImageMetadata("image/png", 1024));
 		});
 		var executor = Executors.newSingleThreadExecutor();
 		try {

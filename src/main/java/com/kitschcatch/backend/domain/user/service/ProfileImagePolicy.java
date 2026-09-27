@@ -62,6 +62,28 @@ public class ProfileImagePolicy {
 			&& EXTENSIONS.containsValue(extension(fileName));
 	}
 
+	public void validateOwnedKey(Long userId, String objectKey) {
+		if (objectKey == null || !objectKey.startsWith(PREFIX)) {
+			throw invalidImage();
+		}
+		int separator = objectKey.indexOf('/', PREFIX.length());
+		if (separator < 0) {
+			throw invalidImage();
+		}
+		Long owner;
+		try {
+			owner = Long.valueOf(objectKey.substring(PREFIX.length(), separator));
+		} catch (NumberFormatException exception) {
+			throw invalidImage();
+		}
+		if (!isOwnedKey(owner, objectKey)) {
+			throw invalidImage();
+		}
+		if (!owner.equals(userId)) {
+			throw new BusinessException(ErrorCode.USER_PROFILE_IMAGE_FORBIDDEN);
+		}
+	}
+
 	public void validateMetadata(String objectKey, String contentType, long contentLength) {
 		String normalizedType = normalizeContentType(contentType);
 		validateLength(contentLength);

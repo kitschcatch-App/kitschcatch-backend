@@ -1,4 +1,4 @@
-// 프로필 이미지의 최대 허용 바이트 크기를 설정한다.
+// 프로필 이미지의 최대 바이트 크기와 업로드 URL 유효기간을 설정한다.
 package com.kitschcatch.backend.domain.user.service;
 
 import jakarta.validation.constraints.Min;

@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.kitschcatch.backend.domain.post.storage.S3Properties;
 import com.kitschcatch.backend.domain.user.service.ProfileImagePolicy;
@@ -23,6 +26,13 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 class S3ProfileImageStorageTest {
@@ -76,12 +86,44 @@ class S3ProfileImageStorageTest {
 			.isEqualTo("https://cdn.example.com/profiles/42/%EB%82%B4%20%EC%82%AC%EC%A7%84.png");
 		assertThat(storage("test-bucket", "").imageUrl("profiles/42/image.png"))
 			.isEqualTo("https://test-bucket.s3.ap-northeast-2.amazonaws.com/profiles/42/image.png");
-		assertThat(storage.isOwnedProfileImageKey(42L, "profiles/42/image.png")).isTrue();
-		assertThat(storage.isOwnedProfileImageKey(42L, "profiles/42/nested/image.png")).isFalse();
 	}
 
 	private S3ProfileImageStorage storage(String bucket, String baseUrl) {
 		return new S3ProfileImageStorage(client, new S3Properties("ap-northeast-2", bucket, baseUrl, null, null, null),
 			presigner, new ProfileImagePolicy(profileProperties), profileProperties);
+	}
+
+	@Test
+	void readsMetadataWithOneHeadRequest() {
+		when(client.headObject(any(HeadObjectRequest.class))).thenReturn(HeadObjectResponse.builder()
+			.contentType("image/png").contentLength(1024L).build());
+		var metadata = storage.metadata("profiles/42/image.png").orElseThrow();
+		assertThat(metadata.contentType()).isEqualTo("image/png");
+		assertThat(metadata.contentLength()).isEqualTo(1024);
+		verify(client).headObject(HeadObjectRequest.builder().bucket("test-bucket").key("profiles/42/image.png").build());
+	}
+
+	@Test
+	void returnsEmptyOnlyForMissingObjects() {
+		when(client.headObject(any(HeadObjectRequest.class)))
+			.thenThrow(S3Exception.builder().statusCode(404).build())
+			.thenThrow(NoSuchKeyException.builder().statusCode(404).build());
+		assertThat(storage.metadata("profiles/42/missing.png")).isEmpty();
+		assertThat(storage.metadata("profiles/42/missing.png")).isEmpty();
+	}
+
+	@ParameterizedTest
+	@ValueSource(ints = {403, 500, 503})
+	void propagatesS3FailuresInsteadOfReportingMissingImage(int status) {
+		var failure = S3Exception.builder().statusCode(status).build();
+		when(client.headObject(any(HeadObjectRequest.class))).thenThrow(failure);
+		assertThatThrownBy(() -> storage.metadata("profiles/42/image.png")).isSameAs(failure);
+	}
+
+	@Test
+	void propagatesTransportFailures() {
+		var failure = SdkClientException.create("test timeout");
+		when(client.headObject(any(HeadObjectRequest.class))).thenThrow(failure);
+		assertThatThrownBy(() -> storage.metadata("profiles/42/image.png")).isSameAs(failure);
 	}
 }

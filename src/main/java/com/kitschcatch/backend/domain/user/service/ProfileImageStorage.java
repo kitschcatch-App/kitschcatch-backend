@@ -1,13 +1,13 @@
-// 프로필 이미지의 소유권과 저장 객체 검증 경계를 정의한다.
+// 프로필 이미지 업로드 발급과 저장 객체 조회 경계를 정의한다.
 package com.kitschcatch.backend.domain.user.service;
+
+import java.util.Optional;
 
 public interface ProfileImageStorage {
 
 	ProfileImageUploadUrl createUploadUrl(Long userId, String fileName, String contentType, long fileSize);
 
-	boolean isOwnedProfileImageKey(Long userId, String objectKey);
-
-	boolean exists(String objectKey);
+	Optional<ProfileImageMetadata> metadata(String objectKey);
 
 	String imageUrl(String objectKey);
 }

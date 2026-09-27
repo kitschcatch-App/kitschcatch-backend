@@ -80,8 +80,7 @@ class UserProfileHttpTest {
 		User user = userRepository.save(user("kakao-default", "user-2"));
 		RestClient client = client(user.getId());
 		String imageKey = "profiles/" + user.getId() + "/image.png";
-		when(profileImageStorage.isOwnedProfileImageKey(user.getId(), imageKey)).thenReturn(true);
-		when(profileImageStorage.exists(imageKey)).thenReturn(false);
+		when(profileImageStorage.metadata(imageKey)).thenReturn(java.util.Optional.empty());
 
 		org.assertj.core.api.Assertions.assertThatThrownBy(() -> client.post()
 			.uri("/api/users/me/profile")

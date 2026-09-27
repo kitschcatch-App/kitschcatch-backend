@@ -1,8 +1,9 @@
-// S3에 저장된 프로필 이미지의 사용자별 키와 공개 URL을 검증한다.
+// 프로필 이미지의 S3 업로드 URL 발급과 객체 메타데이터 조회를 담당한다.
 package com.kitschcatch.backend.domain.user.storage;
 
 import com.kitschcatch.backend.domain.post.storage.S3Properties;
 import com.kitschcatch.backend.domain.user.service.ProfileImagePolicy;
+import com.kitschcatch.backend.domain.user.service.ProfileImageMetadata;
 import com.kitschcatch.backend.domain.user.service.ProfileImageProperties;
 import com.kitschcatch.backend.domain.user.service.ProfileImageStorage;
 import com.kitschcatch.backend.domain.user.service.ProfileImageUploadUrl;
@@ -12,6 +13,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -62,21 +64,16 @@ public class S3ProfileImageStorage implements ProfileImageStorage {
 	}
 
 	@Override
-	public boolean isOwnedProfileImageKey(Long userId, String objectKey) {
-		return policy.isOwnedKey(userId, objectKey);
-	}
-
-	@Override
-	public boolean exists(String objectKey) {
+	public Optional<ProfileImageMetadata> metadata(String objectKey) {
 		validateBucket();
 		try {
-			s3Client.headObject(HeadObjectRequest.builder().bucket(properties.bucket()).key(objectKey).build());
-			return true;
+			var head = s3Client.headObject(HeadObjectRequest.builder().bucket(properties.bucket()).key(objectKey).build());
+			return Optional.of(new ProfileImageMetadata(head.contentType(), head.contentLength() == null ? 0 : head.contentLength()));
 		} catch (NoSuchKeyException exception) {
-			return false;
+			return Optional.empty();
 		} catch (S3Exception exception) {
 			if (exception.statusCode() == 404) {
-				return false;
+				return Optional.empty();
 			}
 			throw exception;
 		}
