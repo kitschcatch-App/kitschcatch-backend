@@ -21,6 +21,11 @@ public enum ErrorCode {
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_999", "서버 내부 오류가 발생했습니다."),
 
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
+	USER_PROFILE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "USER_002", "프로필이 이미 등록되어 있습니다."),
+	USER_PROFILE_NOT_REGISTERED(HttpStatus.CONFLICT, "USER_003", "프로필을 먼저 등록해야 합니다."),
+	USER_NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "USER_004", "이미 사용 중인 닉네임입니다."),
+	USER_PROFILE_IMAGE_INVALID(HttpStatus.BAD_REQUEST, "USER_005", "프로필 이미지 정보가 올바르지 않습니다."),
+	USER_PROFILE_IMAGE_NOT_UPLOADED(HttpStatus.BAD_REQUEST, "USER_006", "업로드된 프로필 이미지를 찾을 수 없습니다."),
 
 
 	//chatRoom

@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -19,10 +20,13 @@ import org.hibernate.annotations.CreationTimestamp;
 @Entity
 @Table(
 	name = "users",
-	uniqueConstraints = @UniqueConstraint(
+	uniqueConstraints = {
+		@UniqueConstraint(name = "uk_users_nickname_key", columnNames = "nickname_key"),
+		@UniqueConstraint(
 		name = "uk_users_auth_provider_provider_user_id",
 		columnNames = {"auth_provider", "provider_user_id"}
-	)
+		)
+	}
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -34,6 +38,15 @@ public class User {
 
 	@Column(nullable = false, length = 50)
 	private String nickname;
+
+	@Column(name = "nickname_key", length = 50)
+	private String nicknameKey;
+
+	@Column(name = "profile_image_key", length = 512)
+	private String profileImageKey;
+
+	@Column(name = "profile_registered_at")
+	private Instant profileRegisteredAt;
 
 	@Column(nullable = false, unique = true, length = 255)
 	private String email;
@@ -55,5 +68,24 @@ public class User {
 		this.email = email;
 		this.authProvider = authProvider;
 		this.providerUserId = providerUserId;
+	}
+
+	public boolean isProfileRegistered() {
+		return profileRegisteredAt != null;
+	}
+
+	public void registerProfile(String nickname, String nicknameKey, String profileImageKey, Instant registeredAt) {
+		this.nickname = nickname;
+		this.nicknameKey = nicknameKey;
+		this.profileImageKey = profileImageKey;
+		this.profileRegisteredAt = registeredAt;
+	}
+
+	public void updateProfile(String nickname, String nicknameKey, String profileImageKey, boolean imageProvided) {
+		this.nickname = nickname;
+		this.nicknameKey = nicknameKey;
+		if (imageProvided) {
+			this.profileImageKey = profileImageKey;
+		}
 	}
 }
