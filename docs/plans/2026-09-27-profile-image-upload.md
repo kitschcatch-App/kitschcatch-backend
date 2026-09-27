@@ -79,7 +79,7 @@ Java 경로는 `src/main/java/com/kitschcatch/backend` 기준이다.
 - [x] 전체 테스트 270건 통과, 실패·오류·건너뜀 0건, 빌드 성공.
 - [x] 테스트 스키마 잔여 0개 확인, 임시 PostgreSQL 종료.
 - [x] Notion 정책·응답 예시 반영.
-- [ ] Notion 업로드 방법·검증 설명·오류 목록의 잔여 동기화.
+- [x] Notion 업로드 방법·검증 설명·오류 목록 동기화와 저장 확인.
 - [ ] 실제 AWS S3 연동 검증. 사용자 요청으로 후속 작업으로 이관.
 
 2026-09-27 `dev-kc` STS 재확인은 `InvalidClientTokenId`로 실패했다. 이후 사용자가 실제 AWS 확인을 다음 작업으로 미뤘다. 로컬 SDK 서명이나 S3 테스트 대역 결과를 실제 AWS 성공으로 표시하지 않는다.
