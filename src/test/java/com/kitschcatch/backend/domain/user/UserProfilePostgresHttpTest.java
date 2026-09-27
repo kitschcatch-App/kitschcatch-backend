@@ -28,6 +28,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.Arguments;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -239,6 +243,41 @@ class UserProfilePostgresHttpTest {
 	private User saveUser(String providerId) {
 		return userRepository.saveAndFlush(User.builder().nickname("카카오기본닉네임")
 			.email(providerId + "@example.com").authProvider(AuthProvider.KAKAO).providerUserId(providerId).build());
+	}
+
+	@ParameterizedTest
+	@MethodSource("invalidImageMetadata")
+	void invalidMetadataKeepsRegistrationAndUpdateAtomic(String contentType, long contentLength) {
+		User user = saveUser("invalid-metadata");
+		String key = "profiles/" + user.getId() + "/image.png";
+		when(profileImageStorage.metadata(key)).thenReturn(Optional.of(new ProfileImageMetadata(contentType, contentLength)));
+		Map<String, Object> body = Map.of("nickname", "changed", "profileImageKey", key);
+		Response failedRegistration = register(user.getId(), body);
+		assertThat(failedRegistration.status()).isEqualTo(400);
+		assertThat(failedRegistration.errorCode()).isEqualTo("USER_005");
+		User unchanged = userRepository.findById(user.getId()).orElseThrow();
+		assertThat(unchanged.getNickname()).isEqualTo("카카오기본닉네임");
+		assertThat(unchanged.getNicknameKey()).isNull();
+		assertThat(unchanged.getProfileImageKey()).isNull();
+		assertThat(unchanged.getProfileRegisteredAt()).isNull();
+
+		String oldKey = "profiles/" + user.getId() + "/old.png";
+		when(profileImageStorage.metadata(oldKey)).thenReturn(Optional.of(new ProfileImageMetadata("image/png", 1024)));
+		assertThat(register(user.getId(), Map.of("nickname", "original", "profileImageKey", oldKey)).status()).isEqualTo(201);
+		User before = userRepository.findById(user.getId()).orElseThrow();
+		Response failedUpdate = patch(user.getId(), body);
+		assertThat(failedUpdate.status()).isEqualTo(400);
+		assertThat(failedUpdate.errorCode()).isEqualTo("USER_005");
+		unchanged = userRepository.findById(user.getId()).orElseThrow();
+		assertThat(unchanged.getNickname()).isEqualTo(before.getNickname());
+		assertThat(unchanged.getNicknameKey()).isEqualTo(before.getNicknameKey());
+		assertThat(unchanged.getProfileImageKey()).isEqualTo(before.getProfileImageKey());
+		assertThat(unchanged.getProfileRegisteredAt()).isEqualTo(before.getProfileRegisteredAt());
+	}
+
+	static Stream<Arguments> invalidImageMetadata() {
+		return Stream.of(Arguments.of("image/png", 0L), Arguments.of("image/png", 5_000_001L),
+			Arguments.of("image/jpeg", 1024L), Arguments.of(null, 1024L));
 	}
 
 	private Response register(Long userId, Map<String, Object> body) {
