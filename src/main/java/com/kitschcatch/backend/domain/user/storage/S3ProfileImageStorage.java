@@ -2,43 +2,68 @@
 package com.kitschcatch.backend.domain.user.storage;
 
 import com.kitschcatch.backend.domain.post.storage.S3Properties;
+import com.kitschcatch.backend.domain.user.service.ProfileImagePolicy;
+import com.kitschcatch.backend.domain.user.service.ProfileImageProperties;
 import com.kitschcatch.backend.domain.user.service.ProfileImageStorage;
+import com.kitschcatch.backend.domain.user.service.ProfileImageUploadUrl;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
-import java.util.Locale;
-import java.util.Set;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 @Component
 public class S3ProfileImageStorage implements ProfileImageStorage {
 
-	private static final String PROFILE_IMAGE_PREFIX = "profiles";
-	private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".jpg", ".jpeg", ".png", ".webp", ".gif");
-
 	private final S3Client s3Client;
 	private final S3Properties properties;
+	private final S3Presigner presigner;
+	private final ProfileImagePolicy policy;
+	private final ProfileImageProperties profileProperties;
 
-	public S3ProfileImageStorage(S3Client s3Client, S3Properties properties) {
+	public S3ProfileImageStorage(S3Client s3Client, S3Properties properties, S3Presigner presigner,
+		ProfileImagePolicy policy, ProfileImageProperties profileProperties) {
 		this.s3Client = s3Client;
 		this.properties = properties;
+		this.presigner = presigner;
+		this.policy = policy;
+		this.profileProperties = profileProperties;
+	}
+
+	@Override
+	public ProfileImageUploadUrl createUploadUrl(Long userId, String fileName, String contentType, long fileSize) {
+		String normalizedType = policy.validateUpload(fileName, contentType, fileSize);
+		validateBucket();
+		String key = policy.createObjectKey(userId, normalizedType);
+		var request = PutObjectRequest.builder()
+			.bucket(properties.bucket()).key(key).contentType(normalizedType)
+			.contentLength(fileSize).ifNoneMatch("*").build();
+		var signed = presigner.presignPutObject(PutObjectPresignRequest.builder()
+			.signatureDuration(profileProperties.uploadUrlTtl()).putObjectRequest(request).build());
+		Map<String, String> headers = new HashMap<>();
+		signed.signedHeaders().forEach((name, values) -> {
+			// Host와 Content-Length는 HTTP 클라이언트가 URL과 파일 바이트로 설정한다.
+			if (!name.equalsIgnoreCase("host") && !name.equalsIgnoreCase("content-length")) {
+				headers.put(name, String.join(",", values));
+			}
+		});
+		return new ProfileImageUploadUrl(signed.url().toString(), key, imageUrl(key), signed.expiration(),
+			profileProperties.uploadUrlTtl().toSeconds(), headers);
 	}
 
 	@Override
 	public boolean isOwnedProfileImageKey(Long userId, String objectKey) {
-		if (!StringUtils.hasText(objectKey) || objectKey.length() > 512 || objectKey.contains("..")) {
-			return false;
-		}
-		String prefix = PROFILE_IMAGE_PREFIX + "/" + userId + "/";
-		String lowerKey = objectKey.toLowerCase(Locale.ROOT);
-		int dotIndex = lowerKey.lastIndexOf('.');
-		return objectKey.startsWith(prefix)
-			&& dotIndex > prefix.length()
-			&& ALLOWED_EXTENSIONS.contains(lowerKey.substring(dotIndex));
+		return policy.isOwnedKey(userId, objectKey);
 	}
 
 	@Override
@@ -59,11 +84,17 @@ public class S3ProfileImageStorage implements ProfileImageStorage {
 
 	@Override
 	public String imageUrl(String objectKey) {
+		String path;
+		try {
+			path = new URI(null, null, "/" + objectKey, null).toASCIIString();
+		} catch (URISyntaxException exception) {
+			throw new BusinessException(ErrorCode.USER_PROFILE_IMAGE_INVALID);
+		}
 		if (StringUtils.hasText(properties.publicBaseUrl())) {
-			return properties.publicBaseUrl() + "/" + objectKey;
+			return properties.publicBaseUrl() + path;
 		}
 		validateBucket();
-		return "https://" + properties.bucket() + ".s3." + properties.region() + ".amazonaws.com/" + objectKey;
+		return "https://" + properties.bucket() + ".s3." + properties.region() + ".amazonaws.com" + path;
 	}
 
 	private void validateBucket() {

@@ -3,6 +3,8 @@ package com.kitschcatch.backend.domain.user.service;
 
 public interface ProfileImageStorage {
 
+	ProfileImageUploadUrl createUploadUrl(Long userId, String fileName, String contentType, long fileSize);
+
 	boolean isOwnedProfileImageKey(Long userId, String objectKey);
 
 	boolean exists(String objectKey);
