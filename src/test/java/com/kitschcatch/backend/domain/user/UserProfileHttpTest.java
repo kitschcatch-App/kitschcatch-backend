@@ -92,6 +92,29 @@ class UserProfileHttpTest {
 				.contains("USER_006"));
 	}
 
+	@Test
+	void registrationAndUpdateValidateNicknameAfterNormalization() {
+		User user = userRepository.save(user("kakao-default", "normalization-user"));
+		RestClient client = client(user.getId());
+		String fiftyCharacters = "가".repeat(50);
+		String decomposed = "가".repeat(50);
+
+		Map<?, ?> registered = data(client.post().uri("/api/users/me/profile")
+			.body(Map.of("nickname", " " + decomposed + " ")).retrieve().body(Map.class));
+		assertThat(registered.get("nickname")).isEqualTo(fiftyCharacters);
+
+		Map<?, ?> updated = data(client.patch().uri("/api/users/me")
+			.body(Map.of("nickname", " " + "나".repeat(50) + " ")).retrieve().body(Map.class));
+		assertThat(updated.get("nickname")).isEqualTo("나".repeat(50));
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> client.patch().uri("/api/users/me")
+			.body(Map.of("nickname", "나".repeat(51))).retrieve().toEntity(Map.class))
+			.isInstanceOf(HttpClientErrorException.BadRequest.class)
+			.satisfies(error -> assertThat(((HttpClientErrorException) error).getResponseBodyAsString())
+				.contains("COMMON_001"));
+		assertThat(userRepository.findById(user.getId()).orElseThrow().getNickname()).isEqualTo("나".repeat(50));
+	}
+
 	private RestClient client(Long userId) {
 		return RestClient.builder()
 			.baseUrl("http://127.0.0.1:" + port)
