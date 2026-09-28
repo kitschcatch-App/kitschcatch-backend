@@ -2,6 +2,7 @@
 package com.kitschcatch.backend.domain.user.service;
 
 import com.kitschcatch.backend.domain.user.dto.RegisterUserProfileRequest;
+import com.kitschcatch.backend.domain.user.dto.NicknameAvailabilityResponse;
 import com.kitschcatch.backend.domain.user.dto.UpdateUserProfileRequest;
 import com.kitschcatch.backend.domain.user.dto.UserMeResponse;
 import com.kitschcatch.backend.domain.user.entity.User;
@@ -39,6 +40,14 @@ public class UserService {
 	@Transactional(readOnly = true)
 	public UserMeResponse getMe(Long userId) {
 		return toResponse(findUser(userId));
+	}
+
+	@Transactional(readOnly = true)
+	public NicknameAvailabilityResponse checkNicknameAvailability(Long userId, String nickname) {
+		String normalizedNickname = nicknamePolicy.normalize(nickname);
+		findUser(userId);
+		boolean available = !userRepository.existsByNicknameKeyAndIdNot(normalizedNickname, userId);
+		return new NicknameAvailabilityResponse(normalizedNickname, available);
 	}
 
 	public UserMeResponse registerProfile(Long userId, RegisterUserProfileRequest request) {
