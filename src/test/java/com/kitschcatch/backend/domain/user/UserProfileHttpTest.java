@@ -3,12 +3,23 @@ package com.kitschcatch.backend.domain.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.domain.user.service.ProfileImageStorage;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
+import com.kitschcatch.backend.global.security.JwtProperties;
+import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import java.util.Map;
 import java.util.HashMap;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.HttpClientErrorException;
@@ -29,7 +41,8 @@ import org.springframework.web.client.HttpClientErrorException;
 	"spring.datasource.password=",
 	"spring.jpa.hibernate.ddl-auto=create-drop",
 	"kakao.oauth.native-app-key=test-native-app-key",
-	"app.orders.expiration-enabled=false"
+	"app.orders.expiration-enabled=false",
+	"springdoc.api-docs.enabled=true"
 })
 class UserProfileHttpTest {
 
@@ -41,6 +54,8 @@ class UserProfileHttpTest {
 
 	@Autowired
 	private JwtTokenProvider jwtTokenProvider;
+	@Autowired
+	private JwtProperties jwtProperties;
 
 	@MockitoBean
 	private ProfileImageStorage profileImageStorage;
@@ -113,6 +128,97 @@ class UserProfileHttpTest {
 			.satisfies(error -> assertThat(((HttpClientErrorException) error).getResponseBodyAsString())
 				.contains("COMMON_001"));
 		assertThat(userRepository.findById(user.getId()).orElseThrow().getNickname()).isEqualTo("나".repeat(50));
+	}
+
+	@Test
+	void nicknameAvailabilityHandlesUnregisteredUsersDuplicatesAndOwnNicknameWithoutMutation() {
+		User first = userRepository.saveAndFlush(user("카카오기본닉네임", "availability-first"));
+		User second = userRepository.saveAndFlush(user("카카오기본닉네임", "availability-second"));
+		assertThat(availability(first.getId(), "카카오기본닉네임").data().get("available")).isEqualTo(true);
+		assertThat(availability(second.getId(), "카카오기본닉네임").data().get("available")).isEqualTo(true);
+
+		assertThat(request(second.getId(), "/api/users/me/profile", HttpMethod.POST,
+			Map.of("nickname", "가"), null).status()).isEqualTo(201);
+		User before = userRepository.findById(second.getId()).orElseThrow();
+		var occupied = availability(first.getId(), " 가 ");
+		assertThat(occupied.status()).isEqualTo(200);
+		assertThat(occupied.body().containsKey("error")).isFalse();
+		assertThat(occupied.data().get("nickname")).isEqualTo("가");
+		assertThat(occupied.data().get("available")).isEqualTo(false);
+		assertThat(availability(second.getId(), "가").data().get("available")).isEqualTo(true);
+		assertThat(availability(first.getId(), "가+").data().get("available")).isEqualTo(true);
+		assertThat(availability(first.getId(), "가 ").data().get("available")).isEqualTo(false);
+		User after = userRepository.findById(second.getId()).orElseThrow();
+		assertThat(after.getNickname()).isEqualTo(before.getNickname());
+		assertThat(after.getNicknameKey()).isEqualTo(before.getNicknameKey());
+		assertThat(after.getProfileRegisteredAt()).isEqualTo(before.getProfileRegisteredAt());
+		verifyNoInteractions(profileImageStorage);
+	}
+
+	@Test
+	void nicknameAvailabilityReturnsCommonInputAuthenticationAndUserErrors() {
+		User user = userRepository.saveAndFlush(user("default", "availability-errors"));
+		assertError(request(user.getId(), "/api/users/nickname-availability", HttpMethod.GET, null, null), 400, "COMMON_002");
+		for (String invalid : new String[]{"", " ", "가".repeat(51)}) {
+			assertError(availability(user.getId(), invalid), 400, "COMMON_001");
+		}
+		assertError(availability(Long.MAX_VALUE, "valid"), 404, "USER_001");
+		String path = "/api/users/nickname-availability?nickname=valid";
+		for (String header : new String[]{"", "Bearer invalid", "Bearer " + jwtTokenProvider.createRefreshToken(user.getId()),
+			"Bearer " + expiredToken(user.getId())}) {
+			assertError(request(user.getId(), path, HttpMethod.GET, null, header), 401, "AUTH_004");
+		}
+	}
+
+	@Test
+	void nicknameAvailabilityIsPublishedInOpenApi() {
+		Map<?, ?> document = RestClient.create("http://127.0.0.1:" + port).get().uri("/v3/api-docs")
+			.retrieve().body(Map.class);
+		Map<?, ?> path = (Map<?, ?>) ((Map<?, ?>) document.get("paths")).get("/api/users/nickname-availability");
+		Map<?, ?> operation = (Map<?, ?>) path.get("get");
+		assertThat(((Map<?, ?>) ((java.util.List<?>) operation.get("parameters")).getFirst()).get("required")).isEqualTo(true);
+		assertThat(operation.get("security")).isNotNull();
+		Map<?, ?> schemas = (Map<?, ?>) ((Map<?, ?>) document.get("components")).get("schemas");
+		Map<?, ?> response = (Map<?, ?>) schemas.get("NicknameAvailabilityResponse");
+		assertThat(((Map<?, ?>) response.get("properties")).keySet().stream().map(Object::toString).toList())
+			.contains("nickname", "available");
+	}
+
+	private Response availability(Long userId, String nickname) {
+		return request(userId, "/api/users/nickname-availability?nickname=" +
+			java.net.URLEncoder.encode(nickname, StandardCharsets.UTF_8), HttpMethod.GET, null, null);
+	}
+
+	private Response request(Long userId, String path, HttpMethod method, Object body, String authorization) {
+		var request = RestClient.create().method(method)
+			.uri(java.net.URI.create("http://127.0.0.1:" + port + path));
+		String header = authorization == null ? "Bearer " + jwtTokenProvider.createAccessToken(userId) : authorization;
+		if (!header.isEmpty()) {
+			request.header(HttpHeaders.AUTHORIZATION, header);
+		}
+		if (body != null) {
+			request.contentType(MediaType.APPLICATION_JSON).body(body);
+		}
+		return request.exchange((sent, response) -> new Response(response.getStatusCode().value(), response.bodyTo(Map.class)));
+	}
+
+	private String expiredToken(Long userId) {
+		var key = new SecretKeySpec(jwtProperties.secret().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+		var encoder = new NimbusJwtEncoder(new ImmutableSecret<>(key));
+		var claims = JwtClaimsSet.builder().issuer("kitschcatch").subject(userId.toString()).claim("type", "access")
+			.issuedAt(Instant.now().minusSeconds(600)).expiresAt(Instant.now().minusSeconds(120)).build();
+		return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+	}
+
+	private void assertError(Response response, int status, String code) {
+		assertThat(response.status()).isEqualTo(status);
+		assertThat(((Map<?, ?>) response.body().get("error")).get("code")).isEqualTo(code);
+	}
+
+	private record Response(int status, Map<?, ?> body) {
+		Map<?, ?> data() {
+			return (Map<?, ?>) body.get("data");
+		}
 	}
 
 	private RestClient client(Long userId) {
