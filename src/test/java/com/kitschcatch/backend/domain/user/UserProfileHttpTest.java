@@ -148,11 +148,25 @@ class UserProfileHttpTest {
 		assertThat(availability(second.getId(), "가").data().get("available")).isEqualTo(true);
 		assertThat(availability(first.getId(), "가+").data().get("available")).isEqualTo(true);
 		assertThat(availability(first.getId(), "가 ").data().get("available")).isEqualTo(false);
+		assertThat(availability(first.getId(), "나".repeat(50)).data().get("available")).isEqualTo(true);
+		String ownIdAsQuery = "/api/users/nickname-availability?nickname=%EA%B0%80&userId=" + second.getId();
+		assertThat(request(first.getId(), ownIdAsQuery, HttpMethod.GET, null, null).data().get("available"))
+			.isEqualTo(false);
 		User after = userRepository.findById(second.getId()).orElseThrow();
 		assertThat(after.getNickname()).isEqualTo(before.getNickname());
 		assertThat(after.getNicknameKey()).isEqualTo(before.getNicknameKey());
 		assertThat(after.getProfileRegisteredAt()).isEqualTo(before.getProfileRegisteredAt());
 		verifyNoInteractions(profileImageStorage);
+	}
+
+	@Test
+	void nicknameAvailabilityKeepsExistingCaseSensitivePolicy() {
+		User owner = userRepository.saveAndFlush(user("default", "case-owner"));
+		User other = userRepository.saveAndFlush(user("default", "case-other"));
+		assertThat(request(owner.getId(), "/api/users/me/profile", HttpMethod.POST,
+			Map.of("nickname", "Collector"), null).status()).isEqualTo(201);
+		assertThat(availability(other.getId(), "Collector").data().get("available")).isEqualTo(false);
+		assertThat(availability(other.getId(), "collector").data().get("available")).isEqualTo(true);
 	}
 
 	@Test
