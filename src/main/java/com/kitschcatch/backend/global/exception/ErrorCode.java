@@ -26,6 +26,7 @@ public enum ErrorCode {
 	USER_NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "USER_004", "이미 사용 중인 닉네임입니다."),
 	USER_PROFILE_IMAGE_INVALID(HttpStatus.BAD_REQUEST, "USER_005", "프로필 이미지 정보가 올바르지 않습니다."),
 	USER_PROFILE_IMAGE_NOT_UPLOADED(HttpStatus.BAD_REQUEST, "USER_006", "업로드된 프로필 이미지를 찾을 수 없습니다."),
+	USER_PROFILE_IMAGE_FORBIDDEN(HttpStatus.FORBIDDEN, "USER_007", "다른 사용자의 프로필 이미지는 사용할 수 없습니다."),
 
 
 	//chatRoom

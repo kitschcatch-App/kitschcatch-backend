@@ -32,7 +32,8 @@ class UserServiceTest {
 		userRepository = org.mockito.Mockito.mock(UserRepository.class);
 		profileImageStorage = org.mockito.Mockito.mock(ProfileImageStorage.class);
 		userService = new UserService(userRepository, new NicknamePolicy(), profileImageStorage,
-			new UserProfileTransactionService(userRepository));
+			new UserProfileTransactionService(userRepository),
+			new ProfileImagePolicy(new ProfileImageProperties(5_000_000, java.time.Duration.ofMinutes(10))));
 		user = User.builder()
 			.nickname("kakao-default")
 			.email("user@example.com")
@@ -60,8 +61,7 @@ class UserServiceTest {
 	void registerProfileStoresNicknameAndImageAfterValidatingUploadedObject() {
 		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
 		when(userRepository.existsByNicknameKeyAndIdNot("collector", 1L)).thenReturn(false);
-		when(profileImageStorage.isOwnedProfileImageKey(1L, "profiles/1/image.png")).thenReturn(true);
-		when(profileImageStorage.exists("profiles/1/image.png")).thenReturn(true);
+		when(profileImageStorage.metadata("profiles/1/image.png")).thenReturn(Optional.of(new ProfileImageMetadata("image/png", 1024)));
 		when(profileImageStorage.imageUrl("profiles/1/image.png")).thenReturn("https://cdn/profiles/1/image.png");
 		when(userRepository.saveAndFlush(user)).thenReturn(user);
 

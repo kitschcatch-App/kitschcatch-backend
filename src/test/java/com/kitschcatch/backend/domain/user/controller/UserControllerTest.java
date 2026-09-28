@@ -15,6 +15,7 @@ import com.kitschcatch.backend.domain.user.dto.RegisterUserProfileRequest;
 import com.kitschcatch.backend.domain.user.dto.UpdateUserProfileRequest;
 import com.kitschcatch.backend.domain.user.dto.UserMeResponse;
 import com.kitschcatch.backend.domain.user.service.UserService;
+import com.kitschcatch.backend.domain.user.service.UserProfileImageService;
 import com.kitschcatch.backend.global.exception.GlobalExceptionHandler;
 import com.kitschcatch.backend.global.response.ResponseStatusSetterAdvice;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
@@ -39,7 +40,7 @@ class UserControllerTest {
 	@BeforeEach
 	void setUp() {
 		userService = mock(UserService.class);
-		mockMvc = MockMvcBuilders.standaloneSetup(new UserController(userService))
+		mockMvc = MockMvcBuilders.standaloneSetup(new UserController(userService, mock(UserProfileImageService.class)))
 			.setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
 			.setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
 			.build();

@@ -25,3 +25,8 @@
 
 
 ## 키치캐치 아티클
+
+## 개발 문서
+
+- [프로필 이미지 업로드 API와 검증 결과](docs/profile-image-upload.md).
+- [프로필 이미지 업로드 구현 계획과 결과](docs/plans/2026-09-27-profile-image-upload.md).
