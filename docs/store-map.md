@@ -154,3 +154,11 @@
 - [주변 매장 검색](https://app.notion.com/p/3c1ee6172f5680fc97baf2ba535f1d0d).
 - [매장 상세](https://app.notion.com/p/3c1ee6172f5680ceaa60c5cd6d9db48b).
 - [네이버 좌표](https://navermaps.github.io/maps.js.ncp/docs/naver.maps.LatLng.html), [마커](https://navermaps.github.io/maps.js.ncp/docs/tutorial-2-Marker.html).
+
+## 명세 동기화와 PR
+
+- Notion의 전국 목록·주변 검색·상세 명세에 인증, 입력 범위, 페이지와 거리 계산, 영업시간 해석 및 오류를 반영했다. 각 페이지를 다시 열어 저장된 내용을 확인했다. 주변 응답 예시는 `page`, `size`, `hasNext`와 좌표에 맞는 `distanceMeters=427`을 포함한다.
+- 작업 기록과 환경 변수 문서를 Obsidian `키치캐치` 폴더에 각각 저장했다. Obsidian CLI는 비활성화되어 보관함의 Markdown 파일로 저장하고 내용을 재확인했다.
+- [PR #40](https://github.com/kitschcatch-App/kitschcatch-backend/pull/40): `feat/39` → `develop`, Open, Draft 아님. 저장소 PR 템플릿에 맞춰 구현·테스트·제외 범위를 기록했다.
+- 격리 PostgreSQL의 임시 매장·프로필 스키마가 0개 남았음을 확인하고 테스트 DB 프로세스를 정상 종료했다.
+- 로컬 테스트와 빌드는 통과했다. PR 생성 시 GitHub 상태 검사 항목은 없었으며 운영 배포는 수행하지 않았다.
