@@ -115,7 +115,7 @@ public class AuthService {
 			jwtTokenProvider.getAccessTokenTtl().toSeconds(),
 			refreshToken,
 			jwtTokenProvider.getRefreshTokenTtl().toSeconds(),
-			new AuthUserResponse(user.getId(), user.getEmail(), user.getNickname())
+			new AuthUserResponse(user.getId(), user.getEmail(), user.getNickname(), user.isProfileRegistered())
 		);
 	}
 

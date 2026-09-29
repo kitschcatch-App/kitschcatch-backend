@@ -60,7 +60,7 @@ class AuthControllerTest {
 				1800,
 				"refresh-token",
 				1209600,
-				new AuthUserResponse(1L, "kakao@example.com", "kakao")
+				new AuthUserResponse(1L, "kakao@example.com", "kakao", false)
 			));
 
 		mockMvc.perform(post("/api/auth/kakao/mobile-login")
@@ -74,7 +74,8 @@ class AuthControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.accessToken").value("access-token"))
-			.andExpect(jsonPath("$.data.refreshToken").value("refresh-token"));
+			.andExpect(jsonPath("$.data.refreshToken").value("refresh-token"))
+			.andExpect(jsonPath("$.data.user.profileRegistered").value(false));
 	}
 
 	@Test
@@ -106,7 +107,7 @@ class AuthControllerTest {
 				1800,
 				"new-refresh-token",
 				1209600,
-				new AuthUserResponse(1L, "kakao@example.com", "kakao")
+				new AuthUserResponse(1L, "kakao@example.com", "kakao", true)
 			));
 
 		mockMvc.perform(post("/api/auth/token/refresh")
@@ -118,7 +119,8 @@ class AuthControllerTest {
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
-			.andExpect(jsonPath("$.data.refreshToken").value("new-refresh-token"));
+			.andExpect(jsonPath("$.data.refreshToken").value("new-refresh-token"))
+			.andExpect(jsonPath("$.data.user.profileRegistered").value(true));
 	}
 
 	@Test

@@ -16,6 +16,7 @@ import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
 import com.kitschcatch.backend.global.security.JwtProperties;
+import java.time.Instant;
 import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +88,7 @@ class AuthServiceTest {
 		assertThat(response.accessToken()).isNotBlank();
 		assertThat(response.refreshToken()).isNotBlank();
 		assertThat(response.user().id()).isEqualTo(savedUser.get().getId());
+		assertThat(response.user().profileRegistered()).isFalse();
 		assertThat(refreshTokenRepository.findAll()).hasSize(1);
 		assertThat(loginNonceRepository.findAll())
 			.singleElement()
@@ -111,6 +113,27 @@ class AuthServiceTest {
 
 		assertThat(userRepository.findAll()).hasSize(1);
 		assertThat(response.user().id()).isEqualTo(existingUser.getId());
+		assertThat(response.user().profileRegistered()).isFalse();
+	}
+
+	@Test
+	@DisplayName("프로필 등록을 마친 카카오 사용자는 로그인과 재발급에서 등록 완료로 표시한다")
+	void registeredKakaoUserHasCompletedProfileOnLoginAndRefresh() {
+		User existingUser = User.builder()
+			.nickname("kakao-default")
+			.email("old@example.com")
+			.authProvider(AuthProvider.KAKAO)
+			.providerUserId("123456789")
+			.build();
+		existingUser.registerProfile("collector", "collector", null, Instant.parse("2026-09-20T03:00:00Z"));
+		userRepository.saveAndFlush(existingUser);
+		KakaoNonceResponse nonceResponse = authService.createKakaoLoginNonce();
+
+		AuthTokenResponse loginResponse = authService.loginWithKakaoIdToken("kakao-sdk-id-token", nonceResponse.nonce());
+		AuthTokenResponse refreshResponse = authService.refresh(loginResponse.refreshToken());
+
+		assertThat(loginResponse.user().profileRegistered()).isTrue();
+		assertThat(refreshResponse.user().profileRegistered()).isTrue();
 	}
 
 	@Test
