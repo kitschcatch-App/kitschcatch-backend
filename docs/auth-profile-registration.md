@@ -55,4 +55,4 @@ if (response.data.user.profileRegistered) {
 - 사용한 refresh token은 재사용할 수 없고, `false`도 응답 JSON에 boolean으로 포함된다. 실제 `/v3/api-docs`에서 두 인증 경로의 공통 응답과 `AuthUserResponse.profileRegistered`의 boolean 스키마를 확인했다.
 - 임시 격리 PostgreSQL에 기존 수동 SQL을 적용하는 프로필 회귀 테스트를 포함해 `./gradlew test build --rerun-tasks --console=plain`을 실행했다. JUnit XML 합계는 286개 통과, 실패 0개, 오류 0개, 건너뜀 0개이며 빌드에 성공했다. `issue31_` 테스트 스키마 잔여는 0개였고 임시 서버를 중지했다.
 
-Notion [고도화 API 명세서](https://app.notion.com/p/API-341ee6172f5680f0be7dfd415a5bfab6)의 카카오 모바일 로그인·토큰 재발급 항목은 기존에 토큰 발급 설명만 있고 이 응답 필드의 설명과 예시가 없다. 명세 갱신은 별도 승인 대기 중이다. 이 기록은 로컬 테스트와 명세 조회 결과이며 실제 카카오·AWS S3·CI·배포 검증 결과는 아니다.
+Notion [카카오 모바일 로그인](https://app.notion.com/p/3a8ee6172f5680b78580e573491fece5)과 [토큰 재발급](https://app.notion.com/p/3a8ee6172f56807d8920e58a500487ab) 항목의 설명에 `profileRegistered`를 반영하고, 두 성공 응답의 HTTP 200 예시와 등록 상태별 동작을 추가했다. 두 페이지를 다시 열어 저장된 내용을 확인했다. 이 기록은 로컬 테스트와 명세 동기화 결과이며 실제 카카오·AWS S3·CI·배포 검증 결과는 아니다.
