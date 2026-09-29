@@ -33,7 +33,7 @@ public class AuthController {
 	}
 
 	@PostMapping("/kakao/mobile-login")
-	@Operation(summary = "카카오 모바일 로그인", description = "카카오 SDK에서 받은 ID 토큰과 nonce로 로그인하고 access token과 refresh token을 발급합니다.")
+	@Operation(summary = "카카오 모바일 로그인", description = "카카오 SDK에서 받은 ID 토큰과 nonce로 로그인하고 토큰과 사용자의 프로필 등록 여부를 반환합니다.")
 	public ApiResponse<AuthTokenResponse> loginWithKakaoIdToken(
 		@Valid @RequestBody KakaoMobileLoginRequest request
 	) {
@@ -41,7 +41,7 @@ public class AuthController {
 	}
 
 	@PostMapping("/token/refresh")
-	@Operation(summary = "토큰 재발급", description = "유효한 refresh token으로 새 access token과 refresh token을 발급합니다.")
+	@Operation(summary = "토큰 재발급", description = "유효한 refresh token으로 새 토큰과 사용자의 현재 프로필 등록 여부를 반환합니다.")
 	public ApiResponse<AuthTokenResponse> refresh(@Valid @RequestBody TokenRefreshRequest request) {
 		return ApiResponse.success(authService.refresh(request.refreshToken()));
 	}

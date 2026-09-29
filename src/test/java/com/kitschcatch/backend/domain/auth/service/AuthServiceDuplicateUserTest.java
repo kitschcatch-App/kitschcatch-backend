@@ -17,6 +17,7 @@ import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.global.security.JwtProperties;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,8 @@ class AuthServiceDuplicateUserTest {
 			.authProvider(AuthProvider.KAKAO)
 			.providerUserId("123456789")
 			.build();
+		savedByConcurrentRequest.registerProfile(
+			"collector", "collector", null, Instant.parse("2026-09-20T03:00:00Z"));
 		ReflectionTestUtils.setField(savedByConcurrentRequest, "id", 1L);
 
 		when(loginNonceRepository.consumeByRawNonce("nonce-value")).thenReturn(true);
@@ -67,6 +70,7 @@ class AuthServiceDuplicateUserTest {
 		AuthTokenResponse response = authService.loginWithKakaoIdToken("kakao-sdk-id-token", "nonce-value");
 
 		assertThat(response.user().id()).isEqualTo(1L);
+		assertThat(response.user().profileRegistered()).isTrue();
 		verify(kakaoUserService, times(2)).findKakaoUser("123456789");
 	}
 }

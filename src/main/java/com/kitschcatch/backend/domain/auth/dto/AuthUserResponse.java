@@ -11,6 +11,9 @@ public record AuthUserResponse(
 	String email,
 
 	@Schema(description = "사용자 닉네임")
-	String nickname
+	String nickname,
+
+	@Schema(description = "프로필 등록 완료 여부. 최초 프로필 등록 시각이 있으면 true")
+	boolean profileRegistered
 ) {
 }
