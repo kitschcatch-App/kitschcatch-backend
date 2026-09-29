@@ -11,7 +11,6 @@ import jakarta.validation.constraints.Size;
 @JsonIgnoreProperties(ignoreUnknown = false)
 public class UpdateUserProfileRequest {
 
-	@Size(max = 50)
 	private String nickname;
 	@Size(max = 512)
 	private String profileImageKey;
@@ -19,7 +18,7 @@ public class UpdateUserProfileRequest {
 	private boolean profileImageKeyProvided;
 
 	@JsonProperty("nickname")
-	@Schema(description = "변경할 닉네임")
+	@Schema(description = "변경할 닉네임. 앞뒤 공백 제거·NFC 정규화 후 1~50자")
 	public void setNickname(String nickname) {
 		this.nicknameProvided = true;
 		this.nickname = nickname;

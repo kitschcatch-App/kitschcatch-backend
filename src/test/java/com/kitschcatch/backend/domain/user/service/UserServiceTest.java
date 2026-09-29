@@ -4,6 +4,7 @@ package com.kitschcatch.backend.domain.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,6 +56,42 @@ class UserServiceTest {
 		assertThat(response.profileImageKey()).isNull();
 		assertThat(response.profileRegisteredAt()).isNull();
 		verify(profileImageStorage, never()).imageUrl(org.mockito.ArgumentMatchers.anyString());
+	}
+
+	@Test
+	void availabilityUsesNormalizedNicknameAndExcludesAuthenticatedUser() {
+		user.registerProfile("가", "가", null, java.time.Instant.now());
+		when(userRepository.existsByNicknameKeyAndIdNot("가", 1L)).thenReturn(false);
+
+		var response = userService.checkNicknameAvailability(1L, " 가 ");
+
+		assertThat(response.nickname()).isEqualTo("가");
+		assertThat(response.available()).isTrue();
+		verify(userRepository).existsByNicknameKeyAndIdNot("가", 1L);
+		verify(userRepository, never()).findByIdForUpdate(1L);
+		verifyNoInteractions(profileImageStorage);
+	}
+
+	@Test
+	void availabilityReportsAnotherUsersNicknameAsUnavailable() {
+		when(userRepository.existsByNicknameKeyAndIdNot("collector", 1L)).thenReturn(true);
+
+		var response = userService.checkNicknameAvailability(1L, "collector");
+
+		assertThat(response.available()).isFalse();
+		verifyNoInteractions(profileImageStorage);
+	}
+
+	@Test
+	void availabilityRejectsInvalidNicknameAndMissingUserBeforeQuery() {
+		assertThatThrownBy(() -> userService.checkNicknameAvailability(1L, " "))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+		when(userRepository.findById(1L)).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> userService.checkNicknameAvailability(1L, "valid"))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode").isEqualTo(ErrorCode.USER_NOT_FOUND);
+		verify(userRepository, never()).existsByNicknameKeyAndIdNot(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong());
 	}
 
 	@Test

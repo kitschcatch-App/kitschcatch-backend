@@ -2,6 +2,7 @@
 package com.kitschcatch.backend.domain.user.controller;
 
 import com.kitschcatch.backend.domain.user.dto.RegisterUserProfileRequest;
+import com.kitschcatch.backend.domain.user.dto.NicknameAvailabilityResponse;
 import com.kitschcatch.backend.domain.user.dto.CreateProfileImageUploadUrlRequest;
 import com.kitschcatch.backend.domain.user.dto.ProfileImageUploadUrlResponse;
 import com.kitschcatch.backend.domain.user.dto.UpdateUserProfileRequest;
@@ -11,6 +12,7 @@ import com.kitschcatch.backend.domain.user.service.UserProfileImageService;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -49,6 +52,16 @@ public class UserController {
 	@Operation(summary = "내 정보 조회")
 	public ApiResponse<UserMeResponse> getMe(@AuthenticationPrincipal AuthenticatedUser user) {
 		return ApiResponse.success(userService.getMe(user.userId()));
+	}
+
+	@GetMapping("/nickname-availability")
+	@Operation(summary = "닉네임 중복 확인", description = "프로필 등록·수정 전에 사용합니다. 본인 닉네임은 사용 가능하며 조회 결과는 닉네임을 예약하지 않습니다. 저장 시 중복되면 USER_004가 반환될 수 있습니다.")
+	public ApiResponse<NicknameAvailabilityResponse> checkNicknameAvailability(
+		@AuthenticationPrincipal AuthenticatedUser user,
+		@Parameter(description = "확인할 닉네임. 앞뒤 공백 제거·NFC 정규화 후 1~50자", required = true)
+		@RequestParam String nickname
+	) {
+		return ApiResponse.success(userService.checkNicknameAvailability(user.userId(), nickname));
 	}
 
 	@PostMapping("/me/profile")

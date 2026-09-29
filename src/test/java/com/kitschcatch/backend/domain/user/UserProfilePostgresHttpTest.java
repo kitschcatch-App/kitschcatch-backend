@@ -103,6 +103,8 @@ class UserProfilePostgresHttpTest {
 	void concurrentNicknameRegistrationCommitsOnlyOneUserAndRollsBackLoser() throws Exception {
 		User first = saveUser("first");
 		User second = saveUser("second");
+		assertThat(availability(first.getId(), "공동닉네임").data().get("available")).isEqualTo(true);
+		assertThat(availability(second.getId(), "공동닉네임").data().get("available")).isEqualTo(true);
 		CyclicBarrier bothCheckedAvailability = new CyclicBarrier(2);
 		var repositoryDelegate = mockingDetails(userRepository).getMockCreationSettings().getDefaultAnswer();
 		doAnswer(invocation -> {
@@ -127,6 +129,80 @@ class UserProfilePostgresHttpTest {
 		assertThat(loser.getNickname()).isEqualTo("카카오기본닉네임");
 		assertThat(loser.getNicknameKey()).isNull();
 		assertThat(loser.getProfileImageKey()).isNull();
+	}
+
+	@Test
+	void nicknameCheckDoesNotReserveNameBeforeAnotherUserRegisters() {
+		User first = saveUser("checked-first");
+		User second = saveUser("checked-second");
+		assertThat(availability(first.getId(), "선점닉네임").data().get("available")).isEqualTo(true);
+		assertThat(register(second.getId(), Map.of("nickname", "선점닉네임")).status()).isEqualTo(201);
+
+		Response conflict = register(first.getId(), Map.of("nickname", " 선점닉네임 "));
+		assertThat(conflict.status()).isEqualTo(409);
+		assertThat(conflict.errorCode()).isEqualTo("USER_004");
+		User unchanged = userRepository.findById(first.getId()).orElseThrow();
+		assertThat(unchanged.getNickname()).isEqualTo("카카오기본닉네임");
+		assertThat(unchanged.getNicknameKey()).isNull();
+		assertThat(unchanged.getProfileImageKey()).isNull();
+		assertThat(unchanged.getProfileRegisteredAt()).isNull();
+		assertThat(availability(first.getId(), "선점닉네임").data().get("available")).isEqualTo(false);
+	}
+
+	@Test
+	void nicknameCheckDoesNotReserveNameBeforeAnotherUserChangesToIt() {
+		User first = saveUser("patch-first");
+		User second = saveUser("patch-second");
+		assertThat(register(first.getId(), Map.of("nickname", "첫닉네임")).status()).isEqualTo(201);
+		assertThat(register(second.getId(), Map.of("nickname", "둘닉네임")).status()).isEqualTo(201);
+		User before = userRepository.findById(first.getId()).orElseThrow();
+		assertThat(availability(first.getId(), "변경닉네임").data().get("available")).isEqualTo(true);
+		assertThat(patch(second.getId(), Map.of("nickname", "변경닉네임")).status()).isEqualTo(200);
+
+		Response conflict = patch(first.getId(), Map.of("nickname", "변경닉네임"));
+		assertThat(conflict.status()).isEqualTo(409);
+		assertThat(conflict.errorCode()).isEqualTo("USER_004");
+		User unchanged = userRepository.findById(first.getId()).orElseThrow();
+		assertThat(unchanged.getNickname()).isEqualTo(before.getNickname());
+		assertThat(unchanged.getNicknameKey()).isEqualTo(before.getNicknameKey());
+		assertThat(unchanged.getProfileImageKey()).isEqualTo(before.getProfileImageKey());
+		assertThat(unchanged.getProfileRegisteredAt()).isEqualTo(before.getProfileRegisteredAt());
+	}
+
+	@Test
+	void concurrentNicknameUpdatesCommitOnceAfterBothChecks() throws Exception {
+		User first = saveUser("race-patch-first");
+		User second = saveUser("race-patch-second");
+		assertThat(register(first.getId(), Map.of("nickname", "first-original")).status()).isEqualTo(201);
+		assertThat(register(second.getId(), Map.of("nickname", "second-original")).status()).isEqualTo(201);
+		User firstBefore = userRepository.findById(first.getId()).orElseThrow();
+		User secondBefore = userRepository.findById(second.getId()).orElseThrow();
+		assertThat(availability(first.getId(), "race-name").data().get("available")).isEqualTo(true);
+		assertThat(availability(second.getId(), "race-name").data().get("available")).isEqualTo(true);
+
+		CyclicBarrier bothChecked = new CyclicBarrier(2);
+		var repositoryDelegate = mockingDetails(userRepository).getMockCreationSettings().getDefaultAnswer();
+		doAnswer(invocation -> {
+			boolean occupied = (boolean) repositoryDelegate.answer(invocation);
+			assertThat(occupied).isFalse();
+			bothChecked.await(10, TimeUnit.SECONDS);
+			return occupied;
+		}).when(userRepository).existsByNicknameKeyAndIdNot(eq("race-name"), anyLong());
+
+		List<Response> responses = concurrently(
+			() -> patch(first.getId(), Map.of("nickname", "race-name")),
+			() -> patch(second.getId(), Map.of("nickname", "race-name")));
+		assertThat(responses).extracting(Response::status).containsExactlyInAnyOrder(200, 409);
+		assertThat(responses.stream().filter(response -> response.status() == 409).findFirst().orElseThrow().errorCode())
+			.isEqualTo("USER_004");
+		List<User> saved = userRepository.findAll();
+		assertThat(saved.stream().filter(user -> "race-name".equals(user.getNicknameKey()))).hasSize(1);
+		User loser = saved.stream().filter(user -> !"race-name".equals(user.getNicknameKey())).findFirst().orElseThrow();
+		User original = loser.getId().equals(first.getId()) ? firstBefore : secondBefore;
+		assertThat(loser.getNickname()).isEqualTo(original.getNickname());
+		assertThat(loser.getNicknameKey()).isEqualTo(original.getNicknameKey());
+		assertThat(loser.getProfileImageKey()).isEqualTo(original.getProfileImageKey());
+		assertThat(loser.getProfileRegisteredAt()).isEqualTo(original.getProfileRegisteredAt());
 	}
 
 	@Test
@@ -286,6 +362,14 @@ class UserProfilePostgresHttpTest {
 
 	private Response patch(Long userId, Map<String, Object> body) {
 		return request(userId, HttpMethod.PATCH, "/api/users/me", body);
+	}
+
+	private Response availability(Long userId, String nickname) {
+		String path = "/api/users/nickname-availability?nickname="
+			+ java.net.URLEncoder.encode(nickname, java.nio.charset.StandardCharsets.UTF_8);
+		return RestClient.create().get().uri(java.net.URI.create("http://127.0.0.1:" + port + path))
+			.header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtTokenProvider.createAccessToken(userId))
+			.exchange((request, response) -> new Response(response.getStatusCode().value(), response.bodyTo(Map.class)));
 	}
 
 	private Response request(Long userId, HttpMethod method, String path, Map<String, Object> body) {
