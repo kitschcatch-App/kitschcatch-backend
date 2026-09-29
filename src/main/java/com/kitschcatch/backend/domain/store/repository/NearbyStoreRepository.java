@@ -14,7 +14,7 @@ public class NearbyStoreRepository {
         SELECT id, name, address, latitude, longitude, distance_meters
         FROM (
             SELECT id, name, address, latitude, longitude,
-                2 * :earthRadius * ASIN(SQRT(LEAST(1.0, GREATEST(0.0,
+                2.0 * CAST(:earthRadius AS DOUBLE PRECISION) * ASIN(SQRT(LEAST(1.0, GREATEST(0.0,
                     POWER(SIN(RADIANS(latitude - :latitude) / 2), 2)
                     + COS(RADIANS(:latitude)) * COS(RADIANS(latitude))
                     * POWER(SIN(RADIANS(longitude - :longitude) / 2), 2)
