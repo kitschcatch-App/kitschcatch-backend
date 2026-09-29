@@ -20,6 +20,9 @@ public enum ErrorCode {
 	S3_BUCKET_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "S3_001", "S3 버킷 설정이 필요합니다."),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_999", "서버 내부 오류가 발생했습니다."),
 
+	STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE_001", "매장을 찾을 수 없습니다."),
+	STORE_QUERY_INVALID(HttpStatus.BAD_REQUEST, "STORE_002", "위도, 경도 또는 조회 반경이 올바르지 않습니다."),
+
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
 	USER_PROFILE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "USER_002", "프로필이 이미 등록되어 있습니다."),
 	USER_PROFILE_NOT_REGISTERED(HttpStatus.CONFLICT, "USER_003", "프로필을 먼저 등록해야 합니다."),
