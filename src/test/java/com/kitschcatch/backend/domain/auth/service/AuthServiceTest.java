@@ -16,8 +16,8 @@ import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
 import com.kitschcatch.backend.global.security.JwtProperties;
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -134,6 +134,28 @@ class AuthServiceTest {
 
 		assertThat(loginResponse.user().profileRegistered()).isTrue();
 		assertThat(refreshResponse.user().profileRegistered()).isTrue();
+	}
+
+	@Test
+	@DisplayName("로그인 후 프로필을 등록하면 기존 refresh token의 재발급 응답에 최신 상태가 반영된다")
+	void refreshReadsProfileRegistrationSavedAfterLogin() {
+		KakaoNonceResponse nonceResponse = authService.createKakaoLoginNonce();
+		AuthTokenResponse loginResponse = authService.loginWithKakaoIdToken("kakao-sdk-id-token", nonceResponse.nonce());
+		assertThat(loginResponse.user().profileRegistered()).isFalse();
+
+		User user = userRepository.findById(loginResponse.user().id()).orElseThrow();
+		user.registerProfile("collector", "collector", null, Instant.parse("2026-09-20T03:00:00Z"));
+		userRepository.saveAndFlush(user);
+
+		AuthTokenResponse refreshResponse = authService.refresh(loginResponse.refreshToken());
+
+		assertThat(refreshResponse.user().profileRegistered()).isTrue();
+		assertThat(refreshResponse.user().nickname()).isEqualTo("collector");
+		assertThat(refreshResponse.refreshToken()).isNotEqualTo(loginResponse.refreshToken());
+		assertThatThrownBy(() -> authService.refresh(loginResponse.refreshToken()))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
 	}
 
 	@Test
