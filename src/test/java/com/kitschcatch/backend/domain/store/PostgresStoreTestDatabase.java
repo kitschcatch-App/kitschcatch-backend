@@ -9,12 +9,18 @@ import java.sql.SQLException;
 import java.util.UUID;
 
 final class PostgresStoreTestDatabase implements AutoCloseable {
-    final String schema = "issue39_" + UUID.randomUUID().toString().replace("-", "");
-    final String url = System.getenv("ISSUE39_TEST_DB_URL");
-    final String username = System.getenv().getOrDefault("ISSUE39_TEST_DB_USERNAME", "postgres");
-    final String password = System.getenv().getOrDefault("ISSUE39_TEST_DB_PASSWORD", "");
+    final String schema;
+    final String url;
+    final String username;
+    final String password;
 
-    PostgresStoreTestDatabase() throws SQLException {
+    PostgresStoreTestDatabase() throws SQLException { this("39"); }
+
+    PostgresStoreTestDatabase(String issue) throws SQLException {
+        schema = "issue" + issue + "_" + UUID.randomUUID().toString().replace("-", "");
+        url = System.getenv("ISSUE" + issue + "_TEST_DB_URL");
+        username = System.getenv().getOrDefault("ISSUE" + issue + "_TEST_DB_USERNAME", "postgres");
+        password = System.getenv().getOrDefault("ISSUE" + issue + "_TEST_DB_PASSWORD", "");
         try (var connection = DriverManager.getConnection(url, username, password);
              var statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA " + schema);
@@ -28,9 +34,17 @@ final class PostgresStoreTestDatabase implements AutoCloseable {
     }
 
     static void migrate(Connection connection) throws SQLException, IOException {
-        try (var stream = PostgresStoreTestDatabase.class.getResourceAsStream("/db/manual/039_stores.sql");
+        migrate(connection, "039_stores.sql");
+    }
+
+    static void migrateFavorites(Connection connection) throws SQLException, IOException {
+        migrate(connection, "041_store_favorites.sql");
+    }
+
+    private static void migrate(Connection connection, String file) throws SQLException, IOException {
+        try (var stream = PostgresStoreTestDatabase.class.getResourceAsStream("/db/manual/" + file);
              var statement = connection.createStatement()) {
-            if (stream == null) throw new IOException("039_stores.sql 파일이 없습니다.");
+            if (stream == null) throw new IOException(file + " 파일이 없습니다.");
             try {
                 statement.execute(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
             } catch (SQLException exception) {
