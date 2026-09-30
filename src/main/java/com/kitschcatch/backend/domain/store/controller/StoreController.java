@@ -9,6 +9,8 @@ import com.kitschcatch.backend.domain.store.service.NearbyStoreService;
 import com.kitschcatch.backend.domain.store.service.StorePageQuery;
 import com.kitschcatch.backend.domain.store.service.StoreService;
 import com.kitschcatch.backend.global.exception.ErrorCode;
+import com.kitschcatch.backend.global.security.AuthenticatedUser;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -39,24 +41,26 @@ public class StoreController {
     }
 
     @GetMapping
-    @Operation(summary = "전국 매장 목록 조회", description = "ID 오름차순입니다. 지역 생략 시 전국을 조회합니다. 빈 목록도 200이며 좌표는 WGS84 십진수입니다.")
+    @Operation(summary = "전국 매장 목록 조회", description = "favorited는 요청 사용자의 관심 여부입니다. ID 오름차순입니다. 지역 생략 시 전국을 조회합니다. 빈 목록도 200이며 좌표는 WGS84 십진수입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "페이지 조회 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_001: 지역 또는 페이지 조건 오류")
     public ApiResponse<StorePageResponse> list(
+        @AuthenticationPrincipal AuthenticatedUser user,
         @Parameter(description = "17개 표준 지역 약칭", schema = @Schema(allowableValues = {
             "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"}))
         @RequestParam(required = false) String region,
         @Parameter(schema = @Schema(minimum = "0", maximum = "10000")) @RequestParam(defaultValue = "0") int page,
         @Parameter(schema = @Schema(minimum = "1", maximum = "100")) @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(storeService.list(region, new StorePageQuery(page, size)));
+        return ApiResponse.success(storeService.list(user.userId(), region, new StorePageQuery(page, size)));
     }
 
     @GetMapping("/nearby")
-    @Operation(summary = "현재 위치 기준 주변 매장 조회", description = "1·3·5km 구면 직선거리 이내를 실제 거리, ID 순으로 조회합니다. distanceMeters는 미터 반올림 값이며 경로 거리가 아닙니다. hasNext로 추가 페이지를 조회합니다. 기본 반경은 1km입니다.")
+    @Operation(summary = "현재 위치 기준 주변 매장 조회", description = "favorited는 요청 사용자의 관심 여부입니다. 1·3·5km 구면 직선거리 이내를 실제 거리, ID 순으로 조회합니다. distanceMeters는 미터 반올림 값이며 경로 거리가 아닙니다. hasNext로 추가 페이지를 조회합니다. 기본 반경은 1km입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "주변 매장 조회 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "STORE_002: 좌표 누락·형식·범위 또는 반경 오류. COMMON_001: 페이지 조건 오류")
     public ApiResponse<NearbyStorePageResponse> nearby(
+        @AuthenticationPrincipal AuthenticatedUser user,
         @Parameter(description = "WGS84 위도. NaN/Infinity 불가", schema = @Schema(minimum = "-90", maximum = "90"))
         @RequestParam double latitude,
         @Parameter(description = "WGS84 경도. NaN/Infinity 불가", schema = @Schema(minimum = "-180", maximum = "180"))
@@ -65,19 +69,20 @@ public class StoreController {
         @Parameter(schema = @Schema(minimum = "0", maximum = "10000")) @RequestParam(defaultValue = "0") int page,
         @Parameter(schema = @Schema(minimum = "1", maximum = "100")) @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(nearbyStoreService.nearby(
+        return ApiResponse.success(nearbyStoreService.nearby(user.userId(),
             new NearbyStoreQuery(latitude, longitude, radiusKm, new StorePageQuery(page, size))));
     }
 
     @GetMapping("/{storeId}")
-    @Operation(summary = "매장 상세 및 운영 정보 조회", description = "영업시간은 월요일부터 정렬합니다. 미등록은 빈 배열, 휴무일은 closed=true와 null 시각입니다. closeTime이 openTime 이하이면 다음 날 종료(같으면 24시간)입니다. phone 미등록은 null입니다.")
+    @Operation(summary = "매장 상세 및 운영 정보 조회", description = "favorited는 요청 사용자의 관심 여부입니다. 영업시간은 월요일부터 정렬합니다. 미등록은 빈 배열, 휴무일은 closed=true와 null 시각입니다. closeTime이 openTime 이하이면 다음 날 종료(같으면 24시간)입니다. phone 미등록은 null입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "매장 상세 조회 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_002: 매장 ID 형식·범위 오류")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "STORE_001: 매장을 찾을 수 없음")
     public ApiResponse<StoreDetailResponse> detail(
+        @AuthenticationPrincipal AuthenticatedUser user,
         @Parameter(schema = @Schema(minimum = "1")) @PathVariable long storeId
     ) {
-        return ApiResponse.success(storeService.detail(storeId));
+        return ApiResponse.success(storeService.detail(user.userId(), storeId));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

@@ -12,14 +12,14 @@ import java.util.List;
 
 public record StoreDetailResponse(Long id, String name, String address,
                                   double latitude, double longitude, String phone,
-                                  List<BusinessHours> businessHours) {
-    public static StoreDetailResponse from(Store store) {
+                                  List<BusinessHours> businessHours, boolean favorited) {
+    public static StoreDetailResponse from(Store store, boolean favorited) {
         return new StoreDetailResponse(store.getId(), store.getName(), store.getAddress(),
             store.getLatitude(), store.getLongitude(), store.getPhone(),
             store.getBusinessHours().stream()
                 .sorted(Comparator.comparing(StoreBusinessHours::getDayOfWeek))
                 .map(hours -> new BusinessHours(hours.getDayOfWeek(), hours.getOpenTime(),
-                    hours.getCloseTime(), hours.isClosed())).toList());
+                    hours.getCloseTime(), hours.isClosed())).toList(), favorited);
     }
 
     public record BusinessHours(

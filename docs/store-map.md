@@ -6,6 +6,7 @@
 
 - 세 API 모두 `Authorization: Bearer {accessToken}`이 필요하다. 프로필 미등록 사용자도 사용할 수 있다.
 - 좌표는 WGS84 십진수 `latitude`(위도), `longitude`(경도) 순서다. 네이버 `LatLng(latitude, longitude)`에 대응한다.
+- #41에서 각 매장 응답에 현재 요청 사용자의 `favorited` boolean을 추가했다.
 - 조회는 읽기 전용이다. 요청자의 현재 위치를 DB에 저장하지 않는다.
 - `page`는 0~10000(기본 0), `size`는 1~100(기본 20)이다. 선택 숫자 파라미터는 생략하거나 빈 값이면 기본값을 사용한다.
 - 데이터 갱신이 페이지 요청 사이에 일어나면 결과가 달라질 수 있다. 여러 페이지 전체를 하나의 시점으로 고정하는 계약은 아니다.
@@ -27,7 +28,8 @@
         "address": "예시 주소",
         "latitude": 37.57,
         "longitude": 126.98,
-        "phone": null
+        "phone": null,
+        "favorited": false
       }
     ],
     "page": 0,
@@ -57,7 +59,8 @@
         "address": "예시 주소",
         "latitude": 37.57,
         "longitude": 126.98,
-        "distanceMeters": 427
+        "distanceMeters": 427,
+        "favorited": false
       }
     ],
     "page": 0,
@@ -91,6 +94,7 @@
     "latitude": 37.57,
     "longitude": 126.98,
     "phone": null,
+    "favorited": false,
     "businessHours": [
       {"dayOfWeek": "MONDAY", "openTime": "11:00", "closeTime": "20:00", "closed": false},
       {"dayOfWeek": "FRIDAY", "openTime": "20:00", "closeTime": "02:00", "closed": false},
@@ -136,7 +140,7 @@
 3. 마커 선택 시 상세 API로 연락처와 영업시간을 조회한다.
 4. API 인증 오류는 서비스 토큰 흐름으로 처리한다. SDK의 키/앱 등록 오류는 지도 SDK 인증 설정에서 처리한다.
 
-키와 실행 설정은 [별도 환경 변수 문서](store-map-environment.md)에 정리했다. 관심 매장 API 3개, 매장 관리 API, 실제 앱의 지도 표시·키·위치 권한 검증은 후속 작업이다.
+키와 실행 설정은 [별도 환경 변수 문서](store-map-environment.md)에 정리했다. 관심 매장 API 3개는 #41에서 구현했다. 매장 관리 API와 실제 앱의 지도 표시·키·위치 권한 검증은 후속 작업이다.
 
 ## 검증 결과
 
@@ -159,6 +163,10 @@
 
 - Notion의 전국 목록·주변 검색·상세 명세에 인증, 입력 범위, 페이지와 거리 계산, 영업시간 해석 및 오류를 반영했다. 각 페이지를 다시 열어 저장된 내용을 확인했다. 주변 응답 예시는 `page`, `size`, `hasNext`와 좌표에 맞는 `distanceMeters=427`을 포함한다.
 - 작업 기록과 환경 변수 문서를 Obsidian `키치캐치` 폴더에 각각 저장했다. Obsidian CLI는 비활성화되어 보관함의 Markdown 파일로 저장하고 내용을 재확인했다.
-- [PR #40](https://github.com/kitschcatch-App/kitschcatch-backend/pull/40): `feat/39` → `develop`, Open, Draft 아님. 저장소 PR 템플릿에 맞춰 구현·테스트·제외 범위를 기록했다.
+- [PR #40](https://github.com/kitschcatch-App/kitschcatch-backend/pull/40): `feat/39` → `develop`, 2026-09-30 병합 확인. 저장소 PR 템플릿에 맞춰 구현·테스트·제외 범위를 기록했다.
 - 격리 PostgreSQL의 임시 매장·프로필 스키마가 0개 남았음을 확인하고 테스트 DB 프로세스를 정상 종료했다.
 - 로컬 테스트와 빌드는 통과했다. PR 생성 시 GitHub 상태 검사 항목은 없었으며 운영 배포는 수행하지 않았다.
+
+## 관심 매장 연동
+
+#41의 [관심 매장 계약](store-favorites.md)에 따라 `favorited`가 추가됐다. 기존 조회도 `store_favorites`를 읽으므로 041 SQL을 애플리케이션보다 먼저 적용한다.

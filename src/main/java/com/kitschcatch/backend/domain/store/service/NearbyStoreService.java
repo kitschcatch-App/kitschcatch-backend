@@ -10,15 +10,19 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class NearbyStoreService {
     private final NearbyStoreRepository repository;
+    private final StoreFavoriteQueryService favorites;
 
-    public NearbyStoreService(NearbyStoreRepository repository) {
+    public NearbyStoreService(NearbyStoreRepository repository, StoreFavoriteQueryService favorites) {
         this.repository = repository;
+        this.favorites = favorites;
     }
 
-    public NearbyStorePageResponse nearby(NearbyStoreQuery query) {
+    public NearbyStorePageResponse nearby(long userId, NearbyStoreQuery query) {
         var stores = repository.findNearby(query);
         boolean hasNext = stores.size() > query.page().size();
-        return new NearbyStorePageResponse(stores.stream().limit(query.page().size()).toList(),
+        var page = stores.stream().limit(query.page().size()).toList();
+        var ids = favorites.favoritedIds(userId, page.stream().map(store -> store.id()).toList());
+        return new NearbyStorePageResponse(page.stream().map(store -> store.withFavorited(ids.contains(store.id()))).toList(),
             query.page().page(), query.page().size(), hasNext);
     }
 }

@@ -6,4 +6,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record NearbyStoreResponse(Long id, String name, String address,
                                   double latitude, double longitude,
                                   @Schema(description = "구면 직선거리의 미터 반올림 값. 경로 이동 거리가 아닙니다.")
-                                  long distanceMeters) {}
+                                  long distanceMeters, boolean favorited) {
+    public NearbyStoreResponse withFavorited(boolean value) {
+        return new NearbyStoreResponse(id, name, address, latitude, longitude, distanceMeters, value);
+    }
+}
