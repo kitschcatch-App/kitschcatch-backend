@@ -3,12 +3,13 @@ package com.kitschcatch.backend.domain.store.dto;
 
 import com.kitschcatch.backend.domain.store.entity.Store;
 import java.util.List;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 
 public record StorePageResponse(List<StoreSummaryResponse> content, int page, int size,
                                 long totalElements, int totalPages) {
-    public static StorePageResponse from(Page<Store> stores) {
-        return new StorePageResponse(stores.getContent().stream().map(StoreSummaryResponse::from).toList(),
+    public static StorePageResponse from(Page<Store> stores, Set<Long> favoritedIds) {
+        return new StorePageResponse(stores.getContent().stream().map(store -> StoreSummaryResponse.from(store, favoritedIds.contains(store.getId()))).toList(),
             stores.getNumber(), stores.getSize(), stores.getTotalElements(), stores.getTotalPages());
     }
 }

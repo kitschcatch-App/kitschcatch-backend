@@ -41,6 +41,6 @@ public class NearbyStoreRepository {
             "limit", query.page().size() + 1, "offset", query.page().offset()
         ), (rs, rowNum) -> new NearbyStoreResponse(rs.getLong("id"), rs.getString("name"),
             rs.getString("address"), rs.getDouble("latitude"), rs.getDouble("longitude"),
-            Math.round(rs.getDouble("distance_meters"))));
+            Math.round(rs.getDouble("distance_meters")), false));
     }
 }

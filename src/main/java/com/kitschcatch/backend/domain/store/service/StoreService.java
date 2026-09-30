@@ -18,25 +18,29 @@ public class StoreService {
     private static final Set<String> REGIONS = Set.of("서울", "부산", "대구", "인천", "광주", "대전", "울산",
         "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주");
     private final StoreRepository storeRepository;
+    private final StoreFavoriteQueryService favorites;
 
-    public StoreService(StoreRepository storeRepository) {
+    public StoreService(StoreRepository storeRepository, StoreFavoriteQueryService favorites) {
         this.storeRepository = storeRepository;
+        this.favorites = favorites;
     }
 
-    public StorePageResponse list(String region, StorePageQuery query) {
+    public StorePageResponse list(long userId, String region, StorePageQuery query) {
         if (region != null && !REGIONS.contains(region)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
         }
         var pageable = PageRequest.of(query.page(), query.size(), Sort.by("id"));
-        return StorePageResponse.from(region == null
-            ? storeRepository.findAll(pageable) : storeRepository.findByRegion(region, pageable));
+        var stores = region == null ? storeRepository.findAll(pageable) : storeRepository.findByRegion(region, pageable);
+        var ids = stores.getContent().stream().map(store -> store.getId()).toList();
+        return StorePageResponse.from(stores, favorites.favoritedIds(userId, ids));
     }
 
-    public StoreDetailResponse detail(long storeId) {
+    public StoreDetailResponse detail(long userId, long storeId) {
         if (storeId <= 0) {
             throw new BusinessException(ErrorCode.BAD_REQUEST);
         }
-        return StoreDetailResponse.from(storeRepository.findById(storeId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND)));
+        var store = storeRepository.findById(storeId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+        return StoreDetailResponse.from(store, favorites.favoritedIds(userId, Set.of(storeId)).contains(storeId));
     }
 }
