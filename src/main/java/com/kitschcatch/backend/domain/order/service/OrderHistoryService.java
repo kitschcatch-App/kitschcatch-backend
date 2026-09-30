@@ -2,6 +2,9 @@
 package com.kitschcatch.backend.domain.order.service;
 
 import com.kitschcatch.backend.domain.order.dto.OrderDetailResponse;
+import com.kitschcatch.backend.domain.order.dto.OrderHistoryPageResponse;
+import com.kitschcatch.backend.domain.order.dto.PurchaseOrderSummaryResponse;
+import com.kitschcatch.backend.domain.order.dto.SaleOrderSummaryResponse;
 import com.kitschcatch.backend.domain.order.repository.OrderHistoryRepository;
 import com.kitschcatch.backend.domain.post.service.PostImageStorage;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
@@ -38,6 +41,18 @@ public class OrderHistoryService {
         }
         String key = order.getPostThumbnailKey();
         return OrderDetailResponse.from(row, key == null ? null : images.imageUrl(key));
+    }
+
+    public OrderHistoryPageResponse<PurchaseOrderSummaryResponse> purchases(long userId, OrderHistoryQuery query) {
+        requireUser(userId);
+        return OrderHistoryPageResponse.from(repository.findPurchases(userId, query.status(), query.pageable())
+            .map(PurchaseOrderSummaryResponse::from));
+    }
+
+    public OrderHistoryPageResponse<SaleOrderSummaryResponse> sales(long userId, OrderHistoryQuery query) {
+        requireUser(userId);
+        return OrderHistoryPageResponse.from(repository.findSales(userId, query.status(), query.pageable())
+            .map(SaleOrderSummaryResponse::from));
     }
 
     private void requireUser(long userId) {
