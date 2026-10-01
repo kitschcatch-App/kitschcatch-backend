@@ -26,8 +26,8 @@ public class PostFavoriteService {
     @Transactional
     public PostFavoriteResponse register(long userId, long postId) {
         validatePostId(postId);
-        var user = users.findByIdForUpdate(userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        var user = users.findActiveByIdForUpdate(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
         // 상품 삭제·상태 변경과 등록이 같은 상품 잠금 순서에서 확정되도록 한다.
         var post = posts.findByIdForUpdate(postId).filter(value -> value.getDeletedAt() == null)
             .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));

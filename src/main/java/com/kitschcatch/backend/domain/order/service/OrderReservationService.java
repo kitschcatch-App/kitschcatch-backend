@@ -11,6 +11,7 @@ import com.kitschcatch.backend.domain.order.entity.PurchaseOrder;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.repository.PostRepository;
+import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
@@ -26,23 +27,27 @@ public class OrderReservationService {
 	private final PurchaseOrderRepository orderRepository;
 	private final PaymentRepository paymentRepository;
 	private final PaymentAttemptRepository paymentAttemptRepository;
-
-	public OrderReservationService(PostRepository postRepository, PurchaseOrderRepository orderRepository,
-		PaymentRepository paymentRepository) {
-		this(postRepository, orderRepository, paymentRepository, null);
-	}
+	private final UserRepository userRepository;
 
 	@Autowired
 	public OrderReservationService(PostRepository postRepository, PurchaseOrderRepository orderRepository,
-		PaymentRepository paymentRepository, PaymentAttemptRepository paymentAttemptRepository) {
+		PaymentRepository paymentRepository, PaymentAttemptRepository paymentAttemptRepository,
+		UserRepository userRepository) {
 		this.postRepository = postRepository;
 		this.orderRepository = orderRepository;
 		this.paymentRepository = paymentRepository;
 		this.paymentAttemptRepository = paymentAttemptRepository;
+		this.userRepository = userRepository;
 	}
 
 	@Transactional(propagation = Propagation.MANDATORY)
 	public PurchaseOrder lockOrder(Long orderId) {
+		var participants = orderRepository.findParticipantIdsById(orderId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+		// 탈퇴 및 신규 주문과 같은 사용자 → 상품 → 주문 잠금 순서를 유지한다.
+		java.util.stream.Stream.of(participants.getBuyerId(), participants.getSellerId())
+			.distinct().sorted().forEach(userId -> userRepository.findByIdForUpdate(userId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND)));
 		Long postId = orderRepository.findPostIdById(orderId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 		postRepository.findByIdForUpdate(postId)

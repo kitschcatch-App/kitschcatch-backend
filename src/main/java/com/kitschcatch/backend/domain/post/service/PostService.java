@@ -78,10 +78,8 @@ public class PostService {
 		List<String> imageKeys = requireImageKeys(request.imageKeys());
 		verifyImageKeys(userId, imageKeys);
 		return transactionOperations.execute(status -> {
-			User user = userRepository.findByIdForUpdate(userId)
+			User user = userRepository.findActiveByIdForUpdate(userId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
-
-			user.requireActive();
 
 			Post post = Post.builder()
 				.user(user)

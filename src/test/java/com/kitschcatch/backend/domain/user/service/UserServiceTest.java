@@ -96,7 +96,7 @@ class UserServiceTest {
 
 	@Test
 	void registerProfileStoresNicknameAndImageAfterValidatingUploadedObject() {
-		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findActiveByIdForUpdate(1L)).thenReturn(Optional.of(user));
 		when(userRepository.existsByNicknameKeyAndIdNot("collector", 1L)).thenReturn(false);
 		when(profileImageStorage.metadata("profiles/1/image.png")).thenReturn(Optional.of(new ProfileImageMetadata("image/png", 1024)));
 		when(profileImageStorage.imageUrl("profiles/1/image.png")).thenReturn("https://cdn/profiles/1/image.png");
@@ -117,7 +117,7 @@ class UserServiceTest {
 	@Test
 	void duplicateProfileRegistrationIsRejectedWithoutOverwritingUser() {
 		user.registerProfile("collector", "collector", null, java.time.Instant.now());
-		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findActiveByIdForUpdate(1L)).thenReturn(Optional.of(user));
 
 		assertThatThrownBy(() -> userService.registerProfile(1L, new RegisterUserProfileRequest("other", null, null, null)))
 			.isInstanceOf(BusinessException.class)
@@ -129,7 +129,7 @@ class UserServiceTest {
 	@Test
 	void updateProfileDistinguishesImageNullFromImageOmission() {
 		user.registerProfile("collector", "collector", "profiles/1/old.png", java.time.Instant.now());
-		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findActiveByIdForUpdate(1L)).thenReturn(Optional.of(user));
 		when(userRepository.existsByNicknameKeyAndIdNot("new-name", 1L)).thenReturn(false);
 
 		UpdateUserProfileRequest request = new UpdateUserProfileRequest();

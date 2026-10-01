@@ -29,10 +29,11 @@ public class NotificationService {
 
   @Transactional
   public void record(long userId, String eventKey, NotificationType type, String targetId) {
-    users
-        .findByIdForUpdate(userId)
+    users.findByIdForUpdate(userId)
         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-    if (notifications.existsByEventKeyAndUserId(eventKey, userId)) return;
+    // 앞서 로드된 User가 있더라도 잠금 뒤 DB의 현재 종료 상태를 다시 확인한다.
+    if (!users.existsByIdAndWithdrawnAtIsNull(userId)
+        || notifications.existsByEventKeyAndUserId(eventKey, userId)) return;
     var notification =
         notifications.saveAndFlush(new Notification(userId, eventKey, type, targetId));
     for (var token : tokens.findByUserIdAndActiveTrueOrderById(userId))

@@ -301,7 +301,7 @@ public class PaymentTransactionService {
 	}
 
 	private Payment findPaymentWithLock(String paymentId, Long userId) {
-		// 연관 엔티티를 미리 로드하지 않고 상품 → 주문 → 결제 순서로 잠근다.
+		// 연관 엔티티를 미리 로드하지 않고 거래 당사자 → 상품 → 주문 → 결제 순서로 잠근다.
 		Long orderId = paymentRepository.findOrderIdByPaymentIdAndOrderUserId(paymentId, userId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 		reservationService.lockOrder(orderId);

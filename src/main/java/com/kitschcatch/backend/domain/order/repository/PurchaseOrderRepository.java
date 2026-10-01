@@ -26,6 +26,14 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 	@Query("select o.id from PurchaseOrder o where o.orderNumber = :orderNumber and o.user.id = :userId")
 	Optional<Long> findIdByOrderNumberAndUserId(@Param("orderNumber") String orderNumber, @Param("userId") Long userId);
 
+	interface ParticipantIds {
+		Long getBuyerId();
+		Long getSellerId();
+	}
+
+	@Query("select o.user.id as buyerId, o.sellerId as sellerId from PurchaseOrder o where o.id = :id")
+	Optional<ParticipantIds> findParticipantIdsById(@Param("id") Long id);
+
 	@Query("select o.post.id from PurchaseOrder o where o.id = :id")
 	Optional<Long> findPostIdById(@Param("id") Long id);
 

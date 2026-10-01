@@ -97,6 +97,8 @@ public class User {
 		email = "withdrawn-" + UUID.randomUUID() + "@account.invalid";
 		profileImageKey = null;
 		profileRegisteredAt = null;
+		username = null;
+		bio = null;
 	}
 
 	public boolean isProfileRegistered() {

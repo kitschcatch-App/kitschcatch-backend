@@ -21,7 +21,7 @@ public class SettlementRecipientTransactions {
     @Transactional
     public SettlementRecipient bind(long userId,long sellerId,SettlementGateway.Recipient verified) {
         authorize(userId,sellerId);
-        users.findByIdForUpdate(sellerId).orElseThrow(()->new BusinessException(ErrorCode.SETTLEMENT_RECIPIENT_NOT_FOUND));
+        users.findActiveByIdForUpdate(sellerId).orElseThrow(()->new BusinessException(ErrorCode.SETTLEMENT_RECIPIENT_NOT_FOUND));
         if(!SettlementGateway.sellerReference(sellerId).equals(verified.refSellerId()) || !"APPROVED".equals(verified.status()))
             throw new BusinessException(ErrorCode.SETTLEMENT_RECIPIENT_INVALID);
         var existing=recipients.findById(sellerId).orElse(null);

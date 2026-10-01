@@ -152,7 +152,7 @@ abstract class PostFavoriteHttpContract {
     @ValueSource(strings = {"POST", "DELETE", "GET"})
     void deletedUserIsRejected(String method) {
         String path = method.equals("GET") ? "/api/users/me/favorite-posts" : favoritePath(post.getId());
-        assertError(request(method, path, tokens.createAccessToken(Long.MAX_VALUE)), 404, "USER_001");
+        assertError(request(method, path, tokens.createAccessToken(Long.MAX_VALUE)), 401, "AUTH_004");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM post_favorites", Long.class)).isZero();
     }
 
@@ -273,7 +273,7 @@ abstract class PostFavoriteHttpContract {
         assertThat(result.rows("content")).hasSize(100).allSatisfy(row ->
             assertThat(row).containsEntry("thumbnailUrl", "https://images.example.test/first.jpg")
                 .containsEntry("sellerNickname", "검증사용자"));
-        assertThat(statistics.getPrepareStatementCount()).isEqualTo(4);
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(5); // 인증 시 종료 계정 확인 쿼리 1회 포함
         assertThat(statistics.getCollectionFetchCount()).isZero();
         assertThat(statistics.getEntityFetchCount()).isZero();
     }

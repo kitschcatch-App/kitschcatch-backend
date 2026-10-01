@@ -192,6 +192,29 @@ class SocialLoginHttpTest {
 		assertThat(post("/api/auth/token/refresh", Map.of("refreshToken", next)).status()).isEqualTo(401);
 	}
 	@Test
+	void withdrawnNaverAndAppleIdentitiesCannotLogInOrReuseConsumedChallenges() throws Exception {
+		String naverState = state();
+		Response naver = naverLogin(naverState);
+		assertThat(naver.status()).isEqualTo(200);
+		assertThat(request(HttpMethod.DELETE, "/api/users/me", null,
+			(String) naver.data().get("accessToken")).status()).isEqualTo(200);
+		assertThat(naverLogin(state()).status()).isEqualTo(401);
+		assertThat(naverLogin(naverState).status()).isEqualTo(401);
+		assertThat(users.count()).isEqualTo(1);
+
+		String appleNonce = appleNonce();
+		Response apple = appleLogin(token("withdrawn-apple", appleNonce, null), appleNonce);
+		assertThat(apple.status()).isEqualTo(200);
+		assertThat(request(HttpMethod.DELETE, "/api/users/me", null,
+			(String) apple.data().get("accessToken")).status()).isEqualTo(200);
+		String freshNonce = appleNonce();
+		assertThat(appleLogin(token("withdrawn-apple", freshNonce, null), freshNonce).status()).isEqualTo(401);
+		assertThat(appleLogin(token("withdrawn-apple", freshNonce, null), freshNonce).status()).isEqualTo(401);
+		assertThat(users.count()).isEqualTo(2);
+		assertThat(refreshTokens.count()).isZero();
+	}
+
+	@Test
 	void appleRejectsInvalidSignatureIssuerAudienceExpiryClaimsAndMissingNonce() throws Exception {
 		String nonce = appleNonce();
 		Instant now = Instant.now();

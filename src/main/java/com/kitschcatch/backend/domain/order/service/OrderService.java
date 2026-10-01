@@ -75,9 +75,8 @@ public class OrderService {
 		// 두 거래 당사자 → 상품 순서로 잠가 신규 주문과 탈퇴를 직렬화한다.
 		User buyer = null;
 		for (Long id : java.util.stream.Stream.of(userId, sellerId).distinct().sorted().toList()) {
-			User participant = userRepository.findByIdForUpdate(id)
+			User participant = userRepository.findActiveByIdForUpdate(id)
 				.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
-			participant.requireActive();
 			if (id.equals(userId)) buyer = participant;
 		}
 		Post post = postRepository.findByIdForUpdate(request.postId())

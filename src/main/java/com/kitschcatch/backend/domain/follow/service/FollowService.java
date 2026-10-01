@@ -36,10 +36,14 @@ public class FollowService {
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         var second = users.findByIdForUpdate(Math.max(actorId, targetId))
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        var actor = first.getId() == actorId ? first : second;
+        var target = first.getId() == targetId ? first : second;
+        if (!users.existsByIdAndWithdrawnAtIsNull(actorId))
+            throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
         if (following) {
+            if (!users.existsByIdAndWithdrawnAtIsNull(targetId))
+                throw new BusinessException(ErrorCode.USER_NOT_FOUND);
             if (!follows.existsByFollowerIdAndFollowingId(actorId, targetId)) {
-                var actor = first.getId() == actorId ? first : second;
-                var target = first.getId() == targetId ? first : second;
                 follows.saveAndFlush(new UserFollow(actor, target));
             }
         } else {

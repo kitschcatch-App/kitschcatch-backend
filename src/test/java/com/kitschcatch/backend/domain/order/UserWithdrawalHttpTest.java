@@ -17,6 +17,16 @@ import com.kitschcatch.backend.domain.order.entity.PaymentMethod;
 import com.kitschcatch.backend.domain.order.service.OrderService;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.post.entity.*;
+import com.kitschcatch.backend.domain.post.repository.PostFavoriteRepository;
+import com.kitschcatch.backend.domain.post.service.PostFavoriteService;
+import com.kitschcatch.backend.domain.follow.entity.UserFollow;
+import com.kitschcatch.backend.domain.follow.repository.UserFollowRepository;
+import com.kitschcatch.backend.domain.follow.service.FollowService;
+import com.kitschcatch.backend.domain.store.entity.Store;
+import com.kitschcatch.backend.domain.store.repository.StoreRepository;
+import com.kitschcatch.backend.domain.store.repository.StoreFavoriteRepository;
+import com.kitschcatch.backend.domain.store.service.StoreFavoriteService;
+import com.kitschcatch.backend.domain.notification.*;
 import com.kitschcatch.backend.domain.user.service.UserWithdrawalService;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -49,12 +59,28 @@ abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
     @Autowired ChatMessageRepository messages;
     @Autowired UserWithdrawalService withdrawal;
     @Autowired OrderService orderService;
+    @Autowired PostFavoriteRepository postFavorites;
+    @Autowired PostFavoriteService favoriteService;
+    @Autowired UserFollowRepository follows;
+    @Autowired FollowService followService;
+    @Autowired NotificationRepository notificationRecords;
+    @Autowired NotificationService notificationService;
+    @Autowired DeviceTokenRepository deviceTokens;
+    @Autowired DeviceTokenTransactionService tokenService;
+    @Autowired PushDeliveryRepository deliveries;
+    @Autowired PushAttemptRepository pushAttempts;
+    @Autowired StoreRepository stores;
+    @Autowired StoreFavoriteRepository storeFavorites;
+    @Autowired StoreFavoriteService storeFavoriteService;
     @Autowired PlatformTransactionManager transactionManager;
     @MockitoBean KakaoOidcTokenVerifier verifier;
 
     @Override @BeforeEach
     void resetData() {
-        for (String table : List.of("refresh_tokens","login_nonces","chat_messages","chat_rooms")) jdbc.update("DELETE FROM "+table);
+        for (String table : List.of("push_attempts","push_deliveries","notifications","device_tokens",
+            "post_favorites","user_follows","store_favorites","store_business_hours","stores",
+            "refresh_tokens","login_nonces","chat_messages","chat_rooms"))
+            jdbc.update("DELETE FROM "+table);
         super.resetData();
         reset(verifier);
     }
@@ -89,6 +115,55 @@ abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
         var time=closed.getWithdrawnAt();
         withdrawal.withdraw(buyer.getId());
         assertThat(users.findById(buyer.getId()).orElseThrow().getWithdrawnAt()).isEqualTo(time);
+    }
+
+    @Test void withdrawalClearsNewProfileRelationsNotificationsAndDeviceOwnership() {
+        buyer.registerProfile("공개 닉네임","공개 닉네임",null,Instant.now());
+        buyer.updatePublicProfile("vacatedname",true,"개인 소개",true);
+        users.saveAndFlush(buyer);
+        var post=salePost();
+        postFavorites.saveAndFlush(new PostFavorite(buyer,post));
+        follows.saveAndFlush(new UserFollow(buyer,seller));
+        follows.saveAndFlush(new UserFollow(seller,buyer));
+        var device=deviceTokens.saveAndFlush(new DeviceToken(buyer.getId(),"synthetic-device-token","IOS"));
+        var notification=notificationRecords.saveAndFlush(
+            new Notification(buyer.getId(),"chat:withdraw-test",NotificationType.CHAT_MESSAGE,"room"));
+        var otherNotification=notificationRecords.saveAndFlush(
+            new Notification(seller.getId(),"chat:other-user",NotificationType.CHAT_MESSAGE,"room"));
+        var delivery=deliveries.saveAndFlush(new PushDelivery(notification.getId(),device));
+        delivery.finish(PushGateway.Result.retry("TEST_RETRY"));
+        deliveries.saveAndFlush(delivery);
+        pushAttempts.saveAndFlush(new PushAttempt(delivery));
+
+        assertThat(withdraw(buyerToken).status()).isEqualTo(200);
+        var closed=users.findById(buyer.getId()).orElseThrow();
+        assertThat(closed.getUsername()).isNull();
+        assertThat(closed.getBio()).isNull();
+        assertThat(postFavorites.count()).isZero();
+        assertThat(follows.count()).isZero();
+        assertThat(notificationRecords.findByUserId(buyer.getId(),org.springframework.data.domain.PageRequest.of(0,10)))
+            .isEmpty();
+        assertThat(notificationRecords.existsById(otherNotification.getId())).isTrue();
+        assertThat(deliveries.count()).isZero();
+        assertThat(pushAttempts.count()).isZero();
+        var inactive=deviceTokens.findById(device.getId()).orElseThrow();
+        assertThat(inactive.isActive()).isFalse();
+        assertThat(inactive.getOwnershipVersion()).isEqualTo(1);
+
+        notificationService.record(buyer.getId(),"chat:late",NotificationType.CHAT_MESSAGE,"room");
+        assertThat(notificationRecords.existsByEventKeyAndUserId("chat:late",buyer.getId())).isFalse();
+        assertThatThrownBy(() -> tokenService.register(buyer.getId(),new DeviceTokenRequest("late-token","IOS")))
+            .isInstanceOf(com.kitschcatch.backend.global.exception.BusinessException.class);
+        assertThatThrownBy(() -> favoriteService.register(buyer.getId(),post.getId()))
+            .isInstanceOf(com.kitschcatch.backend.global.exception.BusinessException.class);
+        assertThatThrownBy(() -> followService.change(buyer.getId(),seller.getId(),true))
+            .isInstanceOf(com.kitschcatch.backend.global.exception.BusinessException.class);
+        assertThatThrownBy(() -> followService.change(seller.getId(),buyer.getId(),true))
+            .isInstanceOf(com.kitschcatch.backend.global.exception.BusinessException.class);
+        stranger.registerProfile("새 사용자","새 사용자",null,Instant.now());
+        stranger.updatePublicProfile("vacatedname",true,null,true);
+        users.saveAndFlush(stranger);
+        assertThat(users.findById(stranger.getId()).orElseThrow().getUsername()).isEqualTo("vacatedname");
     }
 
     @Test void canceledTradeChatForeignKeysAndImmutableSnapshotsSurvive() {
@@ -264,6 +339,55 @@ abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
         }
     }
 
+
+    @Test void preloadedRecipientCannotReceiveNewNotificationAfterWithdrawal() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            var preloaded=users.findById(buyer.getId()).orElseThrow();
+            assertThat(preloaded.isActive()).isTrue();
+            assertThat(withdraw(buyerToken).status()).isEqualTo(200);
+            notificationService.record(buyer.getId(),"chat:late-preloaded",
+                NotificationType.CHAT_MESSAGE,"room");
+        });
+        assertThat(notificationRecords.existsByEventKeyAndUserId("chat:late-preloaded",buyer.getId()))
+            .isFalse();
+    }
+
+    @Test void preloadedUserCannotAddStoreFavoriteAfterWithdrawal() {
+        var store=stores.saveAndFlush(Store.builder().name("보존 매장").region("서울")
+            .address("서울시").latitude(37.0).longitude(127.0).build());
+        new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            var preloaded=users.findById(buyer.getId()).orElseThrow();
+            assertThat(preloaded.isActive()).isTrue();
+            assertThat(withdraw(buyerToken).status()).isEqualTo(200);
+            assertThatThrownBy(() -> storeFavoriteService.register(buyer.getId(),store.getId()))
+                .isInstanceOf(com.kitschcatch.backend.global.exception.BusinessException.class);
+            tx.setRollbackOnly();
+        });
+        assertThat(storeFavorites.count()).isZero();
+    }
+
+    @Test void withdrawalWaitsForInFlightPushDeliveryBeforeDeactivatingDevice() throws Exception {
+        var device=deviceTokens.saveAndFlush(new DeviceToken(buyer.getId(),"in-flight-device-token","IOS"));
+        var notification=notificationRecords.saveAndFlush(
+            new Notification(buyer.getId(),"chat:in-flight",NotificationType.CHAT_MESSAGE,"room"));
+        var delivery=deliveries.saveAndFlush(new PushDelivery(notification.getId(),device));
+        var attempted=new CountDownLatch(1);
+        try(var pool=Executors.newSingleThreadExecutor()) {
+            Future<Response>[] pending=new Future[1];
+            new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+                jdbc.queryForList("select id from push_deliveries where id = ? for update",delivery.getId());
+                jdbc.queryForList("select id from device_tokens where id = ? for update",device.getId());
+                pending[0]=pool.submit(() -> {attempted.countDown();return withdraw(buyerToken);});
+                await(attempted);
+                assertThatThrownBy(() -> pending[0].get(300,TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            });
+            assertThat(pending[0].get(10,TimeUnit.SECONDS).status()).isEqualTo(200);
+        }
+        assertThat(deliveries.count()).isZero();
+        assertThat(notificationRecords.existsById(notification.getId())).isFalse();
+        assertThat(deviceTokens.findById(device.getId()).orElseThrow().isActive()).isFalse();
+    }
 
     @Test void withdrawalHoldingUserLockPreventsRefreshFromIssuingAnyToken() throws Exception {
         String refresh=tokens.createRefreshToken(buyer.getId());

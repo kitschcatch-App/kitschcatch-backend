@@ -27,8 +27,8 @@ public class StoreFavoriteService {
     public StoreFavoriteResponse register(long userId, long storeId) {
         validateStoreId(storeId);
         // 존재하지 않는 관계 행 대신 항상 존재하는 사용자 행을 먼저 잠근다.
-        var user = users.findByIdForUpdate(userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        var user = users.findActiveByIdForUpdate(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
         var store = stores.findById(storeId)
             .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
         if (!favorites.existsByUserIdAndStoreId(userId, storeId)) {

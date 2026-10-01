@@ -177,7 +177,7 @@ abstract class FollowHttpContract {
     void missingActorAndTargetAreRejectedOnEveryEndpoint() {
         for (String[] operation : operations()) {
             error(request(operation[0], path(Long.MAX_VALUE, operation[1]), token), 404, "USER_001");
-            error(request(operation[0], path(target.getId(), operation[1]), tokens.createAccessToken(Long.MAX_VALUE)), 404, "USER_001");
+            error(request(operation[0], path(target.getId(), operation[1]), tokens.createAccessToken(Long.MAX_VALUE)), 401, "AUTH_004");
         }
         assertThat(count()).isZero();
     }
@@ -186,7 +186,7 @@ abstract class FollowHttpContract {
     void deletedActorRequestingItsOwnMissingIdAlwaysReturnsNotFound() {
         String staleToken = tokens.createAccessToken(Long.MAX_VALUE);
         for (String[] operation : operations()) {
-            error(request(operation[0], path(Long.MAX_VALUE, operation[1]), staleToken), 404, "USER_001");
+            error(request(operation[0], path(Long.MAX_VALUE, operation[1]), staleToken), 401, "AUTH_004");
         }
         assertThat(count()).isZero();
     }
