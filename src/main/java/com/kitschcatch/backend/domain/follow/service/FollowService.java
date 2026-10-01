@@ -27,7 +27,10 @@ public class FollowService {
     @Transactional
     public FollowResponse change(long actorId, long targetId, boolean following) {
         validateTarget(targetId);
-        if (actorId == targetId) throw new BusinessException(ErrorCode.BAD_REQUEST, "자기 자신은 팔로우할 수 없습니다.");
+        if (actorId == targetId) {
+            if (!users.existsById(actorId)) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "자기 자신은 팔로우할 수 없습니다.");
+        }
         // 양쪽 사용자 행을 같은 순서로 잠가 반대 방향 동시 요청과 FK 검사 간 교착을 피한다.
         var first = users.findByIdForUpdate(Math.min(actorId, targetId))
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));

@@ -17,7 +17,7 @@
 
 목록은 다른 인증 사용자도 조회할 수 있다. 기본 `page=0,size=20`, page는 0~10000, size는 1~100이다. 범위·형식 오류는 `400 COMMON_001`이다. 정렬은 관계 `created_at DESC,id DESC`로 고정한다. 응답은 `{content,page,size,totalElements,totalPages}`이며 빈 목록·범위 밖 페이지도 200이다. 페이지 간 동시 변경이 있으면 offset 페이지의 항목 이동이나 개수 차이는 생길 수 있다.
 
-`content` 원소는 `{id,nickname,profileImageUrl}`뿐이다. 이미지가 없으면 null이며 URL은 기존 `ProfileImageStorage.imageUrl` 정책을 따른다. 이메일·소셜 식별자·인증 제공자·프로필 object key·가입 시각·프로필 등록 시각은 공개하지 않는다. 사용자 소개·공개 프로필 전체 계약·집계·푸시·탈퇴는 별도 이슈 범위다.
+`content` 원소는 `{id,nickname,profileImageUrl}`뿐이다. 이미지가 없으면 null이며 URL은 기존 `ProfileImageStorage.imageUrl` 정책을 따른다. 이메일·소셜 식별자·인증 제공자·프로필 object key·가입 시각·프로필 등록 시각은 공개하지 않는다. 프로필 미등록 사용자는 카카오 fallback 닉네임에 소셜 식별자가 포함될 수 있으므로 `nickname`을 `사용자`로 반환한다. 프로필 등록을 마친 사용자만 직접 선택한 공개 닉네임을 반환한다. 사용자 소개·공개 프로필 전체 계약·집계·푸시·탈퇴는 별도 이슈 범위다.
 
 ## 저장 및 동시성
 
@@ -45,4 +45,4 @@ PostgreSQL 테스트는 ISSUE52 환경 변수가 없으면 명시적으로 건�
 
 HTTP 계약은 H2 및 수동 SQL로 관계 테이블을 만든 PostgreSQL에서 동일하게 검증한다. 실제 JWT HTTP, 반복 요청, 8개 동시 등록·해제·혼합·반대 방향 요청, 관계 방향, 자기 관계, 없는 사용자, 입력 범위, 페이지·정렬, 공개 필드, 최대 100건 목록의 제한된 SQL 수, FK cascade, Swagger를 확인한다. 별도 PostgreSQL migration 테스트는 재실행·행 보존·인덱스·유일/FK/CHECK/필수값 SQLSTATE·DDL 실패 롤백을 확인한다.
 
-실제 수행 결과와 독립 리뷰는 PR에 기록한다. 실제 S3·Toss 연동, 운영 DB 적용, 배포, 실제 사용자 메시지·푸시는 수행하지 않는다. 기존 실제 연동 미완료 상태는 유지한다.
+2026-10-01 독립 리뷰 수정 후 전체 `test build`가 성공했다. 전체 533개 중 459개 통과, 74개는 다른 이슈의 PostgreSQL 환경 변수 미설정으로 건너뛰었으며 실패는 0개다. #52의 H2 HTTP 29개·PostgreSQL HTTP 29개·SQL migration 9개는 모두 실제 실행해 통과했다. 독립 리뷰에서 카카오 기본 닉네임의 소셜 식별자 노출과 없는 주체의 자기 요청 오류 계약을 발견해 수정했으며, 리뷰 대상 SHA와 재확인 결과는 PR에 기록한다. 실제 S3·Toss 연동, 운영 DB 적용, 배포, 실제 사용자 메시지·푸시는 수행하지 않는다. 기존 실제 연동 미완료 상태는 유지한다.

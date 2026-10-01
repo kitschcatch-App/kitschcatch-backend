@@ -3,6 +3,8 @@ package com.kitschcatch.backend.domain.follow;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.kitschcatch.backend.domain.auth.oidc.KakaoOidcUser;
+import com.kitschcatch.backend.domain.auth.service.KakaoUserService;
 import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import com.kitschcatch.backend.domain.user.entity.User;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
@@ -26,6 +28,7 @@ abstract class FollowHttpContract {
     @LocalServerPort int port;
     @Autowired UserRepository users;
     @Autowired JwtTokenProvider tokens;
+    @Autowired KakaoUserService kakaoUsers;
     @Autowired JdbcTemplate jdbc;
     @Autowired EntityManagerFactory entityManagerFactory;
     User actor;
@@ -97,6 +100,28 @@ abstract class FollowHttpContract {
     }
 
     @Test
+    void unregisteredKakaoNicknameCannotExposeProviderSubjectOrSocialNickname() {
+        String subject = UUID.randomUUID().toString();
+        var kakao = kakaoUsers.createKakaoUser(new KakaoOidcUser(subject, subject + "@example.test", null));
+        assertThat(kakao.getNickname()).isEqualTo("kakao-" + subject);
+        String kakaoToken = tokens.createAccessToken(kakao.getId());
+        change("POST", actor.getId(), kakaoToken);
+        change("POST", kakao.getId(), token);
+        for (String kind : List.of("followers", "followings")) {
+            var result = list(actor.getId(), kind, token);
+            assertThat(result.rows().getFirst()).containsEntry("nickname", "사용자");
+            assertThat(result.body().toString()).doesNotContain(subject, kakao.getEmail());
+        }
+        jdbc.update("UPDATE users SET nickname=? WHERE id=?", "비공개소셜이름", kakao.getId());
+        assertThat(list(actor.getId(), "followers", token).rows().getFirst()).containsEntry("nickname", "사용자");
+        kakao.registerProfile("공개닉네임", "공개닉네임", null, java.time.Instant.now());
+        users.saveAndFlush(kakao);
+        for (String kind : List.of("followers", "followings")) {
+            assertThat(list(actor.getId(), kind, token).rows().getFirst()).containsEntry("nickname", "공개닉네임");
+        }
+    }
+
+    @Test
     void emptyAndOutOfRangePagesPreserveMetadata() {
         for (String kind : List.of("followers", "followings")) {
             var empty = list(actor.getId(), kind, token);
@@ -153,6 +178,15 @@ abstract class FollowHttpContract {
         for (String[] operation : operations()) {
             error(request(operation[0], path(Long.MAX_VALUE, operation[1]), token), 404, "USER_001");
             error(request(operation[0], path(target.getId(), operation[1]), tokens.createAccessToken(Long.MAX_VALUE)), 404, "USER_001");
+        }
+        assertThat(count()).isZero();
+    }
+
+    @Test
+    void deletedActorRequestingItsOwnMissingIdAlwaysReturnsNotFound() {
+        String staleToken = tokens.createAccessToken(Long.MAX_VALUE);
+        for (String[] operation : operations()) {
+            error(request(operation[0], path(Long.MAX_VALUE, operation[1]), staleToken), 404, "USER_001");
         }
         assertThat(count()).isZero();
     }

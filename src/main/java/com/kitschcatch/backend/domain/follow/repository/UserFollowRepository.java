@@ -18,14 +18,14 @@ public interface UserFollowRepository extends JpaRepository<UserFollow, Long> {
     int deleteFollow(@Param("followerId") Long followerId, @Param("followingId") Long followingId);
 
     @Query(value = """
-        select new com.kitschcatch.backend.domain.follow.dto.FollowUserRow(u.id, u.nickname, u.profileImageKey)
+        select new com.kitschcatch.backend.domain.follow.dto.FollowUserRow(u.id, case when u.profileRegisteredAt is null then '사용자' else u.nickname end, u.profileImageKey)
         from UserFollow f join f.follower u where f.following.id = :userId
         order by f.createdAt desc, f.id desc
         """, countQuery = "select count(f) from UserFollow f where f.following.id = :userId")
     Page<FollowUserRow> findFollowers(@Param("userId") Long userId, Pageable pageable);
 
     @Query(value = """
-        select new com.kitschcatch.backend.domain.follow.dto.FollowUserRow(u.id, u.nickname, u.profileImageKey)
+        select new com.kitschcatch.backend.domain.follow.dto.FollowUserRow(u.id, case when u.profileRegisteredAt is null then '사용자' else u.nickname end, u.profileImageKey)
         from UserFollow f join f.following u where f.follower.id = :userId
         order by f.createdAt desc, f.id desc
         """, countQuery = "select count(f) from UserFollow f where f.follower.id = :userId")
