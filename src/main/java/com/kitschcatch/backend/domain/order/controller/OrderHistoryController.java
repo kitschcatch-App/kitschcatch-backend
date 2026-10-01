@@ -44,7 +44,7 @@ public class OrderHistoryController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_001: 상태 또는 페이지 조건 오류")
     public ApiResponse<OrderHistoryPageResponse<PurchaseOrderSummaryResponse>> purchases(
         @AuthenticationPrincipal AuthenticatedUser user,
-        @Parameter(schema = @Schema(allowableValues = {"PENDING", "PAID", "CANCELED", "REFUNDED"})) @RequestParam(required = false) String status,
+        @Parameter(schema = @Schema(allowableValues = {"PENDING", "PAID", "CANCELED", "REFUNDED", "PURCHASE_CONFIRMED"})) @RequestParam(required = false) String status,
         @Parameter(schema = @Schema(minimum = "0", maximum = "10000")) @RequestParam(defaultValue = "0") int page,
         @Parameter(schema = @Schema(minimum = "1", maximum = "100")) @RequestParam(defaultValue = "20") int size) {
         return ApiResponse.success(service.purchases(user.userId(), OrderHistoryQuery.from(status, page, size)));
@@ -56,7 +56,7 @@ public class OrderHistoryController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_001: 상태 또는 페이지 조건 오류")
     public ApiResponse<OrderHistoryPageResponse<SaleOrderSummaryResponse>> sales(
         @AuthenticationPrincipal AuthenticatedUser user,
-        @Parameter(schema = @Schema(allowableValues = {"PENDING", "PAID", "CANCELED", "REFUNDED"})) @RequestParam(required = false) String status,
+        @Parameter(schema = @Schema(allowableValues = {"PENDING", "PAID", "CANCELED", "REFUNDED", "PURCHASE_CONFIRMED"})) @RequestParam(required = false) String status,
         @Parameter(schema = @Schema(minimum = "0", maximum = "10000")) @RequestParam(defaultValue = "0") int page,
         @Parameter(schema = @Schema(minimum = "1", maximum = "100")) @RequestParam(defaultValue = "20") int size) {
         return ApiResponse.success(service.sales(user.userId(), OrderHistoryQuery.from(status, page, size)));

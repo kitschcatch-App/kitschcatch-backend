@@ -15,6 +15,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Long> {
+    Optional<PurchaseOrder> findByOrderNumber(String orderNumber);
+
+    @Query("select o.id from PurchaseOrder o where o.orderNumber = :orderNumber")
+    Optional<Long> findIdByOrderNumber(@Param("orderNumber") String orderNumber);
 
 	@EntityGraph(attributePaths = {"user", "post"})
 	Optional<PurchaseOrder> findByOrderNumberAndUserId(String orderNumber, Long userId);

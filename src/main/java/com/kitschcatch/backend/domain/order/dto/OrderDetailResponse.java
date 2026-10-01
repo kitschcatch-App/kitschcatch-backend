@@ -11,7 +11,8 @@ public record OrderDetailResponse(
     OrderStatus status, Long amount, OrderedPost post,
     OrderParticipantResponse buyer, OrderParticipantResponse seller,
     @Schema(description = "결제가 없는 과거 주문은 null", nullable = true) OrderedPayment payment,
-    LocalDateTime orderedAt, LocalDateTime reservationExpiresAt
+    LocalDateTime orderedAt, LocalDateTime reservationExpiresAt,
+    LocalDateTime confirmedAt, ShipmentResponse shipment, RefundResponse refund
 ) {
     public static OrderDetailResponse from(OrderHistoryRow row, String thumbnailUrl) {
         var order = row.order();
@@ -20,7 +21,9 @@ public record OrderDetailResponse(
             new OrderParticipantResponse(order.getUser().getId(), order.getBuyerNickname()),
             new OrderParticipantResponse(order.getSellerId(), order.getSellerNickname()),
             row.payment() == null ? null : OrderedPayment.from(row.payment()),
-            order.getCreatedAt(), order.getReservationExpiresAt());
+            order.getCreatedAt(), order.getReservationExpiresAt(), order.getConfirmedAt(),
+            order.getShipment() == null ? null : ShipmentResponse.from(order),
+            order.getRefund() == null ? null : RefundResponse.from(order));
     }
 
     public record OrderedPost(Long id, String title,

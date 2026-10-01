@@ -50,6 +50,11 @@ public class GlobalExceptionHandler {
 		return ApiResponse.fail(errorCode);
 	}
 
+    @ExceptionHandler(org.springframework.web.method.annotation.HandlerMethodValidationException.class)
+    public ApiResponse<Void> handleMethodValidation(org.springframework.web.method.annotation.HandlerMethodValidationException exception) {
+        return ApiResponse.fail(exception.isForReturnValue()?ErrorCode.INTERNAL_SERVER_ERROR:ErrorCode.INVALID_INPUT_VALUE);
+    }
+
 	@ExceptionHandler(Exception.class)
 	public ApiResponse<Void> handleException(Exception exception) {
 		ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;

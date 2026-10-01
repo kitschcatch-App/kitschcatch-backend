@@ -17,6 +17,18 @@ kakao:
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 app:
+  refunds:
+    operator-user-ids: ${APP_REFUNDS_OPERATOR_USER_IDS:}
+  settlement:
+    operator-user-ids: ${APP_SETTLEMENT_OPERATOR_USER_IDS:}
+    fee-basis-points: ${APP_SETTLEMENT_FEE_BASIS_POINTS:500}
+    toss:
+      enabled: ${APP_SETTLEMENT_TOSS_ENABLED:false}
+      base-url: ${APP_SETTLEMENT_TOSS_BASE_URL:https://api.tosspayments.com}
+      secret-key: ${APP_SETTLEMENT_TOSS_SECRET_KEY:}
+      security-key: ${APP_SETTLEMENT_TOSS_SECURITY_KEY:}
+      timeout-millis: ${APP_SETTLEMENT_TOSS_TIMEOUT_MILLIS:5000}
+      lookup-max-pages: ${APP_SETTLEMENT_TOSS_LOOKUP_MAX_PAGES:10}
   profile-image:
     max-size-bytes: ${APP_PROFILE_IMAGE_MAX_SIZE_BYTES:5000000}
     upload-url-ttl: ${APP_PROFILE_IMAGE_UPLOAD_URL_TTL:10m}
