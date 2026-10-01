@@ -64,3 +64,11 @@ ISSUE50_TEST_DB_URL=jdbc:postgresql://127.0.0.1:55450/postgres ISSUE50_TEST_DB_U
 ```
 
 PostgreSQL 환경 변수가 없으면 NotificationPostgresTest는 건너뛴다. FcmPushGatewayTest는 자격 증명 없이 로컬 HTTP 서버·합성 토큰·테스트 RSA 키로 수행한다. 다른 이슈의 PostgreSQL 테스트는 각 전용 환경 변수 없이 건너뛰며 그 결과를 PostgreSQL 실행 성공으로 보고하지 않는다.
+
+## 수행 결과와 독립 리뷰.
+
+- #50 관련 검증 16개를 모두 수행해 통과했다. 전용 PostgreSQL HTTP/SQL/이벤트/동시성 9개, 합성 RSA 키·로컬 HTTP FCM 검증 6개, H2 방언의 토큰 반복등록/전환 검증 1개이다. 동시 등록 로그에 원문 토큰이 없는 것도 assertion으로 확인했다.
+- 최종 전체 `test bootJar` 결과는 총 482개, 수행 성공 408개, 실패/오류 0개, 건너뜀 74개이며 bootJar도 성공했다. 다른 이슈의 사용자 프로필·매장·관심 매장·거래 내역 PostgreSQL/SQL 검증은 해당 환경 변수 부재로 건너뛰었다. #50 전용 실제 PostgreSQL 검증은 수행했다.
+- GPT 6.1 Sol High 독립 리뷰는 최초 `72102ab994d1f5bb41c98dd57337922821972d1d`의 전체 diff·권한·입력·동시성·회귀·SQL·테스트를 확인했다. 최초 문서 인증 문구 P3 및 추가 확인된 동시 등록 토큰 로그 노출 P2를 수정했다. 수정된 6개 파일과 회귀 영향을 `1757cf761172555d21eef71a95846e25cb2dca2c`에서 재검토한 결과 잔여 findings=0이다. 리뷰어는 직접 테스트/DB 호출 없이 코드와 실행 XML을 독립 확인했으며 실제 테스트는 구현자가 수행했다.
+- PostgreSQL FK 잠금 교착 가설은 실제 bootJar의 Hibernate 7.2.7.Final이 사용하는 FOR NO KEY UPDATE와 FK KEY SHARE의 호환성을 확인하여 결함에서 제외했다. 운영 자격 증명·실제 푸시·#45 통합을 검증했다고 보고하지 않았다.
+- `git diff --check`를 통과했다. 저장소에 GitHub Actions workflow가 없어 CI 성공으로 보고하지 않는다. 로컬 HTTP 검증·전체 테스트·빌드와 운영 적용·실제 단말 수신은 별도 증거이다.
