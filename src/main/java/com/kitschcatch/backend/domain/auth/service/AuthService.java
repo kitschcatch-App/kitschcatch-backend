@@ -98,7 +98,7 @@ public class AuthService {
 		savedToken.revoke();
 	}
 
-	private AuthTokenResponse issueTokenResponse(User user) {
+	public AuthTokenResponse issueTokenResponse(User user) {
 		LocalDateTime now = LocalDateTime.now();
 		String accessToken = jwtTokenProvider.createAccessToken(user.getId());
 		String refreshToken = jwtTokenProvider.createRefreshToken(user.getId());
