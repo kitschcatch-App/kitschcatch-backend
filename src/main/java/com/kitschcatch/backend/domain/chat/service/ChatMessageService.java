@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.domain.chat.service;
 
+import com.kitschcatch.backend.domain.notification.NotificationEvents;
 import com.kitschcatch.backend.domain.chat.dto.ChatImageUploadUrl;
 import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatReadResponse;
@@ -18,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -27,6 +29,9 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @RequiredArgsConstructor
 public class ChatMessageService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private ApplicationEventPublisher notificationPublisher;
 
 	private static final int MAX_TEXT_LENGTH = 1000;
 	private static final String IMAGE_MESSAGE_PREVIEW_TEXT = "[이미지]";
@@ -69,6 +74,10 @@ public class ChatMessageService {
 		);
 
 		chatRoom.updateLastMessage(content, chatMessage.getCreatedAt());
+		if (notificationPublisher != null) {
+		    notificationPublisher.publishEvent(
+		        new NotificationEvents.ChatCreated(chatMessage));
+		}
 		return ChatMessageResponse.from(chatMessage);
 	}
 

@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.domain.chat.service;
 
+import com.kitschcatch.backend.domain.notification.NotificationEvents;
 import com.kitschcatch.backend.domain.chat.dto.ChatMessageResponse;
 import com.kitschcatch.backend.domain.chat.entity.ChatMessage;
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
@@ -10,12 +11,16 @@ import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class ChatMessageCommandService {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private ApplicationEventPublisher notificationPublisher;
 
     private static final String IMAGE_MESSAGE_PREVIEW_TEXT = "사진을 보냈습니다.";
 
@@ -41,6 +46,10 @@ public class ChatMessageCommandService {
 
         chatRoom.updateLastMessage(IMAGE_MESSAGE_PREVIEW_TEXT, chatMessage.getCreatedAt());
 
+if (notificationPublisher != null) {
+    notificationPublisher.publishEvent(
+        new NotificationEvents.ChatCreated(chatMessage));
+}
         return ChatMessageResponse.from(chatMessage);
     }
 }

@@ -1,6 +1,8 @@
 // 결제 상태 변경을 짧은 데이터베이스 트랜잭션으로 처리하는 서비스
 package com.kitschcatch.backend.domain.order.service;
 
+import com.kitschcatch.backend.domain.notification.NotificationEvents;
+import com.kitschcatch.backend.domain.notification.NotificationType;
 import com.kitschcatch.backend.domain.order.dto.ConfirmPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
@@ -25,11 +27,15 @@ import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentTransactionService {
+
+	@org.springframework.beans.factory.annotation.Autowired
+	private ApplicationEventPublisher notificationPublisher;
 
 	private final PaymentRepository paymentRepository;
 	private final PurchaseOrderRepository orderRepository;
@@ -223,6 +229,10 @@ public class PaymentTransactionService {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
 		}
 		payment.confirm(paymentKey);
+		if (notificationPublisher != null) {
+		    notificationPublisher.publishEvent(
+		        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_SUCCESS));
+		}
 		payment.getOrder().getPost().markSold(payment.getOrder().getOrderNumber());
 		return toResponse(payment);
 	}
@@ -283,6 +293,10 @@ public class PaymentTransactionService {
 		validateReservation(payment.getOrder(), ProductStatus.SOLD_OUT);
 		payment.cancel();
 		if (payment.getOrder().getShipment() == null) payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+		if (notificationPublisher != null) {
+		    notificationPublisher.publishEvent(
+		        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+		}
 		return toResponse(payment);
 	}
 

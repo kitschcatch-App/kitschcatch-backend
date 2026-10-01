@@ -1,6 +1,8 @@
 // PG 조회 결과를 결제·주문·상품 상태에 원자적으로 반영하는 서비스
 package com.kitschcatch.backend.domain.order.service;
 
+import com.kitschcatch.backend.domain.notification.NotificationEvents;
+import com.kitschcatch.backend.domain.notification.NotificationType;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
 import com.kitschcatch.backend.domain.order.entity.Payment;
 import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
@@ -19,11 +21,15 @@ import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentRecoveryService {
+
+	@org.springframework.beans.factory.annotation.Autowired
+	private ApplicationEventPublisher notificationPublisher;
 
 	private static final String TOSS_DONE = "DONE";
 	private static final String TOSS_CANCELED = "CANCELED";
@@ -106,6 +112,10 @@ public class PaymentRecoveryService {
 				if (isFullyCanceled(tossResponse)) {
 					payment.cancel();
 					releaseUnshippedPost(payment);
+					if (notificationPublisher != null) {
+					    notificationPublisher.publishEvent(
+					        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+					}
 				} else {
 					markReview(payment, lockedAttempt, "부분 취소 또는 잔액이 남은 PG 결과입니다.");
 				}
@@ -218,6 +228,10 @@ public class PaymentRecoveryService {
 			}
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
 			payment.confirm(response.paymentKey());
+			if (notificationPublisher != null) {
+			    notificationPublisher.publishEvent(
+			        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_SUCCESS));
+			}
 			payment.getOrder().getPost().markSold(payment.getOrder().getOrderNumber());
 			return;
 		}
@@ -225,6 +239,10 @@ public class PaymentRecoveryService {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
 			payment.cancel();
 			releaseUnshippedPost(payment);
+			if (notificationPublisher != null) {
+			    notificationPublisher.publishEvent(
+			        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+			}
 			return;
 		}
 		if (TOSS_CANCELED.equals(response.status())) {
@@ -245,6 +263,10 @@ public class PaymentRecoveryService {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
 			payment.cancel();
 			releaseUnshippedPost(payment);
+			if (notificationPublisher != null) {
+			    notificationPublisher.publishEvent(
+			        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+			}
 			return;
 		}
 		if (TOSS_CANCELED.equals(response.status())) {
