@@ -62,7 +62,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 	"spring.datasource.url=${ISSUE27_TEST_DB_URL:jdbc:h2:mem:reservation;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000}",
 	"spring.datasource.driver-class-name=${ISSUE27_TEST_DB_DRIVER:org.h2.Driver}",
 	"spring.datasource.username=${ISSUE27_TEST_DB_USER:sa}",
-	"spring.datasource.password=",
+	"spring.datasource.password=${ISSUE27_TEST_DB_PASSWORD:}",
 	"app.orders.expiration-scan-delay=1d",
 	"spring.jpa.hibernate.ddl-auto=create-drop"
 })

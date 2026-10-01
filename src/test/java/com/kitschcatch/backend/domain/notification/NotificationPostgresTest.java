@@ -61,16 +61,18 @@ class NotificationPostgresTest {
   static final String url = System.getenv("ISSUE50_TEST_DB_URL");
   static final String username =
       System.getenv().getOrDefault("ISSUE50_TEST_DB_USERNAME", "issue50");
+  static final String password =
+      System.getenv().getOrDefault("ISSUE50_TEST_DB_PASSWORD", "");
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry r) throws Exception {
-    try (var c = DriverManager.getConnection(url, username, "");
+    try (var c = DriverManager.getConnection(url, username, password);
         var s = c.createStatement()) {
       s.execute("CREATE SCHEMA " + schema);
     }
     r.add("spring.datasource.url", () -> url);
     r.add("spring.datasource.username", () -> username);
-    r.add("spring.datasource.password", () -> "");
+    r.add("spring.datasource.password", () -> password);
     r.add("spring.datasource.hikari.schema", () -> schema);
     r.add("spring.jpa.properties.hibernate.default_schema", () -> schema);
   }
@@ -100,7 +102,7 @@ class NotificationPostgresTest {
   @BeforeAll
   void migrateTwiceFromManualSql() throws Exception {
     jdbc.execute("DROP TABLE push_attempts,push_deliveries,notifications,device_tokens");
-    try (var c = DriverManager.getConnection(url, username, "");
+    try (var c = DriverManager.getConnection(url, username, password);
         var s = c.createStatement();
         var stream = getClass().getResourceAsStream("/db/manual/050_notifications.sql")) {
       c.setSchema(schema);
@@ -112,7 +114,7 @@ class NotificationPostgresTest {
 
   @AfterAll
   static void cleanup() throws Exception {
-    try (var c = DriverManager.getConnection(url, username, "");
+    try (var c = DriverManager.getConnection(url, username, password);
         var s = c.createStatement()) {
       s.execute("DROP SCHEMA " + schema + " CASCADE");
     }
