@@ -1,6 +1,9 @@
+// 주문 상태와 거래 당사자·상품의 주문 시점 스냅샷을 저장한다.
 package com.kitschcatch.backend.domain.order.entity;
 
 import com.kitschcatch.backend.domain.post.entity.Post;
+import com.kitschcatch.backend.domain.post.entity.PostImage;
+import java.util.Comparator;
 import com.kitschcatch.backend.domain.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -28,7 +31,13 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Table(
 	name = "orders",
 	uniqueConstraints = @UniqueConstraint(name = "uk_orders_order_number", columnNames = "order_number"),
-	indexes = @Index(name = "idx_orders_reservation_expiry", columnList = "order_status,reservation_expires_at")
+	indexes = {
+        @Index(name = "idx_orders_reservation_expiry", columnList = "order_status,reservation_expires_at"),
+        @Index(name = "ix_orders_buyer_created_id", columnList = "user_id,created_at DESC,id DESC"),
+        @Index(name = "ix_orders_buyer_status_created_id", columnList = "user_id,order_status,created_at DESC,id DESC"),
+        @Index(name = "ix_orders_seller_created_id", columnList = "seller_id,created_at DESC,id DESC"),
+        @Index(name = "ix_orders_seller_status_created_id", columnList = "seller_id,order_status,created_at DESC,id DESC")
+    }
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -63,6 +72,12 @@ public class PurchaseOrder {
 
 	@Column(nullable = false, updatable = false, length = 50)
 	private String sellerNickname;
+
+    @Column(nullable = false, updatable = false, length = 50)
+    private String buyerNickname;
+
+    @Column(updatable = false, length = 512)
+    private String postThumbnailKey;
 
 	@Column(updatable = false)
 	private LocalDateTime reservationExpiresAt;
@@ -113,6 +128,11 @@ public class PurchaseOrder {
 		this.postTitle = post.getTitle();
 		this.sellerId = post.getUser().getId();
 		this.sellerNickname = post.getUser().getNickname();
+        this.buyerNickname = user.getNickname();
+        this.postThumbnailKey = post.getImages().stream()
+            .min(Comparator.comparingInt(PostImage::getSortOrder)
+                .thenComparing(PostImage::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+            .map(PostImage::getObjectKey).orElse(null);
 		this.reservationExpiresAt = reservationExpiresAt;
 	}
 
