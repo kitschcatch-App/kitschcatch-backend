@@ -34,7 +34,8 @@ public interface UserWithdrawalRepository extends Repository<User, Long> {
                 or (o.order_status = 'PURCHASE_CONFIRMED' and p.payment_status <> 'SUCCESS')
                 or exists (select 1 from payment_attempts a where a.payment_id = p.id and (
                     a.attempt_status in ('PROCESSING', 'UNKNOWN')
-                    or (a.operation = 'CANCEL' and a.attempt_status in ('PREPARED', 'FAILED'))))))
+                    or (a.operation = 'CANCEL' and a.attempt_status in ('PREPARED', 'FAILED')
+                        and (p.current_attempt_id is null or p.current_attempt_id = a.attempt_id))))))
         )
         """, nativeQuery = true)
     long countBlockingTrades(@Param("userId") Long userId);

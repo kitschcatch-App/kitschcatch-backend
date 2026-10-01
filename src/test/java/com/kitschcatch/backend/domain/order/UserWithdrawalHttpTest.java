@@ -43,6 +43,8 @@ class UserWithdrawalHttpTest extends UserWithdrawalHttpContract {}
 
 abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
     @Autowired RefreshTokenRepository refreshTokens;
+    @Autowired com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository attempts;
+    @Autowired com.kitschcatch.backend.domain.order.repository.PaymentRepository paymentRecords;
     @Autowired ChatRoomRepository rooms;
     @Autowired ChatMessageRepository messages;
     @Autowired UserWithdrawalService withdrawal;
@@ -66,7 +68,7 @@ abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
         refreshTokens.saveAndFlush(RefreshToken.builder().user(buyer).tokenHash(tokens.hashToken(refresh))
             .expiresAt(LocalDateTime.now().plusDays(1)).build());
         assertError(withdraw(null),401,"AUTH_004");
-        
+
         var response=request("DELETE","/api/users/me?userId="+seller.getId(),buyerToken,Map.of("userId",seller.getId()));
         assertThat(response.status()).isEqualTo(200);
         assertThat(response.body()).containsEntry("success",true).doesNotContainKeys("data","error");
@@ -166,6 +168,22 @@ abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
         assertThat(jdbc.queryForObject("select count(*) from orders",Integer.class)).isEqualTo(1);
     }
 
+
+    @Test void resolvedHistoricalCancellationFailureDoesNotBlockAccountClosure() {
+        var o=order(buyer,seller,false); approve(o);
+        Long paymentId=jdbc.queryForObject("select id from payments",Long.class);
+        attempts.saveAndFlush(com.kitschcatch.backend.domain.order.entity.PaymentAttempt.builder()
+            .attemptId("ATT-old-cancel").payment(paymentRecords.findById(paymentId).orElseThrow()).sequenceNumber(2)
+            .operation(com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation.CANCEL)
+            .attemptStatus(com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus.FAILED)
+            .pgOrderId(o.orderId()).amount(12000L).pgIdempotencyKey("historical-failed-cancel")
+            .requestedAt(LocalDateTime.now().minusMinutes(1)).nextCheckAt(LocalDateTime.now()).build());
+        jdbc.update("update payments set current_attempt_id='ATT-old-cancel'");
+        cancel(o);
+        assertThat(withdraw(buyerToken).status()).isEqualTo(200);
+        assertThat(withdraw(sellerToken).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select count(*) from payment_attempts where attempt_status='FAILED'",Integer.class)).isEqualTo(1);
+    }
     @Test void socialReloginNeverRestoresClosedIdentityAndConsumesVerifiedNonce() {
         assertThat(withdraw(buyerToken).status()).isEqualTo(200);
         when(verifier.verify(any(),any())).thenReturn(new KakaoOidcUser(buyer.getProviderUserId(),buyer.getEmail(),"복구 닉네임"));
