@@ -48,6 +48,7 @@ public class FollowController {
 
     @GetMapping("/followers")
     @Operation(summary = "사용자의 팔로워 조회", description = "대상을 팔로우하는 사용자입니다. 등록 시각·관계 ID 역순이며 id·nickname·profileImageUrl만 반환합니다. 빈 페이지도 200입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "공개 사용자 페이지 조회 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_001: 페이지 오류. COMMON_002: ID 오류")
     public ApiResponse<FollowPageResponse> followers(@AuthenticationPrincipal AuthenticatedUser actor,
         @Parameter(schema = @Schema(minimum = "1")) @PathVariable long userId,
@@ -58,6 +59,7 @@ public class FollowController {
 
     @GetMapping("/followings")
     @Operation(summary = "사용자의 팔로잉 조회", description = "대상이 팔로우하는 사용자입니다. 등록 시각·관계 ID 역순이며 id·nickname·profileImageUrl만 반환합니다. 빈 페이지도 200입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "공개 사용자 페이지 조회 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_001: 페이지 오류. COMMON_002: ID 오류")
     public ApiResponse<FollowPageResponse> followings(@AuthenticationPrincipal AuthenticatedUser actor,
         @Parameter(schema = @Schema(minimum = "1")) @PathVariable long userId,
