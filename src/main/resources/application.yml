@@ -17,6 +17,9 @@ kakao:
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 app:
+  settlement:
+    operator-user-ids: ${APP_SETTLEMENT_OPERATOR_USER_IDS:}
+    fee-basis-points: ${APP_SETTLEMENT_FEE_BASIS_POINTS:}
   profile-image:
     max-size-bytes: ${APP_PROFILE_IMAGE_MAX_SIZE_BYTES:5000000}
     upload-url-ttl: ${APP_PROFILE_IMAGE_UPLOAD_URL_TTL:10m}

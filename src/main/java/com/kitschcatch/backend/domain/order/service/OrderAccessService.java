@@ -29,6 +29,14 @@ public class OrderAccessService {
         requireParticipant(order, userId);
         return order;
     }
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PurchaseOrder operatorOrder(long userId, String number, java.util.Set<Long> operators, boolean lock) {
+        validate(userId, number);
+        if (!operators.contains(userId)) throw new BusinessException(ErrorCode.SETTLEMENT_FORBIDDEN);
+        if (lock) return reservations.lockOrder(orders.findIdByOrderNumber(number)
+            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND)));
+        return orders.findByOrderNumber(number).orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+    }
     public void requireBuyer(PurchaseOrder order, long userId) {
         if (!order.getUser().getId().equals(userId)) throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
     }
