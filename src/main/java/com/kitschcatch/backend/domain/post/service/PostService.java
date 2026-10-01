@@ -5,13 +5,11 @@ import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.dto.CreatePostImageUploadUrlRequest;
 import com.kitschcatch.backend.domain.post.dto.CreatePostImageUploadUrlResponse;
 import com.kitschcatch.backend.domain.post.dto.CreatePostRequest;
-import com.kitschcatch.backend.domain.post.dto.PostImageResponse;
 import com.kitschcatch.backend.domain.post.dto.PostImageUploadItemRequest;
 import com.kitschcatch.backend.domain.post.dto.PostImageUploadUrlResponse;
 import com.kitschcatch.backend.domain.post.dto.PostResponse;
 import com.kitschcatch.backend.domain.post.dto.UpdatePostRequest;
 import com.kitschcatch.backend.domain.post.entity.Post;
-import com.kitschcatch.backend.domain.post.entity.PostImage;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.domain.post.repository.PostRepository;
 import com.kitschcatch.backend.domain.user.entity.User;
@@ -218,30 +216,6 @@ public class PostService {
 	}
 
 	private PostResponse toResponse(Post post) {
-		List<PostImageResponse> images = post.getImages().stream()
-			.map(this::toImageResponse)
-			.toList();
-		return new PostResponse(
-			post.getId(),
-			post.getUser().getId(),
-			post.getUser().getNickname(),
-			post.getTitle(),
-			post.getDescription(),
-			post.getPrice(),
-			post.getProductCategory(),
-			post.getProductCondition(),
-			post.getProductStatus(),
-			images,
-			post.getCreatedAt(),
-			post.getUpdatedAt()
-		);
-	}
-
-	private PostImageResponse toImageResponse(PostImage image) {
-		return new PostImageResponse(
-			image.getObjectKey(),
-			postImageStorage.imageUrl(image.getObjectKey()),
-			image.getSortOrder()
-		);
-	}
+        return new PostResponseMapper(postImageStorage).from(post);
+    }
 }
