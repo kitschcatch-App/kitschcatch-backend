@@ -172,7 +172,8 @@ class ChatServiceTest {
 		sellerChatRoom.updateLastMessage("네 가능합니다.", LocalDateTime.of(2026, 5, 24, 9, 30));
 
 		// 저장소는 이미 정렬된 목록을 반환한다고 가정하고 서비스의 상대방 매핑만 검증한다.
-		when(chatRoomRepository.findMyChatRooms(1L)).thenReturn(List.of(buyerChatRoom, sellerChatRoom));
+		when(userRepository.existsById(1L)).thenReturn(true);
+		when(chatRoomRepository.findMyChatRooms(1L, null, null)).thenReturn(List.of(buyerChatRoom, sellerChatRoom));
 
 		List<ChatRoomListResponse> responses = chatService.getMyChatRooms(1L);
 

@@ -5,6 +5,7 @@ import com.kitschcatch.backend.domain.chat.dto.ChatRoomListResponse;
 import com.kitschcatch.backend.domain.chat.dto.ChatRoomResponse;
 import com.kitschcatch.backend.domain.chat.dto.CreateChatRoomRequest;
 import com.kitschcatch.backend.domain.chat.service.ChatService;
+import com.kitschcatch.backend.domain.chat.service.ChatRoomListQuery;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,12 +30,14 @@ public class ChatController {
     @GetMapping
     @Operation(
             summary = "채팅방 목록 조회",
-            description = "로그인한 사용자가 참여 중인 모든 채팅방 목록을 조회합니다."
+            description = "본인이 참여하고 본인에게 삭제되지 않은 채팅방만 조회합니다. role은 BUYER 또는 SELLER이며 생략하면 전체입니다. postId는 참여 조건 안에서 적용됩니다. 마지막 메시지 시각·ID 역순, 빈 목록도 200입니다."
     )
     public ApiResponse<List<ChatRoomListResponse>> getMyChatRooms(
-            @AuthenticationPrincipal AuthenticatedUser user
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Parameter(description = "참여 역할", schema = @io.swagger.v3.oas.annotations.media.Schema(allowableValues = {"BUYER", "SELLER"})) @RequestParam(required = false) String role,
+            @Parameter(description = "상품 ID", schema = @io.swagger.v3.oas.annotations.media.Schema(type = "integer", format = "int64", minimum = "1")) @RequestParam(required = false) String postId
     ) {
-        return ApiResponse.ok(chatService.getMyChatRooms(user.userId()));
+        return ApiResponse.ok(chatService.getMyChatRooms(user.userId(), ChatRoomListQuery.from(role, postId)));
     }
 
     @PostMapping
