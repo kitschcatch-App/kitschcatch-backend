@@ -52,3 +52,15 @@ nonce/state는 32바이트 난수 원문을 클라이언트에 반환하고 DB�
 정상·이메일 미제공/중복·위조 서명·잘못된 issuer/audience·만료/필수 claim·nonce 재사용/혼용/만료·네이버 교환/프로필 오류·동시 생성·동시 replay·서비스 refresh 회전/로그아웃·실제 JWT 프로필 API·카카오 JWKS 회귀를 검증한다. 추가로 JWKS 장애/알 수 없는 kid/키 회전, PostgreSQL SQL 재실행·기존 데이터/제약 보존·독립 이메일 인덱스에 따른 롤백을 검증한다.
 
 실제 네이버·Apple 앱 등록, 모바일 화면/SDK, 운영 자격 증명, 실사용자 로그인·철회는 검증하지 않았다. S3·Toss 실제 연동은 기존과 같이 미완료다. 운영 DB 적용·배포·실제 푸시/메시지·병합은 수행하지 않는다. 전체 테스트의 다른 이슈 PostgreSQL 환경 조건 테스트는 별도 기록하며 이 이슈 DB로 대신 실행하지 않는다.
+
+## 실제 실행 결과와 독립 리뷰
+
+2026-10-01 이슈 전용 워크트리와 테스트 DB에서 다음을 실행했다. 운영 DB나 다른 채팅의 프로세스는 사용하지 않았다.
+
+- `./gradlew test bootJar --max-workers=1 -Dorg.gradle.jvmargs='-Xmx384m -XX:MaxMetaspaceSize=256m' --no-daemon`: 성공.
+- 리뷰 수정 후 `./gradlew test build --max-workers=1 -Dorg.gradle.jvmargs='-Xmx384m -XX:MaxMetaspaceSize=256m' --no-daemon`: 성공. 총 476개 중 실행 401개 성공, 실패/오류 0개, 건너뜀 75개.
+- `ISSUE53_TEST_DB_URL=jdbc:postgresql://127.0.0.1:55453/issue53_social ./gradlew test --tests '*SocialLoginHttpTest' --rerun-tasks --max-workers=1 -Dorg.gradle.jvmargs='-Xmx384m -XX:MaxMetaspaceSize=256m' --no-daemon`: 전용 PostgreSQL에서 8개 모두 성공, 실패/오류/건너뜀 0개. 리뷰 수정 후 재실행도 통과했다.
+- 건너뜀 75개는 기존 다른 이슈의 환경 조건 PostgreSQL 검증 74개와 H2에서의 이슈 #53 SQL 검증 1개다. 후자는 별도 PostgreSQL 실행에서 검증했다.
+- `git diff --check`: 통과.
+
+별도 GPT 6.1 Sol High 리뷰 에이전트가 `5f6d18f..04835d4b3252c0bcaf3b0dfbec2dd938fb81d2d6`의 인증 권한·입력·제공자 계약·동시성·트랜잭션·SQL·카카오 회귀·테스트를 읽기 전용으로 검토했다. P2 한 건(Apple aud 누락 토큰의 NPE/500)을 발견했다. null 안전 비교로 수정하고 실제 서명 JWT HTTP 검증에 aud/iat 누락·nonce 불일치를 추가했다. 리뷰어가 수정 SHA `f43b3468ad23cc8aed0485aeb7a9e1e80762867e`와 PostgreSQL 결과를 재확인했으며 남은 findings는 0개다. 이 결과 기록 이후 소스 변경은 없다.
