@@ -7,6 +7,7 @@ import com.kitschcatch.backend.domain.user.dto.CreateProfileImageUploadUrlReques
 import com.kitschcatch.backend.domain.user.dto.ProfileImageUploadUrlResponse;
 import com.kitschcatch.backend.domain.user.dto.UpdateUserProfileRequest;
 import com.kitschcatch.backend.domain.user.dto.UserMeResponse;
+import com.kitschcatch.backend.domain.user.dto.UsernameAvailabilityResponse;
 import com.kitschcatch.backend.domain.user.service.UserService;
 import com.kitschcatch.backend.domain.user.service.UserProfileImageService;
 import com.kitschcatch.backend.global.response.ApiResponse;
@@ -62,6 +63,16 @@ public class UserController {
 		@RequestParam String nickname
 	) {
 		return ApiResponse.success(userService.checkNicknameAvailability(user.userId(), nickname));
+	}
+
+	@GetMapping("/username-availability")
+	@Operation(summary = "사용자 아이디 중복 확인", description = "본인 아이디는 사용 가능합니다. 조회는 예약하지 않으며 저장 시 중복되면 USER_008을 반환합니다.")
+	public ApiResponse<UsernameAvailabilityResponse> checkUsernameAvailability(
+		@AuthenticationPrincipal AuthenticatedUser user,
+		@Parameter(description = "앞뒤 공백 제거·소문자 변환 후 영문, 숫자, 밑줄 3~30자", required = true)
+		@RequestParam String username
+	) {
+		return ApiResponse.success(userService.checkUsernameAvailability(user.userId(), username));
 	}
 
 	@PostMapping("/me/profile")

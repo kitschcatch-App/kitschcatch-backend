@@ -19,20 +19,23 @@ public class UserProfileTransactionService {
 	}
 
 	@Transactional
-	public User registerProfile(Long userId, String nickname, String profileImageKey) {
+	public User registerProfile(Long userId, String nickname, String profileImageKey, String username, String bio) {
 		User user = findUserForUpdate(userId);
 		if (user.isProfileRegistered()) {
 			throw new BusinessException(ErrorCode.USER_PROFILE_ALREADY_REGISTERED);
 		}
 		validateNicknameAvailability(nickname, userId);
+		validateUsernameAvailability(username, userId);
 		user.registerProfile(nickname, nickname, profileImageKey, Instant.now());
+		user.updatePublicProfile(username, true, bio, true);
 		userRepository.saveAndFlush(user);
 		return user;
 	}
 
 	@Transactional
 	public User updateProfile(Long userId, String nickname, boolean nicknameProvided,
-		String profileImageKey, boolean imageProvided) {
+		String profileImageKey, boolean imageProvided, String username, boolean usernameProvided,
+		String bio, boolean bioProvided) {
 		User user = findUserForUpdate(userId);
 		if (!user.isProfileRegistered()) {
 			throw new BusinessException(ErrorCode.USER_PROFILE_NOT_REGISTERED);
@@ -42,7 +45,11 @@ public class UserProfileTransactionService {
 			validateNicknameAvailability(nickname, userId);
 			updatedNickname = nickname;
 		}
+		if (usernameProvided) {
+			validateUsernameAvailability(username, userId);
+		}
 		user.updateProfile(updatedNickname, updatedNickname, profileImageKey, imageProvided);
+		user.updatePublicProfile(username, usernameProvided, bio, bioProvided);
 		userRepository.saveAndFlush(user);
 		return user;
 	}
@@ -50,6 +57,12 @@ public class UserProfileTransactionService {
 	private User findUserForUpdate(Long userId) {
 		return userRepository.findByIdForUpdate(userId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+	}
+
+	private void validateUsernameAvailability(String username, Long userId) {
+		if (username != null && userRepository.existsByUsernameAndIdNot(username, userId)) {
+			throw new BusinessException(ErrorCode.USER_USERNAME_DUPLICATED);
+		}
 	}
 
 	private void validateNicknameAvailability(String nickname, Long userId) {

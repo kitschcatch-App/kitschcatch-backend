@@ -18,4 +18,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 	Optional<User> findByIdForUpdate(@Param("userId") Long userId);
 
 	boolean existsByNicknameKeyAndIdNot(String nicknameKey, Long userId);
+
+	boolean existsByUsernameAndIdNot(String username, Long userId);
 }

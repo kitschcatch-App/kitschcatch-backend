@@ -34,7 +34,7 @@ class UserServiceTest {
 		profileImageStorage = org.mockito.Mockito.mock(ProfileImageStorage.class);
 		userService = new UserService(userRepository, new NicknamePolicy(), profileImageStorage,
 			new UserProfileTransactionService(userRepository),
-			new ProfileImagePolicy(new ProfileImageProperties(5_000_000, java.time.Duration.ofMinutes(10))));
+			new ProfileImagePolicy(new ProfileImageProperties(5_000_000, java.time.Duration.ofMinutes(10))), new PublicProfilePolicy());
 		user = User.builder()
 			.nickname("kakao-default")
 			.email("user@example.com")
@@ -104,7 +104,7 @@ class UserServiceTest {
 
 		UserMeResponse response = userService.registerProfile(
 			1L,
-			new RegisterUserProfileRequest(" collector ", "profiles/1/image.png")
+			new RegisterUserProfileRequest(" collector ", "profiles/1/image.png", null, null)
 		);
 
 		assertThat(user.isProfileRegistered()).isTrue();
@@ -119,7 +119,7 @@ class UserServiceTest {
 		user.registerProfile("collector", "collector", null, java.time.Instant.now());
 		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
 
-		assertThatThrownBy(() -> userService.registerProfile(1L, new RegisterUserProfileRequest("other", null)))
+		assertThatThrownBy(() -> userService.registerProfile(1L, new RegisterUserProfileRequest("other", null, null, null)))
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.USER_PROFILE_ALREADY_REGISTERED);
