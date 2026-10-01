@@ -30,6 +30,20 @@ JPA Criteria로 지정된 조건만 추가하고 값은 매개변수로 전달�
 
 ## 검증 기록.
 
-검증 완료 후 실제 실행 명령·결과·독립 리뷰를 아래에 기록한다.
+- 관련 검증: `ISSUE47_TEST_DB_URL=jdbc:postgresql://127.0.0.1:56447/issue47_search ./gradlew test --tests '*PostSearch*Test' --tests '*PostControllerTest' --max-workers=1 -I /private/tmp/issue47-gradle-memory.gradle -Dorg.gradle.jvmargs='-Xmx384m -XX:MaxMetaspaceSize=256m' --no-daemon`. 성공. H2 계약 49개, PostgreSQL 계약 49개, 컨트롤러 회귀 6개 모두 실행·실패 0개.
+- 전체 검증: 같은 #47 DB 환경과 메모리 설정으로 `./gradlew build --max-workers=1 -I /private/tmp/issue47-gradle-memory.gradle -Dorg.gradle.jvmargs='-Xmx384m -XX:MaxMetaspaceSize=256m' -Dspring.test.context.cache.maxSize=4 --no-daemon`. 성공. 총 564개 중 490개 실행, 74개 건너뜀, 실패·오류 0개. bootJar 포함.
+- Gradle init script는 저장소 밖의 검증 전용 파일이며 test JVM heap 320MB·metaspace 256MB·maxParallelForks 1만 설정했다. context cache system property는 Gradle 명령에 전달했으며 test JVM 전파 여부는 별도 검증하지 않았다.
+- 건너뜀: #31 프로필 PostgreSQL HTTP/SQL 13개, #39 매장 PostgreSQL HTTP/SQL 17개, #41 관심 매장 PostgreSQL HTTP/SQL 20개, #43 거래 내역 PostgreSQL HTTP/SQL 24개. 각각의 DB 환경 변수 미설정에 따른 기존 게이트다. #27 예약 회귀는 기본 H2에서 실행했고 공유 DB를 사용하지 않았다.
+- PostgreSQL 14.18을 이 채팅 전용 인스턴스·DB(루프백 포트 56447)에서 실행했다. #47 테스트는 UUID 기반 전용 스키마 생성·삭제를 사용하며 실제 HTTP 서버 포트도 RANDOM_PORT다.
+- 복합 필터와 각 enum·한글 카테고리, 양끝 가격·0·Long.MAX_VALUE, 와일드카드 리터럴, SQL 주입 문자열, 정렬 동률·생성 시각, 페이지 기본/최대/경계/전체 개수, 소프트 삭제, AUTH_004와 COMMON_001/002, Swagger 파라미터를 확인했다.
+- 검색 content/count 사이에 다른 연결로 소프트 삭제를 커밋해 현재 응답의 동일 스냅샷과 다음 요청의 삭제 반영을 두 DB에서 확인했다. 25상품/50이미지 조회의 사용자 확인·목록·count·이미지 batch까지 쿼리 5개 이하이며 DB 쓰기와 S3/Toss 클라이언트 호출이 없었다.
+- 처음 실행에서 기존 JWT 필터가 사용자 존재를 검사하지 않아 존재하지 않는 사용자 JWT로 목록 200을 반환하는 문제가 확인됐다. 목록 서비스에서 검사하도록 해결했고 관련·전체 검증에서 재확인했다.
+- `git diff --check` 성공. Notion 원문 계약 대조와 운영 규모 성능은 미검증이다. CI는 로컬 빌드와 별도이며 PR 생성 후 상태를 확인한다.
+
+## 독립 리뷰.
+
+- 구현자와 별도 에이전트가 GPT 6.1 Sol / reasoning high로 읽기 전용 리뷰했다. reviewed SHA: `de72ba3727d567e5cb539408122f6a7106b4891c`, base SHA: `5f6d18fb2d4d8fc1e2f435919a548c64d33c9627`. Actionable findings 0개이며 리뷰 수정은 없었다. 이후 변경은 이 문서의 검증·리뷰 기록뿐이다.
+- diff, JWT·사용자 존재 검증, 입력·가격 경계·필터 AND/키워드 OR, 삭제·판매 상태, 동률·페이지·count, 이미지 batch, REPEATABLE_READ 동시 삭제, 기존 CRUD·응답 회귀와 PostgreSQL 호환성을 검토했다.
+- 리뷰어는 테스트를 재실행하지 않았고 기존 XML 59개에서 490개 실행·74개 건너뜀·실패/오류 0, #47 H2·PostgreSQL 각각 49개 실행을 확인했다.
 
 S3/Toss 실제 연동, 운영 DB 적용·배포·실제 푸시/메시지는 사용자 요청에 따라 미완료 상태를 유지한다.
