@@ -23,6 +23,8 @@ import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.domain.post.service.PostService;
+import com.kitschcatch.backend.domain.post.service.PostSearchService;
+import com.kitschcatch.backend.domain.post.service.PostSearchQuery;
 import com.kitschcatch.backend.global.exception.GlobalExceptionHandler;
 import com.kitschcatch.backend.global.response.ResponseStatusSetterAdvice;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
@@ -45,13 +47,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class PostControllerTest {
 
 	private PostService postService;
+	private PostSearchService searches;
 	private MockMvc mockMvc;
 	private UsernamePasswordAuthenticationToken authentication;
 
 	@BeforeEach
 	void setUp() {
 		postService = mock(PostService.class);
-		mockMvc = MockMvcBuilders.standaloneSetup(new PostController(postService))
+		searches = mock(PostSearchService.class);
+		mockMvc = MockMvcBuilders.standaloneSetup(new PostController(postService, searches))
 			.setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
 			.setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
 			.build();
@@ -128,7 +132,7 @@ class PostControllerTest {
 	@Test
 	@DisplayName("판매 게시글 목록 API는 삭제되지 않은 게시글 페이지를 반환한다")
 	void getPostsReturnsPostPage() throws Exception {
-		when(postService.getPosts(PageRequest.of(0, 20)))
+		when(searches.search(eq(1L), eq(PostSearchQuery.from(null, null, null, null, null, null, null, 0, 20))))
 			.thenReturn(new PageImpl<>(List.of(postResponse()), PageRequest.of(0, 20), 1));
 
 		mockMvc.perform(get("/api/posts")
