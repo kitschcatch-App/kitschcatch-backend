@@ -28,6 +28,7 @@ public enum ErrorCode {
 	STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE_001", "매장을 찾을 수 없습니다."),
 	STORE_QUERY_INVALID(HttpStatus.BAD_REQUEST, "STORE_002", "위도, 경도 또는 조회 반경이 올바르지 않습니다."),
 
+	USER_WITHDRAWAL_BLOCKED(HttpStatus.CONFLICT, "USER_057_001", "진행 중이거나 확인이 필요한 거래가 있어 탈퇴할 수 없습니다."),
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
 	USER_PROFILE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "USER_002", "프로필이 이미 등록되어 있습니다."),
 	USER_PROFILE_NOT_REGISTERED(HttpStatus.CONFLICT, "USER_003", "프로필을 먼저 등록해야 합니다."),

@@ -7,6 +7,9 @@ import com.kitschcatch.backend.domain.store.entity.Store;
 import com.kitschcatch.backend.domain.store.entity.StoreBusinessHours;
 import com.kitschcatch.backend.domain.store.repository.StoreRepository;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
+import com.kitschcatch.backend.domain.user.repository.UserRepository;
+import com.kitschcatch.backend.domain.user.entity.User;
+import com.kitschcatch.backend.domain.user.entity.AuthProvider;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.List;
@@ -26,13 +29,17 @@ abstract class StoreHttpContract {
     @Autowired StoreRepository stores;
     @Autowired JdbcTemplate jdbc;
     @Autowired JwtTokenProvider tokens;
+    @Autowired UserRepository users;
     String token;
 
     @BeforeEach
     void resetData() {
         jdbc.update("DELETE FROM store_business_hours");
         jdbc.update("DELETE FROM stores");
-        token = tokens.createAccessToken(1L);
+        users.deleteAllInBatch();
+        var user=users.saveAndFlush(User.builder().nickname("매장 조회자").email("store-reader@example.test")
+            .authProvider(AuthProvider.KAKAO).providerUserId("store-reader").build());
+        token = tokens.createAccessToken(user.getId());
     }
 
     @Test

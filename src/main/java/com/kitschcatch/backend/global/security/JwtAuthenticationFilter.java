@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.global.security;
 
+import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -21,9 +22,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private static final String BEARER_PREFIX = "Bearer ";
 
 	private final JwtTokenProvider jwtTokenProvider;
+	private final UserRepository users;
 
-	public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
+	public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserRepository users) {
 		this.jwtTokenProvider = jwtTokenProvider;
+		this.users = users;
 	}
 
 	@Override
@@ -41,6 +44,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		String token = authorization.substring(BEARER_PREFIX.length());
 		try {
 			AuthenticatedUser authenticatedUser = jwtTokenProvider.parseAccessToken(token);
+			if (!users.existsByIdAndWithdrawnAtIsNull(authenticatedUser.userId())) {
+				SecurityContextHolder.clearContext();
+				filterChain.doFilter(request, response);
+				return;
+			}
 			UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
 				authenticatedUser,
 				null,

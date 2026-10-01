@@ -13,6 +13,13 @@ import org.springframework.data.repository.query.Param;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
 
+	@Query("select p.user.id from Post p where p.id = :id")
+	Optional<Long> findSellerId(@Param("id") Long id);
+
+	@org.springframework.data.jpa.repository.Modifying
+	@Query("update Post p set p.deletedAt = :now where p.user.id = :userId and p.deletedAt is null")
+	int hideByUserId(@Param("userId") Long userId, @Param("now") java.time.LocalDateTime now);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select p from Post p where p.id = :id")
 	Optional<Post> findByIdForUpdate(@Param("id") Long id);

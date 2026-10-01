@@ -304,13 +304,14 @@ abstract class OrderHistoryHttpContract {
             stats.clear();
             var page = get("/api/users/me/" + role[0], role[1]);
             assertThat(page.rows()).hasSize(20);
-            assertThat(stats.getPrepareStatementCount()).as(role[0]).isBetween(1L, 3L);
+            // 종료 계정 차단을 위한 인증 상태 조회 1회를 포함한다.
+            assertThat(stats.getPrepareStatementCount()).as(role[0]).isBetween(2L, 4L);
             assertThat(stats.getEntityFetchCount()).isZero();
             assertThat(stats.getCollectionFetchCount()).isZero();
         }
         stats.clear();
         assertThat(get("/api/orders/" + latest.orderId(), sellerToken).status()).isEqualTo(200);
-        assertThat(stats.getPrepareStatementCount()).isBetween(1L, 2L);
+        assertThat(stats.getPrepareStatementCount()).isBetween(2L, 3L);
         assertThat(stats.getEntityFetchCount()).isZero();
         assertThat(stats.getCollectionFetchCount()).isZero();
     }

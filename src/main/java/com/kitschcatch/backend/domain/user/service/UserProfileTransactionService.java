@@ -55,8 +55,10 @@ public class UserProfileTransactionService {
 	}
 
 	private User findUserForUpdate(Long userId) {
-		return userRepository.findByIdForUpdate(userId)
+		User user = userRepository.findByIdForUpdate(userId)
 			.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+		user.requireActive();
+		return user;
 	}
 
 	private void validateUsernameAvailability(String username, Long userId) {

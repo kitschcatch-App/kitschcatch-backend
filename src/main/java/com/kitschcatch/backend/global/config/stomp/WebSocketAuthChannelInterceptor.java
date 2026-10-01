@@ -1,6 +1,7 @@
 package com.kitschcatch.backend.global.config.stomp;
 
 import com.kitschcatch.backend.domain.chat.repository.ChatRoomRepository;
+import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
@@ -38,6 +39,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
 	private final JwtTokenProvider jwtTokenProvider;
 	private final ChatRoomRepository chatRoomRepository;
+	private final UserRepository users;
 
 	@Override
 	public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -56,6 +58,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
 			String token = authorization.substring(BEARER_PREFIX.length());
 			AuthenticatedUser authenticatedUser = jwtTokenProvider.parseAccessToken(token);
+			requireActive(authenticatedUser.userId());
 
 			accessor.setUser(new UsernamePasswordAuthenticationToken(
 				authenticatedUser,
@@ -63,6 +66,10 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 				List.of(new SimpleGrantedAuthority("ROLE_USER"))
 			));
 			return message;
+		}
+
+		if (StompCommand.SEND.equals(accessor.getCommand()) || StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+			requireActive(extractUserId(accessor.getUser()));
 		}
 
 		if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
@@ -81,6 +88,10 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 		}
 
 		return message;
+	}
+
+	private void requireActive(Long userId) {
+		if (!users.existsByIdAndWithdrawnAtIsNull(userId)) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
 	}
 
 	private Long extractUserId(Principal principal) {

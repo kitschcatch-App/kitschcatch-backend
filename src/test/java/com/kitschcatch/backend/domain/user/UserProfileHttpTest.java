@@ -176,7 +176,7 @@ class UserProfileHttpTest {
 		for (String invalid : new String[]{"", " ", "가".repeat(51)}) {
 			assertError(availability(user.getId(), invalid), 400, "COMMON_001");
 		}
-		assertError(availability(Long.MAX_VALUE, "valid"), 404, "USER_001");
+		assertError(availability(Long.MAX_VALUE, "valid"), 401, "AUTH_004");
 		String path = "/api/users/nickname-availability?nickname=valid";
 		for (String header : new String[]{"", "Bearer invalid", "Bearer " + jwtTokenProvider.createRefreshToken(user.getId()),
 			"Bearer " + expiredToken(user.getId())}) {

@@ -116,7 +116,7 @@ class ProfileImageUploadHttpTest {
 			assertError(request(token, VALID), 401, "AUTH_004");
 		}
 		users.deleteById(user.getId());
-		assertError(issue(VALID), 404, "USER_001");
+		assertError(issue(VALID), 401, "AUTH_004");
 		verifyNoInteractions(s3Client);
 	}
 

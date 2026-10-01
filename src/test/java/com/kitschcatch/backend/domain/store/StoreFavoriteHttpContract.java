@@ -179,7 +179,7 @@ abstract class StoreFavoriteHttpContract {
     @ValueSource(strings = {"POST", "DELETE", "GET"})
     void deletedUserIsRejected(String method) {
         String path = method.equals("GET") ? "/api/users/me/favorite-stores" : favoritePath(store.getId());
-        assertError(request(method, path, tokens.createAccessToken(Long.MAX_VALUE)), 404, "USER_001");
+        assertError(request(method, path, tokens.createAccessToken(Long.MAX_VALUE)), 401, "AUTH_004");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM store_favorites", Long.class)).isZero();
     }
 

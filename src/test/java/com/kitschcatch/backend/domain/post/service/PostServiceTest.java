@@ -88,7 +88,7 @@ class PostServiceTest {
 	@Test
 	@DisplayName("판매 게시글 생성은 사진을 필수로 저장한다")
 	void createPostSavesPostWithImages() {
-		when(userRepository.findById(1L)).thenReturn(Optional.of(seller));
+		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(seller));
 		when(postImageStorage.isOwnedPostImageKey(1L, "posts/1/image.png")).thenReturn(true);
 		when(postImageStorage.exists("posts/1/image.png")).thenAnswer(invocation -> {
 			assertThat(transactionOperations.isInTransaction()).isFalse();

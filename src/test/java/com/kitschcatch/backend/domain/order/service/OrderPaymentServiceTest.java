@@ -80,7 +80,9 @@ class OrderPaymentServiceTest {
 	@Test
 	@DisplayName("주문 생성은 주문 번호와 결제 ID를 문자열로 저장한다")
 	void createOrderStoresStringOrderAndPaymentIds() {
-		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
+		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(buyer));
+        when(userRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(seller));
+        when(postRepository.findSellerId(10L)).thenReturn(Optional.of(2L));
 		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(post));
 		when(orderRepository.save(any(PurchaseOrder.class))).thenAnswer(invocation -> {
 			PurchaseOrder order = invocation.getArgument(0);
@@ -106,7 +108,9 @@ class OrderPaymentServiceTest {
 	@DisplayName("주문 생성은 판매 중이 아닌 게시글이면 예외를 던진다")
 	void createOrderWithNotOnSalePostThrowsException() {
 		Post reservedPost = post(10L, seller, 650000L, ProductStatus.RESERVED);
-		when(userRepository.findById(1L)).thenReturn(Optional.of(buyer));
+		when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(buyer));
+        when(userRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(seller));
+        when(postRepository.findSellerId(10L)).thenReturn(Optional.of(2L));
 		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(reservedPost));
 
 		assertThatThrownBy(() -> orderService.createOrder(

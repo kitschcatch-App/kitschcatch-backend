@@ -16,6 +16,7 @@ public interface LoginNonceRepository extends JpaRepository<LoginNonce, Long> {
 	@Query("select loginNonce from LoginNonce loginNonce where loginNonce.nonceHash = :nonceHash")
 	Optional<LoginNonce> findByNonceHashForUpdate(@Param("nonceHash") String nonceHash);
 
+	@org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
 	default boolean consumeByRawNonce(String rawNonce) {
 		return findByNonceHashForUpdate(JwtTokenProvider.hash(rawNonce))
 			.filter(nonce -> nonce.isActive(LocalDateTime.now()))
