@@ -1,0 +1,4 @@
+store_id,day_of_week,open_time,close_time,closed
+55001,MONDAY,20:00,02:00,false
+55001,TUESDAY,00:00,00:00,false
+55001,SUNDAY,,,true
