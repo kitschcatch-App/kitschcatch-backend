@@ -31,14 +31,32 @@ class WebSocketAuthChannelInterceptorTest {
 	private ChatRoomRepository chatRoomRepository;
 	private WebSocketAuthChannelInterceptor interceptor;
 	private MessageChannel channel;
+    private com.kitschcatch.backend.domain.user.repository.UserRepository users;
 
 	@BeforeEach
 	void setUp() {
 		jwtTokenProvider = mock(JwtTokenProvider.class);
 		chatRoomRepository = mock(ChatRoomRepository.class);
-		interceptor = new WebSocketAuthChannelInterceptor(jwtTokenProvider, chatRoomRepository);
+		users = mock(com.kitschcatch.backend.domain.user.repository.UserRepository.class);
+        when(users.existsByIdAndWithdrawnAtIsNull(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+        interceptor = new WebSocketAuthChannelInterceptor(jwtTokenProvider, chatRoomRepository, users);
 		channel = mock(MessageChannel.class);
 	}
+
+    @Test
+    void withdrawnAccountCannotConnectSendOrSubscribe() {
+        when(users.existsByIdAndWithdrawnAtIsNull(1L)).thenReturn(false);
+        when(jwtTokenProvider.parseAccessToken("valid-token")).thenReturn(new AuthenticatedUser(1L));
+        for (var command : List.of(StompCommand.CONNECT, StompCommand.SEND, StompCommand.SUBSCRIBE)) {
+            var accessor = StompHeaderAccessor.create(command);
+            accessor.setNativeHeader(HttpHeaders.AUTHORIZATION, "Bearer valid-token");
+            accessor.setUser(new UsernamePasswordAuthenticationToken(new AuthenticatedUser(1L), null, List.of()));
+            accessor.setLeaveMutable(true);
+            var message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+            assertThatThrownBy(() -> interceptor.preSend(message, channel)).isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_AUTH_TOKEN);
+        }
+    }
 
 	@Test
 	@DisplayName("CONNECT 프레임의 Bearer 토큰은 STOMP Principal로 등록된다")

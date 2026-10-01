@@ -59,12 +59,15 @@ class AuthServiceDuplicateUserTest {
 		when(kakaoUserService.createKakaoUser(any(KakaoOidcUser.class)))
 			.thenThrow(new DataIntegrityViolationException("duplicate"));
 
-		AuthService authService = new AuthService(
+		var users = mock(com.kitschcatch.backend.domain.user.repository.UserRepository.class);
+        when(users.findByIdForUpdate(1L)).thenReturn(Optional.of(savedByConcurrentRequest));
+        when(users.existsByIdAndWithdrawnAtIsNull(1L)).thenReturn(true);
+        AuthService authService = new AuthService(
 			verifier,
 			kakaoUserService,
 			refreshTokenRepository,
 			loginNonceRepository,
-			jwtTokenProvider
+			jwtTokenProvider, users
 		);
 
 		AuthTokenResponse response = authService.loginWithKakaoIdToken("kakao-sdk-id-token", "nonce-value");

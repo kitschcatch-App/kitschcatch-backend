@@ -258,7 +258,7 @@ abstract class PostSearchHttpContract {
         @SuppressWarnings("unchecked") var image = ((List<Map<String, Object>>) row.get("images")).getFirst();
         assertThat(image).containsEntry("sortOrder", 0);
         assertThat(image.get("imageUrl").toString()).startsWith("https://cdn.example.test/posts/");
-        assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(5);
+        assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(6); // 인증 시 종료 계정 확인 쿼리 1회 포함
         assertThat(statistics.getEntityInsertCount() + statistics.getEntityUpdateCount() + statistics.getEntityDeleteCount()).isZero();
         verifyNoInteractions(s3, toss);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM posts WHERE deleted_at IS NOT NULL OR product_status <> 'ON_SALE'", Long.class)).isZero();

@@ -55,8 +55,9 @@ public class UserProfileTransactionService {
 	}
 
 	private User findUserForUpdate(Long userId) {
-		return userRepository.findByIdForUpdate(userId)
-			.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+		User user = userRepository.findActiveByIdForUpdate(userId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
+		return user;
 	}
 
 	private void validateUsernameAvailability(String username, Long userId) {

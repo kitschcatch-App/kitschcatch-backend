@@ -10,6 +10,7 @@ import com.kitschcatch.backend.domain.auth.oidc.KakaoOidcUser;
 import com.kitschcatch.backend.domain.auth.repository.LoginNonceRepository;
 import com.kitschcatch.backend.domain.auth.repository.RefreshTokenRepository;
 import com.kitschcatch.backend.domain.user.entity.User;
+import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import com.kitschcatch.backend.global.security.JwtTokenProvider;
@@ -36,19 +37,22 @@ public class AuthService {
 	private final RefreshTokenRepository refreshTokenRepository;
 	private final LoginNonceRepository loginNonceRepository;
 	private final JwtTokenProvider jwtTokenProvider;
+	private final UserRepository users;
 
 	public AuthService(
 		KakaoOidcTokenVerifier kakaoOidcTokenVerifier,
 		KakaoUserService kakaoUserService,
 		RefreshTokenRepository refreshTokenRepository,
 		LoginNonceRepository loginNonceRepository,
-		JwtTokenProvider jwtTokenProvider
+		JwtTokenProvider jwtTokenProvider,
+		UserRepository users
 	) {
 		this.kakaoOidcTokenVerifier = kakaoOidcTokenVerifier;
 		this.kakaoUserService = kakaoUserService;
 		this.refreshTokenRepository = refreshTokenRepository;
 		this.loginNonceRepository = loginNonceRepository;
 		this.jwtTokenProvider = jwtTokenProvider;
+		this.users = users;
 	}
 
 	public KakaoNonceResponse createKakaoLoginNonce() {
@@ -81,6 +85,7 @@ public class AuthService {
 
 	public AuthTokenResponse refresh(String refreshToken) {
 		RefreshTokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
+		lockActiveUser(claims.userId());
 		RefreshToken savedToken = refreshTokenRepository.findByTokenHashForUpdate(jwtTokenProvider.hashToken(refreshToken))
 			.filter(token -> token.isActive(LocalDateTime.now()))
 			.filter(token -> token.getUser().getId().equals(claims.userId()))
@@ -92,6 +97,7 @@ public class AuthService {
 
 	public void logout(String refreshToken) {
 		RefreshTokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
+		lockActiveUser(claims.userId());
 		RefreshToken savedToken = refreshTokenRepository.findByTokenHashForUpdate(jwtTokenProvider.hashToken(refreshToken))
 			.filter(token -> token.getUser().getId().equals(claims.userId()))
 			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
@@ -99,6 +105,7 @@ public class AuthService {
 	}
 
 	public AuthTokenResponse issueTokenResponse(User user) {
+		user = lockActiveUser(user.getId());
 		LocalDateTime now = LocalDateTime.now();
 		String accessToken = jwtTokenProvider.createAccessToken(user.getId());
 		String refreshToken = jwtTokenProvider.createRefreshToken(user.getId());
@@ -117,6 +124,14 @@ public class AuthService {
 			jwtTokenProvider.getRefreshTokenTtl().toSeconds(),
 			new AuthUserResponse(user.getId(), user.getEmail(), user.getNickname(), user.isProfileRegistered())
 		);
+	}
+
+	private User lockActiveUser(Long userId) {
+		User user = users.findByIdForUpdate(userId)
+			.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
+		// 잠금 대기 전에 로드된 엔티티 대신 DB의 현재 종료 상태를 확인한다.
+		if (!users.existsByIdAndWithdrawnAtIsNull(userId)) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
+		return user;
 	}
 
 	private User createKakaoUser(KakaoOidcUser kakaoUser) {

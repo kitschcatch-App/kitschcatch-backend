@@ -110,7 +110,7 @@ abstract class PublicUserProfileHttpContract {
 		}
 		assertError(get(owner.getId(), "/api/users/username-availability"), 400, "COMMON_002");
 		assertError(get(null, "/api/users/username-availability?username=valid"), 401, "AUTH_004");
-		assertError(get(9223372036854775807L, "/api/users/username-availability?username=valid"), 404, "USER_001");
+		assertError(get(9223372036854775807L, "/api/users/username-availability?username=valid"), 401, "AUTH_004");
 		assertError(register(owner, Map.of("nickname", "distinct", "username", "Name")), 409, "USER_008");
 		assertThat(users.findById(owner.getId()).orElseThrow().isProfileRegistered()).isFalse();
 		verifyNoInteractions(images);

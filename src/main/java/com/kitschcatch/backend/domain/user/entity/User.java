@@ -1,5 +1,8 @@
 package com.kitschcatch.backend.domain.user.entity;
 
+import com.kitschcatch.backend.global.exception.BusinessException;
+import com.kitschcatch.backend.global.exception.ErrorCode;
+import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -75,6 +78,27 @@ public class User {
 		this.email = email;
 		this.authProvider = authProvider;
 		this.providerUserId = providerUserId;
+	}
+
+	@Column(name = "withdrawn_at")
+	private Instant withdrawnAt;
+
+	public boolean isActive() { return withdrawnAt == null; }
+
+	public void requireActive() {
+		if (!isActive()) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
+	}
+
+	public void withdraw(Instant now) {
+		if (!isActive()) return;
+		withdrawnAt = now;
+		nickname = "탈퇴한 사용자";
+		nicknameKey = null;
+		email = "withdrawn-" + UUID.randomUUID() + "@account.invalid";
+		profileImageKey = null;
+		profileRegisteredAt = null;
+		username = null;
+		bio = null;
 	}
 
 	public boolean isProfileRegistered() {
