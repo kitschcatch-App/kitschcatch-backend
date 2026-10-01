@@ -3,9 +3,9 @@ package com.kitschcatch.backend.domain.order.dto;
 import com.kitschcatch.backend.domain.order.entity.*;
 import java.time.LocalDateTime;
 public record RefundResponse(String refundId,String orderId,Long amount,OrderRefund.Status status,String reason,
-    LocalDateTime requestedAt,LocalDateTime completedAt) {
+    LocalDateTime requestedAt,LocalDateTime completedAt,String reviewReason,LocalDateTime reviewedAt,Boolean returnReceived,LocalDateTime withdrawnAt) {
     public static RefundResponse from(PurchaseOrder o) {
         var r=o.getRefund(); return new RefundResponse(r.getRefundId(),o.getOrderNumber(),r.getAmount(),r.getStatus(),
-            r.getReason(),r.getRequestedAt(),r.getCompletedAt());
+            r.getReason(),r.getRequestedAt(),r.getCompletedAt(),r.getReviewReason(),r.getReviewedAt(),r.getReturnReceived(),r.getWithdrawnAt());
     }
 }

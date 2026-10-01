@@ -31,8 +31,12 @@ public class OrderAccessService {
     }
     @Transactional(propagation = Propagation.MANDATORY)
     public PurchaseOrder operatorOrder(long userId, String number, java.util.Set<Long> operators, boolean lock) {
+        return operatorOrder(userId,number,operators,lock,ErrorCode.SETTLEMENT_FORBIDDEN);
+    }
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PurchaseOrder operatorOrder(long userId,String number,java.util.Set<Long> operators,boolean lock,ErrorCode forbidden) {
         validate(userId, number);
-        if (!operators.contains(userId)) throw new BusinessException(ErrorCode.SETTLEMENT_FORBIDDEN);
+        if (!operators.contains(userId)) throw new BusinessException(forbidden);
         if (lock) return reservations.lockOrder(orders.findIdByOrderNumber(number)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND)));
         return orders.findByOrderNumber(number).orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));

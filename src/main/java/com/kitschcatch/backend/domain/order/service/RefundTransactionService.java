@@ -13,7 +13,8 @@ public class RefundTransactionService {
     private final OrderAccessService access;
     private final PaymentRepository payments;
     private final PaymentTransactionService paymentTransactions;
-    public record Prepared(String paymentId,PaymentOperationContext context) {}
+    private final RefundProperties properties;
+    public record Prepared(long buyerId,String paymentId,PaymentOperationContext context) {}
     @Transactional
     public Prepared prepare(long userId,String number,RefundRequest request) {
         var o=access.lock(userId,number); access.requireBuyer(o,userId);
@@ -27,14 +28,15 @@ public class RefundTransactionService {
             || p.getPaymentStatus()!=PaymentStatus.SUCCESS || p.isRecoveryReviewRequired())
             throw new BusinessException(ErrorCode.ORDER_INVALID_STATE);
         var refund=new OrderRefund(request.amount(),request.reason().strip()); o.requestRefund(refund);
-        // 반품 확인 정책과 승인 경로가 정해지기 전에는 발송한 상품의 자동 환불을 실행하지 않는다.
+        // 발송한 상품은 운영자가 실물 수령을 확인한 뒤 별도 승인한다.
         if(o.getShipment()!=null) return null;
         refund.start();
-        return new Prepared(p.getPaymentId(),paymentTransactions.startRefund(userId,p.getPaymentId()));
+        return new Prepared(userId,p.getPaymentId(),paymentTransactions.startRefund(userId,p.getPaymentId()));
     }
     @Transactional(readOnly=true)
     public RefundResponse get(long userId,String number) {
-        var o=access.read(userId,number);
+        var o=properties.operatorUserIds().contains(userId)
+            ?access.operatorOrder(userId,number,properties.operatorUserIds(),false,ErrorCode.REFUND_FORBIDDEN):access.read(userId,number);
         if(o.getRefund()==null) throw new BusinessException(ErrorCode.REFUND_NOT_FOUND);
         return RefundResponse.from(o);
     }

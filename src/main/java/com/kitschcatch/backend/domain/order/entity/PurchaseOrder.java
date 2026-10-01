@@ -177,10 +177,12 @@ public class PurchaseOrder {
 
     public void requestCancellation(String reason) { this.cancelReason = reason; }
 
-    public boolean canCancelBeforeShipment() { return orderStatus == OrderStatus.PAID && shipment == null && refund == null; }
+    public boolean canCancelBeforeShipment() { return orderStatus == OrderStatus.PAID && shipment == null && !hasActiveRefund(); }
+
+    public boolean hasActiveRefund() { return refund != null && refund.active(); }
 
     public void cancel() {
-        if (refund != null) {
+        if (hasActiveRefund()) {
             refund.complete();
             this.orderStatus = OrderStatus.REFUNDED;
         } else {

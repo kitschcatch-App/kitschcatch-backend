@@ -53,6 +53,8 @@ public enum ErrorCode {
     SETTLEMENT_PROVIDER_FAILED(HttpStatus.BAD_GATEWAY, "SETTLEMENT_006", "지급 결과를 확인할 수 없습니다. 정산 상태를 조회해 주세요."),
     REFUND_AMOUNT_INVALID(HttpStatus.BAD_REQUEST, "REFUND_001", "환불 금액은 주문 금액과 같아야 합니다."),
     REFUND_CONFLICT(HttpStatus.CONFLICT, "REFUND_002", "이미 접수된 환불 요청과 내용이 다릅니다."),
+    REFUND_FORBIDDEN(HttpStatus.FORBIDDEN, "REFUND_004", "반품 검수 권한이 없습니다."),
+    REFUND_RETURN_REQUIRED(HttpStatus.BAD_REQUEST, "REFUND_005", "반품 물품 수령 확인이 필요합니다."),
     REFUND_NOT_FOUND(HttpStatus.NOT_FOUND, "REFUND_003", "환불 내역을 찾을 수 없습니다."),
 	SHIPMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "SHIPMENT_001", "배송 정보를 찾을 수 없습니다."),
 	SHIPMENT_FORBIDDEN(HttpStatus.FORBIDDEN, "SHIPMENT_002", "배송 정보를 변경할 권한이 없습니다."),

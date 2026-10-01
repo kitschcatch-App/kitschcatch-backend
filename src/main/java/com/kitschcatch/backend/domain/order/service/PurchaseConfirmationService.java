@@ -18,7 +18,7 @@ public class PurchaseConfirmationService {
         access.requireBuyer(o,userId);
         var p=payments.findByOrderIdForUpdate(o.getId()).orElse(null);
         if (p==null || p.getPaymentStatus()!=PaymentStatus.SUCCESS || p.isRecoveryReviewRequired()
-            || o.getRefund()!=null || o.getCancelReason()!=null || o.getShipment()==null
+            || o.hasActiveRefund() || o.getCancelReason()!=null || o.getShipment()==null
             || (o.getOrderStatus()!=OrderStatus.PAID && o.getOrderStatus()!=OrderStatus.PURCHASE_CONFIRMED))
             throw new BusinessException(ErrorCode.ORDER_INVALID_STATE);
         o.confirmPurchase();

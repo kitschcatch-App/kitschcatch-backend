@@ -19,7 +19,7 @@ public class SettlementTransactionService {
     public Prepared prepare(long userId,String number,boolean providerConfigured) {
         var o=access.operatorOrder(userId,number,properties.operatorUserIds(),true);
         var p=payments.findByOrderIdForUpdate(o.getId()).orElse(null);
-        if(o.getOrderStatus()!=OrderStatus.PURCHASE_CONFIRMED || o.getRefund()!=null || o.getSettlement()==null
+        if(o.getOrderStatus()!=OrderStatus.PURCHASE_CONFIRMED || o.hasActiveRefund() || o.getSettlement()==null
             || p==null || p.getPaymentStatus()!=PaymentStatus.SUCCESS || p.isRecoveryReviewRequired())
             throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
         var s=o.getSettlement();

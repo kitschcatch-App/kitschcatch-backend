@@ -17,7 +17,7 @@ public class ShipmentService {
         var o=access.lock(userId,number);
         if (!o.getSellerId().equals(userId)) throw new BusinessException(ErrorCode.SHIPMENT_FORBIDDEN);
         var payment=payments.findByOrderIdForUpdate(o.getId()).orElse(null);
-        if (o.getOrderStatus()!=OrderStatus.PAID || o.getCancelReason()!=null || o.getRefund()!=null
+        if (o.getOrderStatus()!=OrderStatus.PAID || o.getCancelReason()!=null || o.hasActiveRefund()
             || payment==null || payment.getPaymentStatus()!=PaymentStatus.SUCCESS || payment.isRecoveryReviewRequired())
             throw new BusinessException(ErrorCode.ORDER_INVALID_STATE);
         if (update) {

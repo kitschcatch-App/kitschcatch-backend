@@ -17,6 +17,8 @@ kakao:
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 app:
+  refunds:
+    operator-user-ids: ${APP_REFUNDS_OPERATOR_USER_IDS:}
   settlement:
     operator-user-ids: ${APP_SETTLEMENT_OPERATOR_USER_IDS:}
     fee-basis-points: ${APP_SETTLEMENT_FEE_BASIS_POINTS:}
