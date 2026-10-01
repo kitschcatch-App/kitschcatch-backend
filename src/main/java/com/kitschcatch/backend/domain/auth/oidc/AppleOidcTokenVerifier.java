@@ -41,7 +41,7 @@ public class AppleOidcTokenVerifier {
 		try {
 			var jwt = decoder.decode(idToken);
 			Instant now = Instant.now();
-			if (!jwt.getAudience().equals(java.util.List.of(clientId))
+			if (!java.util.List.of(clientId).equals(jwt.getAudience())
 				|| !nonce.equals(jwt.getClaimAsString("nonce"))
 				|| jwt.getExpiresAt() == null || !jwt.getExpiresAt().isAfter(now)
 				|| jwt.getIssuedAt() == null || jwt.getIssuedAt().isAfter(now)

@@ -198,6 +198,9 @@ class SocialLoginHttpTest {
 		for (String invalid : List.of(
 			sign(KEY, "apple-user", nonce, "https://evil.example", "apple-app", now.plusSeconds(300), now.minusSeconds(1), null),
 			sign(KEY, "apple-user", nonce, "https://appleid.apple.com", "other-app", now.plusSeconds(300), now.minusSeconds(1), null),
+			sign(KEY, "apple-user", nonce, "https://appleid.apple.com", null, now.plusSeconds(300), now.minusSeconds(1), null),
+			sign(KEY, "apple-user", nonce, "https://appleid.apple.com", "apple-app", now.plusSeconds(300), null, null),
+			sign(KEY, "apple-user", "wrong-nonce", "https://appleid.apple.com", "apple-app", now.plusSeconds(300), now.minusSeconds(1), null),
 			sign(KEY, "apple-user", nonce, "https://appleid.apple.com", "apple-app", now.minusSeconds(1), now.minusSeconds(5), null),
 			sign(KEY, "apple-user", nonce, "https://appleid.apple.com", "apple-app", null, now.minusSeconds(1), null),
 			sign(KEY, "apple-user", nonce, "https://appleid.apple.com", "apple-app", now.plusSeconds(300), now.plusSeconds(100), null),
