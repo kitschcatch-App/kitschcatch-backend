@@ -64,7 +64,7 @@ public record StoreCsvBatch(List<Store> stores, List<Hours> hours, String stores
         for (var row : rows(hoursBytes, List.of("store_id", "day_of_week", "open_time", "close_time", "closed"))) {
             try {
                 long id = id(row.get(0));
-                var day = DayOfWeek.valueOf(row.get(1));
+                var day = day(row.get(1));
                 require(keys.add(id + ":" + day), "중복 매장·요일입니다.");
                 require(Set.of("true", "false").contains(row.get(4)), "closed는 true 또는 false이어야 합니다.");
                 boolean closed = Boolean.parseBoolean(row.get(4));
@@ -151,6 +151,13 @@ public record StoreCsvBatch(List<Store> stores, List<Hours> hours, String stores
         if (isNull(value)) return null;
         require(value.matches("(?:[01][0-9]|2[0-3]):[0-5][0-9]"), "시간은 00:00~23:59의 HH:mm이어야 합니다.");
         return LocalTime.parse(value);
+    }
+
+    private static DayOfWeek day(String value) {
+        try { return DayOfWeek.valueOf(value); }
+        catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("요일은 MONDAY~SUNDAY 중 하나이어야 합니다.");
+        }
     }
 
     private static String hash(byte[] bytes) {

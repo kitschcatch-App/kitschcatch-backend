@@ -75,6 +75,14 @@ class StoreCsvBatchTest {
         assertThatThrownBy(() -> new StoreCsvBatch.Review("합성", "검증자", Instant.now().plusSeconds(60))).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void invalidDayDoesNotExposeOriginalTextOrControlCharacters() {
+        String original = "민감한 원문\n\u001b[31m";
+        assertThatThrownBy(() -> batch(HEADER + "1,a,서울,b,0,0,\n", HOURS + "1,\"" + original + "\",,,true\n"))
+            .hasMessage("영업시간 CSV 레코드 2: 요일은 MONDAY~SUNDAY 중 하나이어야 합니다.")
+            .hasMessageNotContaining("민감한 원문").hasMessageNotContaining("\n").hasMessageNotContaining("\u001b");
+    }
+
     static String[] args(String mode, String url) {
         return new String[]{"--stores", "/tmp/stores.csv", "--hours", "/tmp/hours.csv", "--jdbc-url", url,
             "--db-user", "operator", "--password-env", "ISSUE55_PASSWORD", "--schema", "public", "--mode", mode,
