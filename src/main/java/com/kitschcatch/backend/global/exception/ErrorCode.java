@@ -46,6 +46,8 @@ public enum ErrorCode {
 	ORDER_RESERVATION_INVALID(HttpStatus.CONFLICT, "ORDER_002", "유효한 상품 예약이 아닙니다."),
 	ORDER_RESERVATION_EXPIRED(HttpStatus.CONFLICT, "ORDER_003", "상품 예약 시간이 만료되었습니다."),
 	ORDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "ORDER_004", "주문에 접근할 권한이 없습니다."),
+    REVIEW_NOT_ALLOWED(HttpStatus.CONFLICT, "REVIEW_001", "구매 확정된 상대방 거래에만 후기를 작성할 수 있습니다."),
+    REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, "REVIEW_002", "이미 이 거래에 후기를 작성했습니다."),
     SETTLEMENT_INVALID_STATE(HttpStatus.CONFLICT, "SETTLEMENT_001", "현재 주문은 정산할 수 없습니다."),
     SETTLEMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "SETTLEMENT_003", "정산 내역을 찾을 수 없습니다."),
     SETTLEMENT_FORBIDDEN(HttpStatus.FORBIDDEN, "SETTLEMENT_004", "정산 실행 권한이 없습니다."),
