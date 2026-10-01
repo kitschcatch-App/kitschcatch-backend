@@ -10,6 +10,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="400",description="COMMON_001/002: 지원하지 않는 택배사·송장 또는 주문 번호 오류.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="401",description="AUTH_004: 인증 오류.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="403",description="ORDER_004/SHIPMENT_002: 당사자 또는 판매자 아님.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="404",description="ORDER_001/SHIPMENT_001: 주문 또는 송장 없음.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="409",description="ORDER_005/006: 처리 불가 상태 또는 다른 송장 중복 등록.")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/orders/{orderId}/shipment")

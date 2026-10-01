@@ -30,7 +30,11 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Entity
 @Table(
 	name = "orders",
-	uniqueConstraints = @UniqueConstraint(name = "uk_orders_order_number", columnNames = "order_number"),
+	uniqueConstraints = {
+        @UniqueConstraint(name = "uk_orders_order_number", columnNames = "order_number"),
+        @UniqueConstraint(name = "uk_orders_refund_id", columnNames = "refund_id"),
+        @UniqueConstraint(name = "uk_orders_settlement_id", columnNames = "settlement_id")
+    },
 	indexes = {
         @Index(name = "idx_orders_reservation_expiry", columnList = "order_status,reservation_expires_at"),
         @Index(name = "ix_orders_buyer_created_id", columnList = "user_id,created_at DESC,id DESC"),
@@ -87,8 +91,24 @@ public class PurchaseOrder {
 
     private LocalDateTime canceledAt;
 
+    private LocalDateTime confirmedAt;
+
+    @jakarta.persistence.Embedded
+    private OrderSettlement settlement;
+
+    public void confirmPurchase() {
+        orderStatus = OrderStatus.PURCHASE_CONFIRMED;
+        if (confirmedAt == null) confirmedAt = LocalDateTime.now();
+        if (settlement == null) settlement = OrderSettlement.waiting();
+    }
+
     @jakarta.persistence.Embedded
     private Shipment shipment;
+
+    @jakarta.persistence.Embedded
+    private OrderRefund refund;
+
+    public void requestRefund(OrderRefund refund) { this.refund = refund; }
 
     public void registerShipment(Shipment shipment) { this.shipment = shipment; }
 
@@ -157,10 +177,15 @@ public class PurchaseOrder {
 
     public void requestCancellation(String reason) { this.cancelReason = reason; }
 
-    public boolean canCancelBeforeShipment() { return orderStatus == OrderStatus.PAID && shipment == null; }
+    public boolean canCancelBeforeShipment() { return orderStatus == OrderStatus.PAID && shipment == null && refund == null; }
 
     public void cancel() {
-        this.orderStatus = OrderStatus.CANCELED;
+        if (refund != null) {
+            refund.complete();
+            this.orderStatus = OrderStatus.REFUNDED;
+        } else {
+            this.orderStatus = OrderStatus.CANCELED;
+        }
         if (canceledAt == null) canceledAt = LocalDateTime.now();
     }
 }

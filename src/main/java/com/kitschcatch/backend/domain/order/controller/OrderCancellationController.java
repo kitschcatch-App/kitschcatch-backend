@@ -10,6 +10,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="400",description="COMMON_001/002: 입력 또는 주문 번호 오류. PAYMENT_005: PG 취소 요청 실패 후 상태 조회 필요.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="401",description="AUTH_004: 인증 오류.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="403",description="ORDER_004: 구매자 아님.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="404",description="ORDER_001: 주문 없음.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="409",description="ORDER_005/006: 처리 불가 상태 또는 요청 내용 충돌.")
 @RestController
 @RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")

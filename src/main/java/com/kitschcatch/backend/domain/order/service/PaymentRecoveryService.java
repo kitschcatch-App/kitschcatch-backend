@@ -75,6 +75,17 @@ public class PaymentRecoveryService {
 			return toResponse(payment);
 		}
 
+        if (payment.getOrder().getOrderStatus() == OrderStatus.PURCHASE_CONFIRMED) {
+            if (!TOSS_DONE.equals(tossResponse.status()) || payment.getPaymentStatus() != PaymentStatus.SUCCESS) {
+                markReview(payment, lockedAttempt, "구매 확정 이후 PG 상태가 변경되어 운영 확인이 필요합니다.");
+            } else {
+                payment.markVerified(LocalDateTime.now());
+                lockedAttempt.releaseLease();
+            }
+            // 확인 필요 표시를 자동 해제하거나 확정된 주문을 PAID로 되돌리지 않는다.
+            return toResponse(payment);
+        }
+
 		if (lockedAttempt.getAttemptStatus() == PaymentAttemptStatus.SUCCEEDED
 			&& lockedAttempt.getOperation() == PaymentAttemptOperation.CONFIRM
 			&& payment.getPaymentStatus() == PaymentStatus.SUCCESS) {
@@ -86,7 +97,7 @@ public class PaymentRecoveryService {
 			if (TOSS_CANCELED.equals(tossResponse.status())) {
 				if (isFullyCanceled(tossResponse)) {
 					payment.cancel();
-					payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+					releaseUnshippedPost(payment);
 				} else {
 					markReview(payment, lockedAttempt, "부분 취소 또는 잔액이 남은 PG 결과입니다.");
 				}
@@ -168,7 +179,7 @@ public class PaymentRecoveryService {
 		if (TOSS_CANCELED.equals(response.status()) && isFullyCanceled(response)) {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
 			payment.cancel();
-			payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+			releaseUnshippedPost(payment);
 			return;
 		}
 		if (TOSS_CANCELED.equals(response.status())) {
@@ -187,7 +198,7 @@ public class PaymentRecoveryService {
 		if (TOSS_CANCELED.equals(response.status()) && isFullyCanceled(response)) {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
 			payment.cancel();
-			payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+			releaseUnshippedPost(payment);
 			return;
 		}
 		if (TOSS_CANCELED.equals(response.status())) {
@@ -196,6 +207,11 @@ public class PaymentRecoveryService {
 		}
 		markUnknown(payment, attempt, response.status());
 	}
+
+    private void releaseUnshippedPost(Payment payment) {
+        if (payment.getOrder().getShipment() == null)
+            payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
+    }
 
 	private void markUnknown(Payment payment, PaymentAttempt attempt, String pgStatus) {
 		attempt.markUnknown();
