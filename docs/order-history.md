@@ -61,7 +61,7 @@
 
 | 입력 | 계약 |
 | --- | --- |
-| `status` | 주문 상태 PENDING/PAID/CANCELED/REFUNDED. 생략 시 전체. 빈 문자열·공백·소문자·결제 상태 SUCCESS 등은 오류. |
+| `status` | 주문 상태 PENDING/PAID/CANCELED/REFUNDED/PURCHASE_CONFIRMED. 생략 시 전체. 빈 문자열·공백·소문자·결제 상태 SUCCESS 등은 오류. |
 | `page` | 0~10000, 기본 0. |
 | `size` | 1~100, 기본 20. |
 
@@ -154,3 +154,7 @@ Notion 원문: [거래 상세](https://app.notion.com/p/3c1ee6172f5680b3833fdeb1
 ## 작업 기록
 
 Obsidian `키치캐치/거래 내역 API - 작업 기록.md`와 `키치캐치/거래 내역 API - 환경 변수와 적용 설정.md`에 구현 결과와 환경 설정을 각각 저장했다. 로컬 검증과 GitHub 상태 검사, 운영 배포는 별도로 구분한다.
+
+## 거래 후속 처리 확장
+
+#45에서 상세 응답에 `confirmedAt`, `shipment`, `refund`를 추가했다. 해당 기록이 없으면 null이다. 목록의 주문 상태 필터에 `PURCHASE_CONFIRMED`가 추가됐다. [후속 처리 API](order-lifecycle.md)와 [045 SQL 적용 순서](order-lifecycle-environment.md)를 함께 확인한다.

@@ -28,3 +28,20 @@
 ## 검증 및 커밋
 
 실제 HTTP·JWT 권한/입력/상태 계약, PG 실패 후 재조회 복구, 두 요청의 경쟁, 기존 경로 우회, 격리 PostgreSQL 수동 SQL 적용·재실행을 검증한다. 전체 회귀와 빌드를 완료한다. 기능별 구현과 해당 검증을 묶어 취소, 배송, 환불, 확정·정산 단위로 커밋하며 최종 운영 문서는 별도 묶음으로 남긴다. Obsidian 작업 기록과 환경 변수 노트를 작성하고 템플릿을 따른 develop 대상 Open PR을 만든다.
+
+## 구현 결과 · 2026-10-01
+
+- 주문 취소·배송·전액 환불·구매 확정 API와 정산 대기/조회/내부 실행 계약을 구현했다.
+- 배송 후 환불은 REQUESTED 저장까지만 제공한다. 반품 확인·승인 정책은 답변을 기다리는 상태이며 실제 환불 자동 실행을 추가하지 않았다.
+- 실제 지급 제공자·판매자 수취 정보·수수료 정책도 미확정이다. 정산은 WAITING 기록과 실행/결과 검증 구조까지 구현했으며 기본 어댑터는 지급을 차단한다. 이 부분을 실제 지급 연동 완료로 보지 않는다.
+- H2 HTTP 45개, 수동 SQL 적용 PostgreSQL HTTP 44개, SQL 4개를 검증했다. 전체 회귀는 663개, 실패·오류·건너뜀 0, 빌드 성공이다.
+- 구현 문서: [거래 후속 처리 API](../order-lifecycle.md), [환경 변수·SQL 적용](../order-lifecycle-environment.md).
+- 커밋은 취소·배송, 환불·구매 확정, 정산 실행 기반, 최종 문서 묶음으로 구성했다.
+
+## 확인한 Notion 원문
+
+- [주문 취소](https://app.notion.com/p/3c1ee6172f56800fa2e3c43b4080676a).
+- 배송 [등록](https://app.notion.com/p/3c1ee6172f56804593a2e612951046b2), [수정](https://app.notion.com/p/3c1ee6172f5680b39f85ff393a05b5c3), [조회](https://app.notion.com/p/3c1ee6172f568053baefdbfde04c9f50).
+- 환불 [요청](https://app.notion.com/p/3c1ee6172f5680708226ddb9c9c12e78), [조회](https://app.notion.com/p/3c1ee6172f56802cb5ddeec53be14951).
+- [구매 확정](https://app.notion.com/p/3c1ee6172f5680e2afa5f53238f2c912).
+- 정산 [실행](https://app.notion.com/p/3c1ee6172f568090b98bdf07603b7ba9), [조회](https://app.notion.com/p/3c1ee6172f56802690ccd2882d97baec).
