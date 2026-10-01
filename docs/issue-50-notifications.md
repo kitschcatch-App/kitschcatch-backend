@@ -4,7 +4,7 @@
 
 기준은 develop `5f6d18fb2d4d8fc1e2f435919a548c64d33c9627` 및 [이슈 #50](https://github.com/kitschcatch-App/kitschcatch-backend/issues/50)이다. [Notion API 명세](https://app.notion.com/p/341ee6172f5680679c13c4fa1e53f23a)는 커넥터 404와 웹 접근 실패로 원문을 확인하지 못했다. 아래 필드·상태·페이지 규칙은 기존 ApiResponse/JWT 계약에 맞춘 구현 가정이며 외부 명세를 수정하지 않았다.
 
-모든 API는 기존 Bearer access JWT 인증 및 실제 사용자 확인을 거친다. 응답은 ApiResponse이고 성공은 200이다. 요청의 userId로 소유자를 지정할 수 없다.
+모든 API는 기존 Bearer access JWT 인증을 거치며 기기 등록 시 실제 사용자 존재를 확인한다. 응답은 ApiResponse이고 성공은 200이다. 요청의 userId로 소유자를 지정할 수 없다.
 
 | 메서드·경로 | 계약 |
 |---|---|
@@ -20,7 +20,7 @@
 
 `050_notifications.sql`은 PostgreSQL용 수동 SQL이다. users 테이블 생성 후 사전 적용하며 앱 시작에서 자동 적용하지 않는다. BEGIN/COMMIT 및 CREATE TABLE/INDEX IF NOT EXISTS로 같은 버전을 재실행할 수 있다. 이 SQL은 이슈 전용 새 테이블을 만들며 기존 사용자·주문·결제 스키마를 변경하지 않는다. JPA와 SQL을 함께 변경해야 한다. 운영 DB 적용은 이번 작업에서 실행하지 않았다.
 
-- device_tokens는 token 유일 키와 현재 user_id·active·ownership_version을 저장한다. 해제 후 행을 보존한다. 기존 토큰 변경은 FOR UPDATE로 직렬화한다. 처음 등록하는 동일 토큰의 경쟁은 유일 키 제약에서 롤백한 뒤 새 트랜잭션에서 재조회한다.
+- device_tokens는 token 유일 키와 현재 user_id·active·ownership_version을 저장한다. 해제 후 행을 보존한다. 기존 토큰 변경은 FOR UPDATE로 직렬화한다. 처음 등록하는 동일 토큰의 경쟁은 HQL `INSERT ... ON CONFLICT (token) DO UPDATE SET token=excluded.token`으로 기존 토큰 값을 그대로 유지한 후 행 잠금으로 처리한다. Hibernate가 PostgreSQL/H2 방언에 맞춰 변환하며, 정상적인 충돌에서 예외와 원문 토큰 로그가 발생하지 않는다.
 - notifications는 `(event_key,user_id)`를 유일하게 저장한다. 같은 수신자 User 행 잠금으로 이벤트 재실행을 직렬화하고 DB 제약을 추가 방어로 사용한다. 결제의 두 수신자는 ID 오름차순으로 잠근다.
 - 채팅은 `chat:{messageId}`, 결제는 `payment:{paymentId}:{type}`를 중복 기준으로 쓴다. HTTP/STOMP 텍스트 저장, 이미지 저장, 정상 결제 승인·취소, 웹훅/워커가 사용하는 PaymentRecoveryService의 승인·전체 취소 경로에서 동기 Spring 이벤트를 발행한다. 알림과 기기별 push_deliveries를 원래 트랜잭션에서 저장하므로 실패 시 원래 메시지·결제도 함께 롤백한다.
 - 거래 판매자는 현재 상품 주인 대신 주문 sellerId 스냅샷을 사용한다. 채팅은 발신자를 제외한 참여자 한 명, 결제는 구매자와 판매자 모두 수신한다. 확정되지 않은 PG 결과·부분 취소·실패·조회는 완료 알림을 생성하지 않는다.

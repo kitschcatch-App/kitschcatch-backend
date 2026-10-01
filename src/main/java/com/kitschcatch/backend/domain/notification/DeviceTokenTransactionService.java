@@ -19,10 +19,10 @@ public class DeviceTokenTransactionService {
   @Transactional
   public void register(long userId, DeviceTokenRequest request) {
     if (!users.existsById(userId)) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-    var token = tokens.lockByToken(request.token()).orElse(null);
-    if (token == null)
-      tokens.saveAndFlush(new DeviceToken(userId, request.token(), request.platform()));
-    else token.register(userId, request.platform());
+    // 유일 키 충돌의 예외 원문에 토큰이 출력되지 않도록 충돌을 동일 값 갱신으로 처리한다.
+    tokens.ensureTokenRow(userId, request.token(), request.platform());
+    var token = tokens.lockByToken(request.token()).orElseThrow();
+    token.register(userId, request.platform());
   }
 
   @Transactional

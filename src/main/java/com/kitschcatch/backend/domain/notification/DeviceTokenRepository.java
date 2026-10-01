@@ -6,6 +6,15 @@ import java.util.*;
 import org.springframework.data.jpa.repository.*;
 
 public interface DeviceTokenRepository extends JpaRepository<DeviceToken, Long> {
+  @Modifying
+  @Query(
+      """
+      insert into DeviceToken (token, userId, platform, active, ownershipVersion)
+      values (:token, :userId, :platform, true, 0L)
+      on conflict (token) do update set token = excluded.token
+      """)
+  int ensureTokenRow(long userId, String token, String platform);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select t from DeviceToken t where t.token=:token")
   Optional<DeviceToken> lockByToken(String token);

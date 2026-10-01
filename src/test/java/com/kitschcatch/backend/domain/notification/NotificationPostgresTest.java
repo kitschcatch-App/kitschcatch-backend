@@ -24,8 +24,11 @@ import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.*;
@@ -50,6 +53,7 @@ import org.springframework.web.client.RestClient;
       "springdoc.api-docs.enabled=true",
       "app.notifications.push.scan-delay=1h"
     })
+@ExtendWith(OutputCaptureExtension.class)
 @DirtiesContext
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NotificationPostgresTest {
@@ -437,8 +441,10 @@ class NotificationPostgresTest {
   }
 
   @Test
-  void concurrentTokenRegistrationAndEventReplayProduceSingleRows() throws Exception {
+  void concurrentTokenRegistrationAndEventReplayProduceSingleRows(CapturedOutput output)
+      throws Exception {
     parallel(() -> devices.register(buyer.getId(), new DeviceTokenRequest("race-token", "IOS")));
+    assertThat(output.getAll()).doesNotContain("race-token");
     assertThat(jdbc.queryForObject("SELECT count(*) FROM device_tokens", Integer.class))
         .isEqualTo(1);
     parallel(
