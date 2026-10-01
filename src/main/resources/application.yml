@@ -29,6 +29,15 @@ app:
       security-key: ${APP_SETTLEMENT_TOSS_SECURITY_KEY:}
       timeout-millis: ${APP_SETTLEMENT_TOSS_TIMEOUT_MILLIS:5000}
       lookup-max-pages: ${APP_SETTLEMENT_TOSS_LOOKUP_MAX_PAGES:10}
+  notifications:
+    push:
+      enabled: ${APP_NOTIFICATIONS_PUSH_ENABLED:false}
+      project-id: ${APP_FCM_PROJECT_ID:}
+      client-email: ${APP_FCM_CLIENT_EMAIL:}
+      private-key: ${APP_FCM_PRIVATE_KEY:}
+      base-url: ${APP_FCM_BASE_URL:https://fcm.googleapis.com}
+      token-url: ${APP_FCM_TOKEN_URL:https://oauth2.googleapis.com/token}
+      scan-delay: ${APP_NOTIFICATIONS_PUSH_SCAN_DELAY:30s}
   profile-image:
     max-size-bytes: ${APP_PROFILE_IMAGE_MAX_SIZE_BYTES:5000000}
     upload-url-ttl: ${APP_PROFILE_IMAGE_UPLOAD_URL_TTL:10m}
