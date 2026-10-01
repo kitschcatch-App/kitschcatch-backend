@@ -95,11 +95,11 @@ class PaymentRecoveryRestartPostgresTest {
 
     private ConfigurableApplicationContext server(Issue54PostgresDatabase db, String pgUrl, String ddl) {
         return new SpringApplicationBuilder(KitschcatchBackendApplication.class).run(
-            "--server.port=0", "--spring.datasource.url=" + db.scopedUrl(),
+            "--server.port=0", "--server.address=127.0.0.1", "--spring.datasource.url=" + db.scopedUrl(),
             "--spring.datasource.username=" + db.user, "--spring.datasource.password=" + db.password,
             "--spring.datasource.driver-class-name=org.postgresql.Driver", "--spring.jpa.hibernate.ddl-auto=" + ddl,
             "--app.orders.expiration-enabled=false", "--app.payments.recovery.enabled=false",
-            "--kakao.oauth.native-app-key=local-test-key", "--kakao.oauth.allowed-client-ids=local-test-key",
+            "--kakao.oauth.native-app-key=local-test-key",
             "--app.toss-payments.base-url=" + pgUrl, "--app.toss-payments.secret-key=local-test-key");
     }
 

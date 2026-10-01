@@ -67,6 +67,7 @@ class PaymentRecoveryWorkerPostgresTest {
     @Autowired JdbcTemplate jdbc;
     @MockitoBean TossPaymentsClient pg;
     Long buyerId;
+    Long sellerId;
     Long postId;
     CreateOrderResponse order;
 
@@ -81,6 +82,7 @@ class PaymentRecoveryWorkerPostgresTest {
             jdbc.execute(indexes.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS "));
         }
         User seller = users.save(user("seller"));
+        sellerId = seller.getId();
         buyerId = users.save(user("buyer")).getId();
         postId = posts.save(Post.builder().user(seller).title("키링").description("검증 상품").price(12000L)
             .productCategory(ProductCategory.GOODS).productCondition(ProductCondition.NEW)
@@ -253,6 +255,30 @@ class PaymentRecoveryWorkerPostgresTest {
         assertThat(payments.getPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.SUCCESS);
         assertThat(payments.getPayment(buyerId, order.paymentId()).recoveryState()).isEqualTo(PaymentRecoveryState.REVIEW_REQUIRED);
         assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.SOLD_OUT);
+    }
+
+    @Test
+    void mismatchedOldestCandidateDoesNotStarveTheNextPaymentWithBatchSizeOne() {
+        start();
+        var nextPost = posts.save(Post.builder().user(users.findById(sellerId).orElseThrow()).title("다음 상품")
+            .description("배치 공정성 검증").price(12000L).productCategory(ProductCategory.GOODS)
+            .productCondition(ProductCondition.NEW).productStatus(ProductStatus.ON_SALE).build());
+        var nextOrder = orders.createOrder(buyerId, new CreateOrderRequest(nextPost.getId(), 12000L, PaymentMethod.CARD));
+        transactions.startConfirm(buyerId, nextOrder.paymentId(),
+            new ConfirmPaymentRequest(nextOrder.paymentId(), "key-2", nextOrder.attemptId()));
+        jdbc.update("UPDATE payment_attempts SET next_check_at=? WHERE attempt_id=?",
+            LocalDateTime.now().minusHours(1), order.attemptId());
+        when(pg.getPayment("key")).thenReturn(new TossPaymentResponse("mismatch", order.pgOrderId(), 12000L, "DONE"));
+        when(pg.getPayment("key-2")).thenReturn(new TossPaymentResponse("key-2", nextOrder.pgOrderId(), 12000L, "DONE"));
+        var worker = new PaymentRecoveryScheduler(attempts, pg, recovery, 1);
+        worker.recoverPayments();
+        assertThat(payments.getPayment(buyerId, order.paymentId()).recoveryState()).isEqualTo(PaymentRecoveryState.REVIEW_REQUIRED);
+        assertThat(attempts.findByAttemptId(order.attemptId()).orElseThrow().getNextCheckAt())
+            .isAfter(LocalDateTime.now().plusMinutes(14));
+        worker.recoverPayments();
+        assertThat(payments.getPayment(buyerId, nextOrder.paymentId()).status()).isEqualTo(PaymentStatus.SUCCESS);
+        verify(pg, times(1)).getPayment("key");
+        verify(pg, times(1)).getPayment("key-2");
     }
 
     PaymentRecoveryScheduler scheduler() {

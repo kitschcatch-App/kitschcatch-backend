@@ -246,11 +246,13 @@ class HttpTossPaymentsClientTest {
 			var configured = new HttpTossPaymentsClient(new TossPaymentsConfig().restClientBuilder(
 				java.time.Duration.ofSeconds(1), java.time.Duration.ofMillis(50)),
 				new TossPaymentsProperties("http://127.0.0.1:" + localPg.getAddress().getPort(), "local-test-key"));
+			long startedAt = System.nanoTime();
 			assertThatThrownBy(() -> configured.getPayment("key")).isInstanceOfSatisfying(TossPaymentException.class,
 				exception -> {
 					assertThat(exception.pgCode()).isEqualTo("TRANSPORT_ERROR");
 					assertThat(exception.confirmedRejection()).isFalse();
 				});
+			assertThat(java.time.Duration.ofNanos(System.nanoTime() - startedAt)).isLessThan(java.time.Duration.ofSeconds(2));
 		} finally {
 			finish.countDown();
 			localPg.stop(0);

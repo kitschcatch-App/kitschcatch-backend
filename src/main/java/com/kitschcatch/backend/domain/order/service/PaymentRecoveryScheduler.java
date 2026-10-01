@@ -84,7 +84,7 @@ public class PaymentRecoveryScheduler {
 		for (PaymentAttempt attempt : candidates) {
 			String leaseToken = UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
 			try {
-				if (!paymentRecoveryService.claim(attempt.getAttemptId(), leaseToken, now.plusSeconds(45))) {
+				if (!paymentRecoveryService.claim(attempt.getAttemptId(), leaseToken, LocalDateTime.now().plusSeconds(45))) {
 					continue;
 				}
 				TossPaymentResponse response = attempt.getPaymentKey() == null

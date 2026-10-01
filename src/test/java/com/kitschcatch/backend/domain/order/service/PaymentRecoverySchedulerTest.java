@@ -17,6 +17,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
+import org.mockito.ArgumentCaptor;
+import java.util.concurrent.atomic.AtomicReference;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.times;
 
 class PaymentRecoverySchedulerTest {
 
@@ -42,5 +46,33 @@ class PaymentRecoverySchedulerTest {
 
 		verify(tossPaymentsClient).getPayment("key-1");
 		verify(recoveryService).recover(anyString(), any(TossPaymentResponse.class), anyString());
+	}
+
+	@Test
+	void computesLeaseFromEachCandidatesProcessingTimeInsteadOfBatchStart() {
+		var repository = mock(PaymentAttemptRepository.class);
+		var pg = mock(TossPaymentsClient.class);
+		var recovery = mock(PaymentRecoveryService.class);
+		PaymentAttempt first = successfulAttempt("ATT-1", "key-1");
+		PaymentAttempt second = successfulAttempt("ATT-2", "key-2");
+		when(repository.findSuccessfulRecoveryCandidates(any(), any(), any())).thenReturn(List.of(first, second));
+		when(recovery.claim(anyString(), anyString(), any())).thenReturn(true);
+		AtomicReference<LocalDateTime> firstLookupFinishedAt = new AtomicReference<>();
+		when(pg.getPayment("key-1")).thenAnswer(invocation -> {
+			firstLookupFinishedAt.set(LocalDateTime.now());
+			return new TossPaymentResponse("key-1", "PG-ATT-1", 12000L, "DONE");
+		});
+		when(pg.getPayment("key-2")).thenReturn(new TossPaymentResponse("key-2", "PG-ATT-2", 12000L, "DONE"));
+		new PaymentRecoveryScheduler(repository, pg, recovery, 10).scanSuccessfulPayments();
+		var expiry = ArgumentCaptor.forClass(LocalDateTime.class);
+		verify(recovery, times(2)).claim(anyString(), anyString(), expiry.capture());
+		assertThat(expiry.getAllValues().get(1)).isAfterOrEqualTo(firstLookupFinishedAt.get().plusSeconds(45));
+	}
+
+	private PaymentAttempt successfulAttempt(String id, String key) {
+		return PaymentAttempt.builder().attemptId(id).sequenceNumber(1)
+			.operation(PaymentAttemptOperation.CONFIRM).attemptStatus(PaymentAttemptStatus.SUCCEEDED)
+			.pgOrderId("PG-" + id).paymentKey(key).amount(12000L).pgIdempotencyKey("confirm-" + id)
+			.requestedAt(LocalDateTime.now().minusHours(2)).nextCheckAt(LocalDateTime.now()).build();
 	}
 }

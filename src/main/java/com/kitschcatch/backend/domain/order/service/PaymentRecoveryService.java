@@ -65,6 +65,7 @@ public class PaymentRecoveryService {
 		}
 		if (!samePayment(lockedAttempt, tossResponse)) {
 			lockedAttempt.recordReviewReason("PG 응답 식별자 또는 금액이 일치하지 않습니다.");
+			lockedAttempt.scheduleNextCheck(LocalDateTime.now().plusMinutes(15));
 			payment.markReviewRequired("PG_IDENTIFIER_MISMATCH");
 			return toResponse(payment);
 		}
