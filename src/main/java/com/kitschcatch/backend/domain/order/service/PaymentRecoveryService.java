@@ -69,6 +69,12 @@ public class PaymentRecoveryService {
 			return toResponse(payment);
 		}
 
+		if (!samePayment(lockedAttempt, tossResponse)) {
+			lockedAttempt.markReviewRequired("PG 응답 식별자 또는 금액이 일치하지 않습니다.");
+			payment.markReviewRequired("PG_IDENTIFIER_MISMATCH");
+			return toResponse(payment);
+		}
+
 		if (lockedAttempt.getAttemptStatus() == PaymentAttemptStatus.SUCCEEDED
 			&& lockedAttempt.getOperation() == PaymentAttemptOperation.CONFIRM
 			&& payment.getPaymentStatus() == PaymentStatus.SUCCESS) {
@@ -88,12 +94,6 @@ public class PaymentRecoveryService {
 				markReview(payment, lockedAttempt, "성공 결제와 모순되는 PG 상태입니다: " + tossResponse.status());
 			}
 			lockedAttempt.releaseLease();
-			return toResponse(payment);
-		}
-
-		if (!samePayment(lockedAttempt, tossResponse)) {
-			lockedAttempt.markReviewRequired("PG 응답 식별자 또는 금액이 일치하지 않습니다.");
-			payment.markReviewRequired("PG_IDENTIFIER_MISMATCH");
 			return toResponse(payment);
 		}
 
@@ -221,8 +221,7 @@ public class PaymentRecoveryService {
 			|| !attempt.getAmount().equals(response.totalAmount())) {
 			return false;
 		}
-		return attempt.getPaymentKey() == null || response.paymentKey() == null
-			|| attempt.getPaymentKey().equals(response.paymentKey());
+		return attempt.getPaymentKey() == null || attempt.getPaymentKey().equals(response.paymentKey());
 	}
 
 	private boolean isFullyCanceled(TossPaymentResponse response) {

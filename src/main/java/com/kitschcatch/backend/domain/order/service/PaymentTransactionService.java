@@ -213,7 +213,9 @@ public class PaymentTransactionService {
 	public PaymentOperationContext startCancel(Long userId, String paymentId) {
 		Payment payment = findPaymentWithLock(paymentId, userId);
 		validatePaymentStatus(payment, PaymentStatus.SUCCESS);
-		validateOrderStatus(payment.getOrder(), OrderStatus.PAID);
+        if (!payment.getOrder().canCancelBeforeShipment()) {
+            throw new BusinessException(ErrorCode.ORDER_INVALID_STATE);
+        }
 		validateReservation(payment.getOrder(), ProductStatus.SOLD_OUT);
 		if (payment.getPaymentKey() == null) {
 			throw new BusinessException(ErrorCode.PAYMENT_INVALID_STATUS);
@@ -227,7 +229,7 @@ public class PaymentTransactionService {
 				.map(PaymentAttempt::getPgOrderId)
 				.orElse(pgOrderId);
 		}
-		return startAttempt(payment, PaymentAttemptOperation.CANCEL, payment.getPaymentKey(), "고객 요청", pgOrderId);
+		return startAttempt(payment, PaymentAttemptOperation.CANCEL, payment.getPaymentKey(), payment.getOrder().getCancelReason() == null ? "고객 요청" : payment.getOrder().getCancelReason(), pgOrderId);
 	}
 
 	@Transactional

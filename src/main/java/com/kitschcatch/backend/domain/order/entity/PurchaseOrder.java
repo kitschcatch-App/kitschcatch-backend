@@ -82,6 +82,16 @@ public class PurchaseOrder {
 	@Column(updatable = false)
 	private LocalDateTime reservationExpiresAt;
 
+    @Column(length = 200)
+    private String cancelReason;
+
+    private LocalDateTime canceledAt;
+
+    @jakarta.persistence.Embedded
+    private Shipment shipment;
+
+    public void registerShipment(Shipment shipment) { this.shipment = shipment; }
+
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 30)
 	private PgProvider pgProvider;
@@ -145,7 +155,12 @@ public class PurchaseOrder {
 		this.orderStatus = OrderStatus.PAID;
 	}
 
-	public void cancel() {
-		this.orderStatus = OrderStatus.CANCELED;
-	}
+    public void requestCancellation(String reason) { this.cancelReason = reason; }
+
+    public boolean canCancelBeforeShipment() { return orderStatus == OrderStatus.PAID && shipment == null; }
+
+    public void cancel() {
+        this.orderStatus = OrderStatus.CANCELED;
+        if (canceledAt == null) canceledAt = LocalDateTime.now();
+    }
 }

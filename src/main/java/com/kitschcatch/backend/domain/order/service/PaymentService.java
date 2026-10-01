@@ -72,9 +72,11 @@ public class PaymentService {
 
 	public PaymentResponse cancelPayment(Long userId, String paymentId) {
 		PaymentOperationContext context = paymentTransactionService.startCancel(userId, paymentId);
-		TossPaymentCancelRequest cancelRequest = context.pgIdempotencyKey() == null
-			? new TossPaymentCancelRequest(context.paymentKey(), "고객 요청")
-			: new TossPaymentCancelRequest(context.paymentKey(), "고객 요청", context.pgIdempotencyKey());
+        return executeCancellation(userId, paymentId, context, "고객 요청");
+    }
+
+    public PaymentResponse executeCancellation(Long userId, String paymentId, PaymentOperationContext context, String reason) {
+        TossPaymentCancelRequest cancelRequest = new TossPaymentCancelRequest(context.paymentKey(), reason, context.pgIdempotencyKey());
 		TossPaymentResponse tossResponse = tossPaymentsClient.cancel(cancelRequest);
 		validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
 		if (paymentRecoveryService != null && context.attemptId() != null) {
