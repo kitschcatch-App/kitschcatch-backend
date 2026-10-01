@@ -11,6 +11,12 @@ public record ChatRoomListResponse(
         @Schema(description = "채팅방 ID", example = "1")
         Long chatRoomId,
 
+        @Schema(description = "상품 ID")
+        Long postId,
+
+        @Schema(description = "상품 제목")
+        String postTitle,
+
         @Schema(description = "상대방 ID", example = "2")
         Long opponentId,
 
@@ -29,6 +35,8 @@ public record ChatRoomListResponse(
 
         return new ChatRoomListResponse(
                 chatRoom.getId(),
+                chatRoom.getPost().getId(),
+                chatRoom.getPost().getTitle(),
                 opponent.getId(),
                 opponent.getNickname(),
                 chatRoom.getLastMessageContent(),

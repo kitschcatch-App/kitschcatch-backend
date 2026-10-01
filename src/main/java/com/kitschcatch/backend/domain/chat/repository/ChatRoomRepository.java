@@ -27,15 +27,20 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 	""")
 	boolean existsParticipant(@Param("chatRoomId") Long chatRoomId, @Param("userId") Long userId);
 
-	@EntityGraph(attributePaths = {"buyer", "seller"})
-	@Query("""
-	select cr
-	from ChatRoom cr
-	where (cr.buyer.id = :userId and cr.buyerDeletedAt is null)
-	   or (cr.seller.id = :userId and cr.sellerDeletedAt is null)
-	order by cr.lastMessageAt desc
-	""")
-	List<ChatRoom> findMyChatRooms(@Param("userId") Long userId);
+    default List<ChatRoom> findMyChatRooms(Long userId) {
+        return findMyChatRooms(userId, null, null);
+    }
+
+    @EntityGraph(attributePaths = {"post", "buyer", "seller"})
+    @Query("""
+        select cr from ChatRoom cr
+        where ((cr.buyer.id = :userId and cr.buyerDeletedAt is null and (:role is null or :role = 'BUYER'))
+            or (cr.seller.id = :userId and cr.sellerDeletedAt is null and (:role is null or :role = 'SELLER')))
+          and (:postId is null or cr.post.id = :postId)
+        order by cr.lastMessageAt desc nulls last, cr.id desc
+        """)
+    List<ChatRoom> findMyChatRooms(@Param("userId") Long userId,
+        @Param("role") String role, @Param("postId") Long postId);
 
 
 	// 채팅방 상세 조회

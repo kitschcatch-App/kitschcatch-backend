@@ -76,7 +76,14 @@ public class ChatService {
      */
     @Transactional(readOnly = true)
     public List<ChatRoomListResponse> getMyChatRooms(Long userId) {
-        return chatRoomRepository.findMyChatRooms(userId).stream()
+        return getMyChatRooms(userId, new ChatRoomListQuery(null, null));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChatRoomListResponse> getMyChatRooms(Long userId, ChatRoomListQuery query) {
+        if (!userRepository.existsById(userId)) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
+        return chatRoomRepository.findMyChatRooms(userId,
+                query.role() == null ? null : query.role().name(), query.postId()).stream()
                 .map(chatRoom -> ChatRoomListResponse.from(chatRoom, userId))
                 .toList();
     }

@@ -97,9 +97,11 @@ class ChatControllerTest {
 	@DisplayName("채팅방 목록 조회 API는 현재 사용자가 참여한 채팅방 목록을 반환한다")
 	void getMyChatRoomsReturnsParticipatingRooms() throws Exception {
 		// 목록 응답에는 상대방 정보와 마지막 메시지 정보가 포함되어야 한다.
-		when(chatService.getMyChatRooms(1L)).thenReturn(List.of(
+		when(chatService.getMyChatRooms(eq(1L), any())).thenReturn(List.of(
 			new ChatRoomListResponse(
 				101L,
+				10L,
+				"첫 상품",
 				4L,
 				"another-seller",
 				"판매 중인가요?",
@@ -107,6 +109,8 @@ class ChatControllerTest {
 			),
 			new ChatRoomListResponse(
 				102L,
+				11L,
+				"둘째 상품",
 				3L,
 				"another-buyer",
 				"네 가능합니다.",
