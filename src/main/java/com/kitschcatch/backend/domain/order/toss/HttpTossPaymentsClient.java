@@ -6,7 +6,8 @@ import com.kitschcatch.backend.global.exception.ErrorCode;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
@@ -41,9 +42,9 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 		} catch (IllegalStateException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
 		} catch (RestClientResponseException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+			throw responseFailure(exception, true);
 		} catch (RestClientException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+			throw new TossPaymentException("TRANSPORT_ERROR", false);
 		}
 	}
 
@@ -58,9 +59,9 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 		} catch (IllegalStateException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
 		} catch (RestClientResponseException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+			throw responseFailure(exception, false);
 		} catch (RestClientException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+			throw new TossPaymentException("TRANSPORT_ERROR", false);
 		}
 	}
 
@@ -75,9 +76,9 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 		} catch (IllegalStateException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
 		} catch (RestClientResponseException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+			throw responseFailure(exception, false);
 		} catch (RestClientException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+			throw new TossPaymentException("TRANSPORT_ERROR", false);
 		}
 	}
 
@@ -96,18 +97,26 @@ public class HttpTossPaymentsClient implements TossPaymentsClient {
 		} catch (IllegalStateException exception) {
 			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_NOT_CONFIGURED);
 		} catch (RestClientResponseException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, responseMessage(exception));
+			throw responseFailure(exception, false);
 		} catch (RestClientException exception) {
-			throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED, exception.getMessage());
+			throw new TossPaymentException("TRANSPORT_ERROR", false);
 		}
 	}
 
-	private String responseMessage(RestClientResponseException exception) {
-		String responseBody = exception.getResponseBodyAsString();
-		if (StringUtils.hasText(responseBody)) {
-			return responseBody;
+	private TossPaymentException responseFailure(RestClientResponseException exception, boolean confirmation) {
+		String code = "UNKNOWN_PG_ERROR";
+		try {
+			JsonNode body = JsonMapper.builder().build().readTree(exception.getResponseBodyAsString());
+			if (body != null && body.path("code").isString()) {
+				String candidate = body.path("code").asString();
+				if (candidate.matches("[A-Z][A-Z0-9_]{0,99}")) code = candidate;
+			}
+		} catch (RuntimeException ignored) {
+			// 잘못된 오류 본문은 실패 확정 근거로 사용하지 않는다.
 		}
-		return exception.getMessage();
+		boolean rejected = confirmation && exception.getStatusCode().value() == 403
+			&& ("REJECT_CARD_PAYMENT".equals(code) || "REJECT_CARD_COMPANY".equals(code));
+		return new TossPaymentException(code, rejected);
 	}
 
 	private record TossCancelBody(String cancelReason) {

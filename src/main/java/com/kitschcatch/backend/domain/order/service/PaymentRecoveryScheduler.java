@@ -19,7 +19,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(prefix = "app.payments.recovery", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "app.payments.recovery", name = "enabled", havingValue = "true")
 public class PaymentRecoveryScheduler {
 
 	private static final Logger log = LoggerFactory.getLogger(PaymentRecoveryScheduler.class);
@@ -80,11 +80,11 @@ public class PaymentRecoveryScheduler {
 	public void scanSuccessfulPayments() {
 		LocalDateTime now = LocalDateTime.now();
 		List<PaymentAttempt> candidates = paymentAttemptRepository.findSuccessfulRecoveryCandidates(
-			now.minusHours(1), PageRequest.of(0, batchSize));
+			now.minusHours(1), now, PageRequest.of(0, batchSize));
 		for (PaymentAttempt attempt : candidates) {
 			String leaseToken = UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
 			try {
-				if (!paymentRecoveryService.claim(attempt.getAttemptId(), leaseToken, now.plusSeconds(45))) {
+				if (!paymentRecoveryService.claim(attempt.getAttemptId(), leaseToken, LocalDateTime.now().plusSeconds(45))) {
 					continue;
 				}
 				TossPaymentResponse response = attempt.getPaymentKey() == null

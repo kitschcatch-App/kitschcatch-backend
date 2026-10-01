@@ -59,7 +59,7 @@ public class OrderReservationService {
 			return false;
 		}
 		Payment payment = paymentRepository.findByOrderIdForUpdate(orderId).orElse(null);
-		if (payment == null || (payment.getPaymentStatus() != PaymentStatus.READY
+		if (payment == null || payment.isRecoveryReviewRequired() || (payment.getPaymentStatus() != PaymentStatus.READY
 			&& payment.getPaymentStatus() != PaymentStatus.FAILED)) {
 			return false;
 		}
@@ -68,7 +68,8 @@ public class OrderReservationService {
 				payment.getId(), List.of(PaymentAttemptStatus.PREPARED, PaymentAttemptStatus.PROCESSING,
 					PaymentAttemptStatus.UNKNOWN));
 			if (!activeAttempts.isEmpty()) {
-				if (payment.getPaymentStatus() == PaymentStatus.FAILED) {
+				if (payment.getPaymentStatus() == PaymentStatus.FAILED
+					|| activeAttempts.stream().anyMatch(attempt -> attempt.getAttemptStatus() != PaymentAttemptStatus.PREPARED)) {
 					return false;
 				}
 				activeAttempts.forEach(PaymentAttempt::markExpired);

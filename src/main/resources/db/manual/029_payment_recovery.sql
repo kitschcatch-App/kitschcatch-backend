@@ -1,7 +1,13 @@
 -- 결제 결과 복구를 위한 결제 시도 이력과 웹훅 수신함을 추가한다.
--- 애플리케이션 쓰기를 중단하고 PROCESSING 결제의 PG 상태를 확인한 뒤 한 번 적용한다.
+-- 애플리케이션 쓰기를 중단하고 백업 후 적용한다. 완료 표식이 있으면 재실행은 아무것도 변경하지 않는다.
 BEGIN;
 LOCK TABLE posts, orders, payments IN SHARE ROW EXCLUSIVE MODE;
+
+DO $migration$
+BEGIN
+    IF to_regclass('payment_recovery_029_applied') IS NOT NULL THEN
+        RETURN;
+    END IF;
 
 DO $$
 BEGIN
@@ -14,7 +20,34 @@ BEGIN
     IF EXISTS (SELECT 1 FROM payments WHERE payment_status = 'PROCESSING' AND payment_key IS NULL) THEN
         RAISE EXCEPTION '결제 키가 없는 PROCESSING 결제가 있습니다. PG 결과를 확인하고 정리한 뒤 적용하세요.';
     END IF;
+    IF EXISTS (SELECT order_id FROM payments GROUP BY order_id HAVING count(*) > 1) THEN
+        RAISE EXCEPTION '주문당 결제가 중복됩니다.';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM payments p JOIN orders o ON o.id = p.order_id
+        WHERE p.amount <> o.amount
+           OR (p.payment_status = 'PROCESSING' AND o.order_status NOT IN ('PENDING', 'PAID'))
+           OR (p.payment_status = 'SUCCESS' AND (o.order_status <> 'PAID' OR p.payment_key IS NULL))
+    ) THEN
+        RAISE EXCEPTION '결제 금액 또는 주문 상태가 모순됩니다.';
+    END IF;
 END $$;
+
+-- 구버전 Hibernate가 만든 payment_status CHECK만 확장한다. 다른 CHECK는 보존한다.
+DECLARE
+    status_constraint record;
+BEGIN
+    FOR status_constraint IN
+        SELECT c.conname FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attname = 'payment_status'
+        WHERE c.conrelid = 'payments'::regclass AND c.contype = 'c'
+          AND c.conkey = ARRAY[a.attnum]::smallint[]
+    LOOP
+        EXECUTE format('ALTER TABLE payments DROP CONSTRAINT %I', status_constraint.conname);
+    END LOOP;
+END;
+ALTER TABLE payments ADD CONSTRAINT ck_payments_recovery_status
+    CHECK (payment_status IN ('READY', 'PROCESSING', 'SUCCESS', 'CANCELED', 'FAILED'));
 
 ALTER TABLE payments ADD COLUMN processing_operation varchar(30) NOT NULL DEFAULT 'NONE';
 ALTER TABLE payments ADD COLUMN recovery_state varchar(30) NOT NULL DEFAULT 'NONE';
@@ -107,10 +140,11 @@ INSERT INTO payment_attempts (
     payment_key, amount, pg_idempotency_key, requested_at, next_check_at,
     check_count, state_version, created_at, updated_at
 )
-SELECT 'LEGACY-' || p.payment_id, p.id, 1,
+SELECT 'LEGACY-' || p.id, p.id, CASE WHEN o.order_status = 'PAID' THEN 2 ELSE 1 END,
        CASE WHEN o.order_status = 'PAID' THEN 'CANCEL' ELSE 'CONFIRM' END,
        'PROCESSING', o.order_number,
-       p.payment_key, p.amount, 'legacy-confirm-' || p.payment_id,
+       p.payment_key, p.amount,
+       CASE WHEN o.order_status = 'PAID' THEN 'cancel-' ELSE 'confirm-' END || p.payment_key,
        COALESCE(p.created_at, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP,
        0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 FROM payments p
@@ -122,9 +156,10 @@ INSERT INTO payment_attempts (
     payment_key, amount, pg_idempotency_key, requested_at, completed_at, pg_approved_at,
     next_check_at, check_count, state_version, created_at, updated_at
 )
-SELECT 'LEGACY-' || p.payment_id, p.id, 1, 'CONFIRM',
+SELECT 'LEGACY-' || p.id, p.id, 1, 'CONFIRM',
        CASE WHEN p.payment_status = 'SUCCESS' THEN 'SUCCEEDED' ELSE 'PREPARED' END,
-       o.order_number, p.payment_key, p.amount, 'legacy-confirm-' || p.payment_id,
+       o.order_number, p.payment_key, p.amount,
+       CASE WHEN p.payment_status = 'SUCCESS' THEN 'confirm-' || p.payment_key ELSE 'confirm-LEGACY-' || p.id END,
        COALESCE(p.created_at, CURRENT_TIMESTAMP),
        CASE WHEN p.payment_status = 'SUCCESS' THEN p.approved_at ELSE NULL END,
        CASE WHEN p.payment_status = 'SUCCESS' THEN p.approved_at ELSE NULL END,
@@ -133,8 +168,32 @@ FROM payments p
 JOIN orders o ON o.id = p.order_id
 WHERE p.payment_status IN ('READY', 'SUCCESS');
 
+-- 취소 중인 구 주문의 확정 승인 이력을 별도로 보존한다. 자동 취소 재전송은 하지 않는다.
+INSERT INTO payment_attempts (
+    attempt_id, payment_id, sequence_number, operation, attempt_status, pg_order_id,
+    payment_key, amount, pg_idempotency_key, requested_at, completed_at, pg_approved_at,
+    next_check_at, check_count, state_version, created_at, updated_at
+)
+SELECT 'LEGACY-APPROVAL-' || p.id, p.id, 1, 'CONFIRM', 'SUCCEEDED', o.order_number,
+       p.payment_key, p.amount, 'confirm-' || p.payment_key,
+       COALESCE(p.created_at, CURRENT_TIMESTAMP), p.approved_at, p.approved_at,
+       CURRENT_TIMESTAMP, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+FROM payments p JOIN orders o ON o.id = p.order_id
+WHERE p.payment_status = 'PROCESSING' AND o.order_status = 'PAID';
+
+UPDATE payment_attempts cancel_attempt
+SET approval_attempt_id = approval.id
+FROM payment_attempts approval
+WHERE cancel_attempt.operation = 'CANCEL' AND approval.operation = 'CONFIRM'
+  AND cancel_attempt.payment_id = approval.payment_id;
+
 UPDATE payments p
-SET current_attempt_id = 'LEGACY-' || p.payment_id
+SET current_attempt_id = 'LEGACY-' || p.id
 WHERE p.payment_status IN ('READY', 'PROCESSING', 'SUCCESS');
 
+CREATE TABLE payment_recovery_029_applied (
+    applied_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO payment_recovery_029_applied DEFAULT VALUES;
+END $migration$;
 COMMIT;

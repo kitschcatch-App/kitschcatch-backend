@@ -180,7 +180,7 @@ class OrderReservationIntegrationTest {
 				assertThat(attempt.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
 			});
 		createOrder();
-		assertThatThrownBy(() -> paymentService.cancelPayment(buyerId, order.paymentId())).isInstanceOf(BusinessException.class);
+		assertThat(paymentService.cancelPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.CANCELED);
 		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
 	}
 

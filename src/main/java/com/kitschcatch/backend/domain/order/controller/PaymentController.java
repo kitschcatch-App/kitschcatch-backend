@@ -8,6 +8,7 @@ import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.RetryPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.RetryPaymentResponse;
 import com.kitschcatch.backend.domain.order.service.PaymentService;
+import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.global.response.ApiResponse;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,14 +46,14 @@ public class PaymentController {
 	}
 
 	@PostMapping("/{paymentId}/confirm")
-	@Operation(summary = "결제 승인", description = "외부 PG에서 받은 paymentKey로 결제를 승인하고 최신 결제 상태를 반환합니다.")
+	@Operation(summary = "결제 승인", description = "최초 시도는 attemptId 생략이 가능합니다. 같은 요청은 PG를 재호출하지 않습니다. 결과가 불확실하거나 처리 중이면 202와 PROCESSING을 반환하며 결제 조회를 반복해야 합니다. 확정 거절은 200과 FAILED로 반환합니다.")
 	public ApiResponse<PaymentResponse> confirmPayment(
 		@AuthenticationPrincipal AuthenticatedUser user,
 		@Parameter(description = "내부 결제 ID", example = "pay_123456")
 		@PathVariable String paymentId,
 		@Valid @RequestBody ConfirmPaymentRequest request
 	) {
-		return ApiResponse.success(paymentService.confirmPayment(user.userId(), paymentId, request));
+		return operationResponse(paymentService.confirmPayment(user.userId(), paymentId, request));
 	}
 
 	@GetMapping("/{paymentId}")
@@ -77,12 +78,17 @@ public class PaymentController {
 	}
 
 	@PostMapping("/{paymentId}/cancel")
-	@Operation(summary = "결제 취소", description = "결제 가능한 상태의 결제를 취소하고 최신 결제 상태를 반환합니다.")
+	@Operation(summary = "결제 취소", description = "같은 취소 재요청은 PG를 재호출하지 않습니다. 처리 중·결과 불확실은 202, 전액 취소 완료는 200으로 현재 상태를 반환합니다.")
 	public ApiResponse<PaymentResponse> cancelPayment(
 		@AuthenticationPrincipal AuthenticatedUser user,
 		@Parameter(description = "내부 결제 ID", example = "pay_123456")
 		@PathVariable String paymentId
 	) {
-		return ApiResponse.success(paymentService.cancelPayment(user.userId(), paymentId));
+		return operationResponse(paymentService.cancelPayment(user.userId(), paymentId));
+	}
+
+	private ApiResponse<PaymentResponse> operationResponse(PaymentResponse response) {
+		return response.status() == PaymentStatus.PROCESSING
+			? ApiResponse.accepted(response) : ApiResponse.success(response);
 	}
 }

@@ -39,14 +39,30 @@ public class PaymentWebhookService {
 
 	@Transactional
 	public void markProcessed(Long eventId) {
-		eventRepository.findByIdForUpdate(eventId).ifPresent(PaymentWebhookEvent::markProcessed);
+		markProcessed(eventId, null);
+	}
+
+	@Transactional
+	public void markProcessed(Long eventId, String token) {
+		eventRepository.findByIdForUpdate(eventId).filter(event -> validLease(event, token))
+			.ifPresent(PaymentWebhookEvent::markProcessed);
 	}
 
 	@Transactional
 	public void scheduleRetry(Long eventId, String failureReason) {
-		eventRepository.findByIdForUpdate(eventId).ifPresent(event ->
+		scheduleRetry(eventId, failureReason, null);
+	}
+
+	@Transactional
+	public void scheduleRetry(Long eventId, String failureReason, String token) {
+		eventRepository.findByIdForUpdate(eventId).filter(event -> validLease(event, token)).ifPresent(event ->
 			event.scheduleRetry(LocalDateTime.now().plusSeconds(nextDelaySeconds(event.getReceiveCount())), failureReason)
 		);
+	}
+
+	private boolean validLease(PaymentWebhookEvent event, String token) {
+		return token == null || (token.equals(event.getLeaseToken()) && event.getLeaseUntil() != null
+			&& event.getLeaseUntil().isAfter(LocalDateTime.now()));
 	}
 
 	private long nextDelaySeconds(int receiveCount) {

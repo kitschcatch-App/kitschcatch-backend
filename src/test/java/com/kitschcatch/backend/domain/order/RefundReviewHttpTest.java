@@ -83,7 +83,7 @@ abstract class RefundReviewHttpContract extends OrderLifecycleHttpFixture {
     @Test void failedPgApprovalStaysProcessingAndCannotBeWithdrawnOrResent() {
         var o=requested();var d=decision(o);
         when(toss.cancel(any())).thenThrow(new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED));
-        assertError(review(o,"approve",operatorToken,d),400,"PAYMENT_005");
+        assertThat(review(o,"approve",operatorToken,d).data()).containsEntry("status","PROCESSING");
         assertThat(review(o,"approve",operatorToken,d).data()).containsEntry("status","PROCESSING");
         assertError(review(o,"withdraw",buyerToken,d),409,"ORDER_005");
         verify(toss,times(1)).cancel(any());

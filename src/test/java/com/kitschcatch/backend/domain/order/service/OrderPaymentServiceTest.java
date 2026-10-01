@@ -286,6 +286,7 @@ class OrderPaymentServiceTest {
 			.amount(post.getPrice())
 			.pgProvider(PgProvider.TOSS_PAYMENTS)
 			.orderStatus(orderStatus)
+			.reservationExpiresAt(LocalDateTime.now().plusMinutes(15))
 			.build();
 		ReflectionTestUtils.setField(order, "createdAt", LocalDateTime.of(2026, 4, 13, 15, 0));
 		return order;

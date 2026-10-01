@@ -3,6 +3,7 @@ package com.kitschcatch.backend.domain.order.service;
 
 import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
 import com.kitschcatch.backend.domain.order.entity.PaymentWebhookEvent;
+import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
 import com.kitschcatch.backend.domain.order.repository.PaymentWebhookEventRepository;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
@@ -66,20 +67,28 @@ public class PaymentWebhookProcessingService {
 				if (event == null) {
 					continue;
 				}
-				TossPaymentResponse response = event.getPaymentKey() == null
-					? tossPaymentsClient.getPaymentByOrderId(event.getPgOrderId())
-					: tossPaymentsClient.getPayment(event.getPaymentKey());
 				PaymentAttempt attempt = attemptRepository.findFirstByPaymentKeyOrPgOrderIdOrderBySequenceNumberDesc(
 					event.getPaymentKey(), event.getPgOrderId()).orElse(null);
 				if (attempt == null) {
-					webhookService.markProcessed(event.getId());
+					webhookService.markProcessed(event.getId(), token);
 					continue;
 				}
-				recoveryService.recover(attempt.getAttemptId(), response);
-				webhookService.markProcessed(event.getId());
+				if (!recoveryService.claim(attempt.getAttemptId(), token, LocalDateTime.now().plusSeconds(45))) {
+					webhookService.scheduleRetry(event.getId(), "결제 시도를 다른 작업자가 처리 중입니다.", token);
+					continue;
+				}
+				TossPaymentResponse response = attempt.getPaymentKey() == null
+					? tossPaymentsClient.getPaymentByOrderId(attempt.getPgOrderId())
+					: tossPaymentsClient.getPayment(attempt.getPaymentKey());
+				var result = recoveryService.recover(attempt.getAttemptId(), response, token);
+				if (result.status() == PaymentStatus.PROCESSING) {
+					webhookService.scheduleRetry(event.getId(), "PG 결과가 아직 확정되지 않았습니다.", token);
+				} else {
+					webhookService.markProcessed(event.getId(), token);
+				}
 			} catch (RuntimeException exception) {
 				log.warn("결제 웹훅 처리 실패. eventId={}", candidate.getId(), exception);
-				webhookService.scheduleRetry(candidate.getId(), exception.getMessage());
+				webhookService.scheduleRetry(candidate.getId(), "PG_LOOKUP_FAILED", token);
 			}
 		}
 	}

@@ -167,4 +167,20 @@ class PaymentControllerTest {
 			LocalDateTime.of(2026, 4, 13, 15, 1, 10)
 		);
 	}
+
+	@Test
+	void processingCommandsReturnAcceptedWithExistingEnvelopeAndLookupReturnsOk() throws Exception {
+		when(paymentService.confirmPayment(eq(1L), eq("PAY-999"), any())).thenReturn(paymentResponse(PaymentStatus.PROCESSING));
+		when(paymentService.cancelPayment(1L, "PAY-999")).thenReturn(paymentResponse(PaymentStatus.PROCESSING));
+		when(paymentService.getPayment(1L, "PAY-999")).thenReturn(paymentResponse(PaymentStatus.PROCESSING));
+		mockMvc.perform(post("/api/payments/PAY-999/confirm").principal(authentication)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"paymentId\":\"PAY-999\",\"paymentKey\":\"key\"}"))
+			.andExpect(status().isAccepted()).andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.paymentId").value("PAY-999"))
+			.andExpect(jsonPath("$.data.status").value("PROCESSING")).andExpect(jsonPath("$.error").doesNotExist());
+		mockMvc.perform(post("/api/payments/PAY-999/cancel").principal(authentication))
+			.andExpect(status().isAccepted()).andExpect(jsonPath("$.data.status").value("PROCESSING"));
+		mockMvc.perform(get("/api/payments/PAY-999").principal(authentication))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PROCESSING"));
+	}
 }

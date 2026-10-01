@@ -76,7 +76,7 @@ abstract class RefundHttpContract extends OrderLifecycleHttpFixture {
     @Test void uncertainPgRefundRecoversAndNeverRetriesTheOutgoingRequest() {
         var o=order(buyer,seller,false);approve(o);
         when(toss.cancel(any())).thenThrow(new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED));
-        assertError(refund(o,12000,"환불",buyerToken),400,"PAYMENT_005");
+        assertThat(refund(o,12000,"환불",buyerToken).data()).containsEntry("status","PROCESSING");
         assertThat(refund(o,12000,"환불",buyerToken).data()).containsEntry("status","PROCESSING");
         verify(toss,times(1)).cancel(any());
         String attempt=jdbc.queryForObject("SELECT current_attempt_id FROM payments",String.class);

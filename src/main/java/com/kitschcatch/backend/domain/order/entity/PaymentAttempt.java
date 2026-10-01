@@ -225,6 +225,11 @@ public class PaymentAttempt {
 		this.failureReason = reason;
 	}
 
+	public void recordReviewReason(String reason) {
+		this.failureReason = reason;
+		clearLease();
+	}
+
 	public void markExpired() {
 		this.attemptStatus = PaymentAttemptStatus.EXPIRED;
 		this.completedAt = LocalDateTime.now();

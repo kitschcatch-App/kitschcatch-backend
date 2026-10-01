@@ -57,7 +57,7 @@ abstract class OrderCancellationHttpContract extends OrderLifecycleHttpFixture {
     @Test void uncertainPgResultStaysProcessingAndRecoversWithoutSecondCancel() {
         var o=order(buyer,seller,false); approve(o);
         when(toss.cancel(any())).thenThrow(new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED));
-        assertError(cancelOrder(o,buyerToken),400,"PAYMENT_005");
+        assertThat(cancelOrder(o,buyerToken).data()).containsEntry("status","PAID").containsEntry("processing",true);
         assertThat(cancelOrder(o,buyerToken).data()).containsEntry("status","PAID").containsEntry("processing",true);
         verify(toss,times(1)).cancel(any());
         String attempt=jdbc.queryForObject("SELECT current_attempt_id FROM payments",String.class);

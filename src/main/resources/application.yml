@@ -54,5 +54,7 @@ app:
     post-image-prefix: ${APP_S3_POST_IMAGE_PREFIX:posts}
     chat-image-prefix: ${APP_S3_CHAT_IMAGE_PREFIX:chats}
   toss-payments:
+    connect-timeout: ${APP_TOSS_PAYMENTS_CONNECT_TIMEOUT:3s}
+    read-timeout: ${APP_TOSS_PAYMENTS_READ_TIMEOUT:10s}
     base-url: ${APP_TOSS_PAYMENTS_BASE_URL:https://api.tosspayments.com}
     secret-key: ${APP_TOSS_PAYMENTS_SECRET_KEY:}
