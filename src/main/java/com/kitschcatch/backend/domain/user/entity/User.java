@@ -55,7 +55,7 @@ public class User {
 	@Column(name = "profile_registered_at")
 	private Instant profileRegisteredAt;
 
-	@Column(nullable = false, unique = true, length = 255)
+	@Column(length = 255)
 	private String email;
 
 	@Enumerated(EnumType.STRING)
