@@ -12,7 +12,9 @@ public record UserMeResponse(
 	@Schema(description = "사용자 닉네임") String nickname,
 	@Schema(description = "프로필 이미지 object key") String profileImageKey,
 	@Schema(description = "프로필 이미지 URL") String profileImageUrl,
-	@Schema(description = "프로필 등록 시각") Instant profileRegisteredAt
+	@Schema(description = "프로필 등록 시각") Instant profileRegisteredAt,
+	@Schema(description = "닉네임과 별도인 사용자 아이디. 미설정 시 null") String username,
+	@Schema(description = "한줄소개. 미설정 시 null") String bio
 ) {
 
 	public static UserMeResponse from(User user, String profileImageUrl) {
@@ -22,7 +24,9 @@ public record UserMeResponse(
 			user.getNickname(),
 			user.getProfileImageKey(),
 			profileImageUrl,
-			user.getProfileRegisteredAt()
+			user.getProfileRegisteredAt(),
+			user.getUsername(),
+			user.getBio()
 		);
 	}
 }

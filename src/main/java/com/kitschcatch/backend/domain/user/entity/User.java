@@ -22,6 +22,7 @@ import org.hibernate.annotations.CreationTimestamp;
 	name = "users",
 	uniqueConstraints = {
 		@UniqueConstraint(name = "uk_users_nickname_key", columnNames = "nickname_key"),
+		@UniqueConstraint(name = "uk_users_username", columnNames = "username"),
 		@UniqueConstraint(
 		name = "uk_users_auth_provider_provider_user_id",
 		columnNames = {"auth_provider", "provider_user_id"}
@@ -41,6 +42,12 @@ public class User {
 
 	@Column(name = "nickname_key", length = 50)
 	private String nicknameKey;
+
+	@Column(length = 30)
+	private String username;
+
+	@Column(length = 160)
+	private String bio;
 
 	@Column(name = "profile_image_key", length = 512)
 	private String profileImageKey;
@@ -86,6 +93,15 @@ public class User {
 		this.nicknameKey = nicknameKey;
 		if (imageProvided) {
 			this.profileImageKey = profileImageKey;
+		}
+	}
+
+	public void updatePublicProfile(String username, boolean usernameProvided, String bio, boolean bioProvided) {
+		if (usernameProvided) {
+			this.username = username;
+		}
+		if (bioProvided) {
+			this.bio = bio;
 		}
 	}
 }

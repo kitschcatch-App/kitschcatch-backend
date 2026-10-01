@@ -104,6 +104,6 @@ class UserControllerTest {
 	}
 
 	private UserMeResponse response() {
-		return new UserMeResponse(1L, "user@example.com", "collector", null, null, Instant.parse("2026-09-22T00:00:00Z"));
+		return new UserMeResponse(1L, "user@example.com", "collector", null, null, Instant.parse("2026-09-22T00:00:00Z"), null, null);
 	}
 }
