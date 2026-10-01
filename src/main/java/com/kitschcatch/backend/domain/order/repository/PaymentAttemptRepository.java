@@ -50,11 +50,14 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
 		where a.operation = com.kitschcatch.backend.domain.order.entity.PaymentAttemptOperation.CONFIRM
 		and a.attemptStatus = com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus.SUCCEEDED
 		and a.payment.paymentStatus = com.kitschcatch.backend.domain.order.entity.PaymentStatus.SUCCESS
+		and a.nextCheckAt <= :now
+		and (a.leaseUntil is null or a.leaseUntil <= :now)
 		and (a.payment.lastVerifiedAt is null or a.payment.lastVerifiedAt <= :cutoff)
 		order by a.payment.lastVerifiedAt, a.id
 		""")
 	List<PaymentAttempt> findSuccessfulRecoveryCandidates(
 		@Param("cutoff") LocalDateTime cutoff,
+		@Param("now") LocalDateTime now,
 		Pageable pageable
 	);
 
@@ -65,7 +68,6 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
 	@Query("""
 		select a from PaymentAttempt a
 		where a.attemptStatus in :statuses
-		and a.payment.recoveryState <> com.kitschcatch.backend.domain.order.entity.PaymentRecoveryState.REVIEW_REQUIRED
 		and a.nextCheckAt <= :now
 		and (a.leaseUntil is null or a.leaseUntil <= :now)
 		order by a.nextCheckAt, a.id

@@ -66,6 +66,7 @@ class PaymentRetryServiceTest {
 			.paymentMethod(PaymentMethod.CARD).paymentStatus(PaymentStatus.FAILED).build();
 		ReflectionTestUtils.setField(payment, "id", 12L);
 		failedAttempt = attempt("ATT-FAILED", 1, PaymentAttemptStatus.FAILED, null);
+		payment.prepareInitialAttempt("ATT-FAILED");
 		stubPaymentLock();
 		when(attemptRepository.findByAttemptIdForUpdate("ATT-FAILED")).thenReturn(Optional.of(failedAttempt));
 		when(attemptRepository.findByPaymentIdAndSourceAttemptAttemptId(12L, "ATT-FAILED"))

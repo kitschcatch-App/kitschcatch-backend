@@ -29,7 +29,7 @@ class PaymentRecoverySchedulerTest {
 			.operation(PaymentAttemptOperation.CONFIRM).attemptStatus(PaymentAttemptStatus.SUCCEEDED)
 			.pgOrderId("PG-1").paymentKey("key-1").amount(12000L).pgIdempotencyKey("confirm-1")
 			.requestedAt(LocalDateTime.now().minusHours(2)).nextCheckAt(LocalDateTime.now()).build();
-		when(attemptRepository.findSuccessfulRecoveryCandidates(any(LocalDateTime.class), any(Pageable.class)))
+		when(attemptRepository.findSuccessfulRecoveryCandidates(any(LocalDateTime.class), any(LocalDateTime.class), any(Pageable.class)))
 			.thenReturn(List.of(attempt));
 		when(recoveryService.claim(anyString(), anyString(), any(LocalDateTime.class))).thenReturn(true);
 		when(tossPaymentsClient.getPayment("key-1"))

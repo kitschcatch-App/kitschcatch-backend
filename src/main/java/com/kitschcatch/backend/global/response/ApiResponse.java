@@ -37,6 +37,10 @@ public record ApiResponse<T>(
 		return new ApiResponse<>(HttpStatus.CREATED, true, data, null);
 	}
 
+	public static <T> ApiResponse<T> accepted(T data) {
+		return new ApiResponse<>(HttpStatus.ACCEPTED, true, data, null);
+	}
+
 	public static <T> ApiResponse<T> fail(ErrorCode errorCode) {
 		return new ApiResponse<>(errorCode.getHttpStatus(), false, null, ApiError.from(errorCode));
 	}

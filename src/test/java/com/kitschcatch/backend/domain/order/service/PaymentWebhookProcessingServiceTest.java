@@ -49,11 +49,15 @@ class PaymentWebhookProcessingServiceTest {
 			.thenReturn(Optional.of(attempt));
 		when(tossPaymentsClient.getPayment("key-1"))
 			.thenReturn(new TossPaymentResponse("key-1", "ORD-1", 12000L, "DONE"));
+		when(recoveryService.claim(eq("ATT-1"), any(), any())).thenReturn(true);
+		when(recoveryService.recover(eq("ATT-1"), any(), any())).thenReturn(
+			new com.kitschcatch.backend.domain.order.dto.PaymentResponse("PAY-1", "ORD-1", 12000L,
+				com.kitschcatch.backend.domain.order.entity.PaymentStatus.SUCCESS, null, null));
 
 		worker.processWebhooks();
 
 		verify(tossPaymentsClient).getPayment("key-1");
-		verify(recoveryService).recover("ATT-1", new TossPaymentResponse("key-1", "ORD-1", 12000L, "DONE"));
+		verify(recoveryService).recover(eq("ATT-1"), eq(new TossPaymentResponse("key-1", "ORD-1", 12000L, "DONE")), any());
 		org.mockito.Mockito.verify(eventRepository, org.mockito.Mockito.times(2)).findByIdForUpdate(1L);
 	}
 }

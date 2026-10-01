@@ -11,6 +11,7 @@ import com.kitschcatch.backend.domain.order.toss.TossPaymentCancelRequest;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentConfirmRequest;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentException;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,15 +51,21 @@ public class PaymentService {
 
 	public PaymentResponse confirmPayment(Long userId, String paymentId, ConfirmPaymentRequest request) {
 		PaymentOperationContext context = paymentTransactionService.startConfirm(userId, paymentId, request);
+		if (!context.executePg()) return getPayment(userId, paymentId);
 		// 외부 호출 또는 DB 저장 실패 시 결과가 불확실하므로 PROCESSING과 예약을 유지한다.
 		TossPaymentConfirmRequest confirmRequest = context.pgIdempotencyKey() == null
 			? new TossPaymentConfirmRequest(context.paymentKey(), context.pgOrderId(), context.amount())
 			: new TossPaymentConfirmRequest(context.paymentKey(), context.pgOrderId(), context.amount(), context.pgIdempotencyKey());
-		TossPaymentResponse tossResponse = tossPaymentsClient.confirm(confirmRequest);
-		validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
+		TossPaymentResponse tossResponse;
+		try {
+			tossResponse = tossPaymentsClient.confirm(confirmRequest);
+		} catch (BusinessException exception) {
+			return handlePgFailure(userId, paymentId, context, exception);
+		}
 		if (paymentRecoveryService != null && context.attemptId() != null) {
 			return paymentRecoveryService.recover(context.attemptId(), tossResponse);
 		}
+		validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
 		return paymentTransactionService.completeConfirm(userId, paymentId, tossResponse.paymentKey());
 	}
 
@@ -72,17 +79,37 @@ public class PaymentService {
 
 	public PaymentResponse cancelPayment(Long userId, String paymentId) {
 		PaymentOperationContext context = paymentTransactionService.startCancel(userId, paymentId);
-        return executeCancellation(userId, paymentId, context, "고객 요청");
-    }
+		return executeCancellation(userId, paymentId, context, "고객 요청");
+	}
 
-    public PaymentResponse executeCancellation(Long userId, String paymentId, PaymentOperationContext context, String reason) {
-        TossPaymentCancelRequest cancelRequest = new TossPaymentCancelRequest(context.paymentKey(), reason, context.pgIdempotencyKey());
-		TossPaymentResponse tossResponse = tossPaymentsClient.cancel(cancelRequest);
-		validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
+	public PaymentResponse executeCancellation(Long userId, String paymentId, PaymentOperationContext context, String reason) {
+		if (!context.executePg()) return getPayment(userId, paymentId);
+		TossPaymentCancelRequest cancelRequest = context.pgIdempotencyKey() == null
+			? new TossPaymentCancelRequest(context.paymentKey(), reason)
+			: new TossPaymentCancelRequest(context.paymentKey(), reason, context.pgIdempotencyKey());
+		TossPaymentResponse tossResponse;
+		try {
+			tossResponse = tossPaymentsClient.cancel(cancelRequest);
+		} catch (BusinessException exception) {
+			return handlePgFailure(userId, paymentId, context, exception);
+		}
 		if (paymentRecoveryService != null && context.attemptId() != null) {
 			return paymentRecoveryService.recover(context.attemptId(), tossResponse);
 		}
+		validateTossPayment(tossResponse, context, TOSS_CANCEL_CANCELED);
 		return paymentTransactionService.completeCancel(userId, paymentId);
+	}
+
+	private PaymentResponse handlePgFailure(Long userId, String paymentId, PaymentOperationContext context,
+		BusinessException exception) {
+		if (paymentRecoveryService == null || context.attemptId() == null) throw exception;
+		if (exception instanceof TossPaymentException pg && pg.confirmedRejection()) {
+			paymentRecoveryService.recordConfirmedRejection(context.attemptId(), pg.pgCode());
+		} else {
+			String code = exception instanceof TossPaymentException pg ? pg.pgCode() : exception.getErrorCode().name();
+			paymentRecoveryService.recordLookupFailure(context.attemptId(), code);
+		}
+		return getPayment(userId, paymentId);
 	}
 
 	private void validateTossPayment(

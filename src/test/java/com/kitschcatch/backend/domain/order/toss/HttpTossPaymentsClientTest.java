@@ -17,6 +17,11 @@ import java.util.Base64;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.http.HttpStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -140,7 +145,7 @@ class HttpTossPaymentsClientTest {
 	}
 
 	@Test
-	@DisplayName("결제 승인 실패는 토스 에러 응답 바디를 예외 메시지로 보존한다")
+	@DisplayName("결제 승인 실패는 정제된 코드만 보존하고 원문을 노출하지 않는다")
 	void confirmFailureKeepsTossErrorBody() {
 		String errorBody = "{\"code\":\"ALREADY_APPROVED\",\"message\":\"이미 승인된 결제입니다.\"}";
 		server.expect(once(), requestTo("https://api.tosspayments.com/v1/payments/confirm"))
@@ -153,8 +158,11 @@ class HttpTossPaymentsClientTest {
 		assertThatThrownBy(() -> client.confirm(
 			new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)
 		))
-			.isInstanceOf(BusinessException.class)
-			.hasMessage(errorBody);
+			.isInstanceOfSatisfying(TossPaymentException.class, exception -> {
+				assertThat(exception.pgCode()).isEqualTo("ALREADY_APPROVED");
+				assertThat(exception.confirmedRejection()).isFalse();
+				assertThat(exception.getMessage()).doesNotContain(errorBody);
+			});
 		server.verify();
 	}
 
@@ -162,5 +170,90 @@ class HttpTossPaymentsClientTest {
 		String token = Base64.getEncoder()
 			.encodeToString("test_sk_secret:".getBytes(StandardCharsets.UTF_8));
 		return "Basic " + token;
+	}
+
+	@ParameterizedTest
+	@CsvSource({
+		"403,REJECT_CARD_PAYMENT,true", "403,REJECT_CARD_COMPANY,true",
+		"400,REJECT_CARD_PAYMENT,false", "500,REJECT_CARD_COMPANY,false",
+		"400,ALREADY_PROCESSED_PAYMENT,false", "400,ALREADY_PROCESSING_REQUEST,false",
+		"400,PROVIDER_ERROR,false", "401,UNAUTHORIZED_KEY,false",
+		"404,NOT_FOUND_PAYMENT,false", "429,TOO_MANY_REQUESTS,false", "500,UNKNOWN_PAYMENT_ERROR,false",
+		"400,NEW_UNKNOWN_CODE,false"
+	})
+	void classifiesOnlyOfficialConfirmationRejections(int status, String code, boolean rejected) {
+		server.expect(requestTo("https://api.tosspayments.com/v1/payments/confirm"))
+			.andRespond(withStatus(HttpStatus.valueOf(status)).contentType(MediaType.APPLICATION_JSON)
+				.body("{\"code\":\"" + code + "\",\"message\":\"민감한 원문\"}"));
+		assertThatThrownBy(() -> client.confirm(new TossPaymentConfirmRequest("key", "ORD-1", 1L)))
+			.isInstanceOfSatisfying(TossPaymentException.class, exception -> {
+				assertThat(exception.pgCode()).isEqualTo(code);
+				assertThat(exception.confirmedRejection()).isEqualTo(rejected);
+				assertThat(exception.getMessage()).doesNotContain("민감한 원문", code);
+			});
+		server.verify();
+	}
+
+	@Test
+	void lookupAndCancellationCannotTurnARejectionCodeIntoConfirmationFailure() {
+		server.expect(requestTo("https://api.tosspayments.com/v1/payments/key"))
+			.andRespond(withStatus(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON)
+				.body("{\"code\":\"REJECT_CARD_PAYMENT\"}"));
+		server.expect(requestTo("https://api.tosspayments.com/v1/payments/key/cancel"))
+			.andRespond(withStatus(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON)
+				.body("{\"code\":\"REJECT_CARD_COMPANY\"}"));
+		assertThatThrownBy(() -> client.getPayment("key")).isInstanceOfSatisfying(TossPaymentException.class,
+			exception -> assertThat(exception.confirmedRejection()).isFalse());
+		assertThatThrownBy(() -> client.cancel(new TossPaymentCancelRequest("key", "고객 요청")))
+			.isInstanceOfSatisfying(TossPaymentException.class, exception -> assertThat(exception.confirmedRejection()).isFalse());
+		server.verify();
+	}
+
+	@Test
+	void malformedBodyAndTransportTimeoutStayUncertain() {
+		server.expect(requestTo("https://api.tosspayments.com/v1/payments/confirm"))
+			.andRespond(withStatus(HttpStatus.FORBIDDEN).body("not-json"));
+		server.expect(requestTo("https://api.tosspayments.com/v1/payments/key"))
+			.andRespond(withException(new java.net.SocketTimeoutException("비밀 응답")));
+		assertThatThrownBy(() -> client.confirm(new TossPaymentConfirmRequest("key", "ORD-1", 1L)))
+			.isInstanceOfSatisfying(TossPaymentException.class, exception -> {
+				assertThat(exception.pgCode()).isEqualTo("UNKNOWN_PG_ERROR");
+				assertThat(exception.confirmedRejection()).isFalse();
+			});
+		assertThatThrownBy(() -> client.getPayment("key")).isInstanceOfSatisfying(TossPaymentException.class,
+			exception -> {
+				assertThat(exception.pgCode()).isEqualTo("TRANSPORT_ERROR");
+				assertThat(exception.getMessage()).doesNotContain("비밀 응답");
+			});
+		server.verify();
+	}
+
+	@Test
+	void configuredClientTimesOutAgainstLocalHttpServerWithoutExposingTransportDetails() throws Exception {
+		var localPg = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+		var finish = new java.util.concurrent.CountDownLatch(1);
+		localPg.createContext("/v1/payments/key", exchange -> {
+			try {
+				finish.await(5, java.util.concurrent.TimeUnit.SECONDS);
+			} catch (InterruptedException exception) {
+				Thread.currentThread().interrupt();
+			} finally {
+				exchange.close();
+			}
+		});
+		localPg.start();
+		try {
+			var configured = new HttpTossPaymentsClient(new TossPaymentsConfig().restClientBuilder(
+				java.time.Duration.ofSeconds(1), java.time.Duration.ofMillis(50)),
+				new TossPaymentsProperties("http://127.0.0.1:" + localPg.getAddress().getPort(), "local-test-key"));
+			assertThatThrownBy(() -> configured.getPayment("key")).isInstanceOfSatisfying(TossPaymentException.class,
+				exception -> {
+					assertThat(exception.pgCode()).isEqualTo("TRANSPORT_ERROR");
+					assertThat(exception.confirmedRejection()).isFalse();
+				});
+		} finally {
+			finish.countDown();
+			localPg.stop(0);
+		}
 	}
 }

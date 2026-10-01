@@ -8,8 +8,14 @@ public record PaymentOperationContext(
 	String paymentKey,
 	String attemptId,
 	long stateVersion,
-	String pgIdempotencyKey
+	String pgIdempotencyKey,
+	boolean executePg
 ) {
+
+	public PaymentOperationContext(String orderId, String pgOrderId, Long amount, String paymentKey,
+		String attemptId, long stateVersion, String pgIdempotencyKey) {
+		this(orderId, pgOrderId, amount, paymentKey, attemptId, stateVersion, pgIdempotencyKey, true);
+	}
 
 	public PaymentOperationContext(
 		String orderId,
