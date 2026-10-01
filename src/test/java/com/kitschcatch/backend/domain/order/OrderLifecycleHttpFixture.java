@@ -57,7 +57,7 @@ abstract class OrderLifecycleHttpFixture {
 
     @BeforeEach
     void resetData() {
-        for (String table : List.of("payment_webhook_events", "payment_attempts", "payments", "orders", "post_images", "posts", "users")) {
+        for (String table : List.of("settlement_recipients", "payment_webhook_events", "payment_attempts", "payments", "orders", "post_images", "posts", "users")) {
             jdbc.update("DELETE FROM " + table);
         }
         reset(toss, s3);

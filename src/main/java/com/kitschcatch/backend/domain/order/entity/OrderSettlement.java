@@ -13,13 +13,19 @@ public class OrderSettlement {
     @Column(name="settlement_requested_at") private LocalDateTime requestedAt;
     @Column(name="settlement_settled_at") private LocalDateTime settledAt;
     @Column(name="settlement_provider_reference",length=200) private String providerReference;
+    @Column(name="settlement_destination",length=35) private String destination;
+    public void recordReference(String reference) { if(providerReference==null) providerReference=reference; }
     public enum Status { WAITING, PROCESSING, UNKNOWN, FAILED, COMPLETED }
     public static OrderSettlement waiting() {
         var s=new OrderSettlement(); s.settlementId="SET-"+UUID.randomUUID().toString().replace("-","").toUpperCase();
         s.status=Status.WAITING; return s;
     }
-    public void start(long amount,long fee) {
-        this.amount=amount; this.fee=fee; this.status=Status.PROCESSING; this.requestedAt=LocalDateTime.now();
+    public void start(long amount,long fee,String destination) {
+        this.destination=destination;
+        this.amount=amount; this.fee=fee; this.status=Status.PROCESSING; if(this.requestedAt==null) this.requestedAt=LocalDateTime.now();
+    }
+    public void notSubmitted() {
+        if(providerReference==null && (status==Status.PROCESSING || status==Status.UNKNOWN)) status=Status.WAITING;
     }
     public void pending() { if(status!=Status.COMPLETED) status=Status.PROCESSING; }
     public void unknown() { if(status!=Status.COMPLETED) status=Status.UNKNOWN; }

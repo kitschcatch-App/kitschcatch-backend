@@ -33,6 +33,7 @@ abstract class SettlementHttpContract extends OrderLifecycleHttpFixture {
         jdbc.update("INSERT INTO users(id,nickname,email,auth_provider,provider_user_id,created_at) VALUES(900000,'정산 담당','settlement@example.test','KAKAO','settlement-operator',CURRENT_TIMESTAMP)");
         operatorToken=tokens.createAccessToken(900000L);
         reset(gateway);when(gateway.configured()).thenReturn(true);
+        jdbc.update("INSERT INTO settlement_recipients(seller_id,provider_seller_id,registered_by,verified_at) VALUES(?,?,900000,CURRENT_TIMESTAMP)",seller.getId(),"seller-"+seller.getId());
     }
     OrderFixture confirmedOrder() {
         var o=order(buyer,seller,false);approve(o);
@@ -42,7 +43,7 @@ abstract class SettlementHttpContract extends OrderLifecycleHttpFixture {
         return o;
     }
     Response execute(OrderFixture o,String token) {return request("POST","/api/orders/"+o.orderId()+"/settlement",token,null);}
-    SettlementGateway.Result complete(String id) {return new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.COMPLETED,"provider-123",LocalDateTime.of(2026,10,1,18,0));}
+    SettlementGateway.Result complete(String id) {return new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.COMPLETED,"provider-123",LocalDateTime.of(2026,10,1,18,0),"seller-"+seller.getId());}
     @Test void confirmedOrderWaitsUntilProviderConfirmsActualPayout() {
         var o=confirmedOrder();
         var waiting=get("/api/orders/"+o.orderId()+"/settlement",sellerToken);
@@ -73,6 +74,16 @@ abstract class SettlementHttpContract extends OrderLifecycleHttpFixture {
         var confirmed=confirmedOrder();jdbc.update("UPDATE payments SET recovery_state='REVIEW_REQUIRED'");
         assertError(execute(confirmed,operatorToken),409,"SETTLEMENT_001");
     }
+    @Test void preflightFailureAllowsRetryWithTheSameIdentifierAndSnapshot() {
+        var o=confirmedOrder();
+        when(gateway.request(any())).thenThrow(new com.kitschcatch.backend.domain.order.settlement.SettlementNotSubmittedException(ErrorCode.SETTLEMENT_PRECHECK_FAILED));
+        assertError(execute(o,operatorToken),409,"SETTLEMENT_009");
+        var first=get("/api/orders/"+o.orderId()+"/settlement",sellerToken).data();
+        assertThat(first).containsEntry("status","WAITING").containsEntry("fee",600);
+        doAnswer(call->{var c=call.getArgument(0,SettlementGateway.Command.class);assertThat(c.settlementId()).isEqualTo(first.get("settlementId"));return complete(c.settlementId());}).when(gateway).request(any());
+        assertThat(execute(o,operatorToken).data()).containsEntry("status","COMPLETED").containsEntry("requestedAt",first.get("requestedAt"));
+        verify(gateway,times(2)).request(any());verify(gateway,never()).lookup(any());
+    }
     @Test void missingProviderNeverPretendsSettlementCompleted() {
         var o=confirmedOrder();when(gateway.configured()).thenReturn(false);
         assertError(execute(o,operatorToken),503,"SETTLEMENT_005");
@@ -85,25 +96,25 @@ abstract class SettlementHttpContract extends OrderLifecycleHttpFixture {
         when(gateway.request(any())).thenThrow(new IllegalStateException("timeout"));
         assertError(execute(o,operatorToken),502,"SETTLEMENT_006");
         assertThat(get("/api/orders/"+o.orderId()+"/settlement",sellerToken).data()).containsEntry("status","UNKNOWN");
-        when(gateway.lookup(id)).thenReturn(complete(id));
+        when(gateway.lookup(any())).thenReturn(complete(id));
         assertThat(execute(o,operatorToken).data()).containsEntry("status","COMPLETED");
-        verify(gateway,times(1)).request(any());verify(gateway,times(1)).lookup(id);
+        verify(gateway,times(1)).request(any());verify(gateway,times(1)).lookup(any());
     }
     @Test void mismatchedPayoutEvidenceCannotCompleteSettlement() {
         var o=confirmedOrder();
         when(gateway.request(any())).thenReturn(complete("SET-WRONG"));
         assertThat(execute(o,operatorToken).data()).containsEntry("status","UNKNOWN");
         String id=(String)get("/api/orders/"+o.orderId()+"/settlement",sellerToken).data().get("settlementId");
-        when(gateway.lookup(id)).thenReturn(new SettlementGateway.Result(id,11401L,"KRW",SettlementGateway.Status.COMPLETED,"ref",LocalDateTime.now()));
+        when(gateway.lookup(any())).thenReturn(new SettlementGateway.Result(id,11401L,"KRW",SettlementGateway.Status.COMPLETED,"ref",LocalDateTime.now(),"seller-"+seller.getId()));
         assertThat(execute(o,operatorToken).data()).containsEntry("status","UNKNOWN");
-        when(gateway.lookup(id)).thenReturn(new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.COMPLETED,null,null));
+        when(gateway.lookup(any())).thenReturn(new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.COMPLETED,null,null,"seller-"+seller.getId()));
         assertThat(execute(o,operatorToken).data()).containsEntry("status","UNKNOWN");
         verify(gateway,times(1)).request(any());
     }
     @Test void failedPayoutIsNotResubmittedAutomatically() {
         var o=confirmedOrder();String id=(String)get("/api/orders/"+o.orderId()+"/settlement",sellerToken).data().get("settlementId");
-        var result=new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.FAILED,null,null);
-        when(gateway.request(any())).thenReturn(result);when(gateway.lookup(id)).thenReturn(result);
+        var result=new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.FAILED,null,null,"seller-"+seller.getId());
+        when(gateway.request(any())).thenReturn(result);when(gateway.lookup(any())).thenReturn(result);
         assertThat(execute(o,operatorToken).data()).containsEntry("status","FAILED");
         assertThat(execute(o,operatorToken).data()).containsEntry("status","FAILED");
         verify(gateway,times(1)).request(any());
@@ -112,7 +123,7 @@ abstract class SettlementHttpContract extends OrderLifecycleHttpFixture {
         var o=confirmedOrder();String id=(String)get("/api/orders/"+o.orderId()+"/settlement",sellerToken).data().get("settlementId");
         var entered=new CountDownLatch(1);var finish=new CountDownLatch(1);
         when(gateway.request(any())).thenAnswer(call->{entered.countDown();assertThat(finish.await(10,TimeUnit.SECONDS)).isTrue();return complete(id);});
-        when(gateway.lookup(id)).thenReturn(new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.PENDING,null,null));
+        when(gateway.lookup(any())).thenReturn(new SettlementGateway.Result(id,11400L,"KRW",SettlementGateway.Status.PENDING,null,null,"seller-"+seller.getId()));
         try(var pool=Executors.newFixedThreadPool(2)) {
             var first=pool.submit(()->execute(o,operatorToken));
             try { assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();assertThat(execute(o,operatorToken).data()).containsEntry("status","PROCESSING"); }
@@ -121,11 +132,12 @@ abstract class SettlementHttpContract extends OrderLifecycleHttpFixture {
         }
         verify(gateway,times(1)).request(any());
     }
-    @Test @SuppressWarnings("unchecked") void swaggerDescribesAllNineAuthenticatedEndpoints() {
+    @Test @SuppressWarnings("unchecked") void swaggerDescribesAllFourteenAuthenticatedEndpoints() {
         var paths=(Map<String,Map<String,Map<String,Object>>>)get("/v3/api-docs",null).body().get("paths");
-        for(var suffix:List.of("cancel","shipment","refunds","confirm-purchase","settlement")) {
+        for(var suffix:List.of("cancel","shipment","refunds","confirm-purchase","settlement","refunds/approve","refunds/reject","refunds/withdraw")) {
             var methods=paths.get("/api/orders/{orderId}/"+suffix);
             for(var m:methods.values()) assertThat(m.get("security").toString()).contains("bearerAuth");
         }
+        for(var method:paths.get("/api/settlement/recipients/{sellerId}").values()) assertThat(method.get("security").toString()).contains("bearerAuth");
     }
 }

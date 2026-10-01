@@ -35,7 +35,8 @@ final class PostgresOrderLifecycleTestDatabase implements AutoCloseable {
             while (columns.find()) statement.execute("ALTER TABLE orders DROP COLUMN IF EXISTS " + columns.group(1));
             migrate(connection);
             migrate(connection);
-            for(String name:java.util.List.of("045_refund_review.sql")) {
+            statement.execute("DROP TABLE IF EXISTS settlement_recipients");
+            for(String name:java.util.List.of("045_refund_review.sql","045_settlement_recipient.sql")) {
                 try(var extra=PostgresOrderLifecycleTestDatabase.class.getResourceAsStream("/db/manual/"+name)) {
                     String extension=new String(extra.readAllBytes(),StandardCharsets.UTF_8);
                     var added=java.util.regex.Pattern.compile("ADD COLUMN IF NOT EXISTS ([a-z_]+)").matcher(extension);

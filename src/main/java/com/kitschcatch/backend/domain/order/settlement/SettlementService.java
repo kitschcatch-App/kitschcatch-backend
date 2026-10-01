@@ -13,7 +13,10 @@ public class SettlementService {
         if(prepared!=null) {
             SettlementGateway.Result result;
             try {
-                result=prepared.request()?gateway.request(prepared.command()):gateway.lookup(prepared.command().settlementId());
+                result=prepared.request()?gateway.request(prepared.command()):gateway.lookup(prepared.command());
+            } catch(SettlementNotSubmittedException failure) {
+                transactions.notSubmitted(userId,number,prepared.command().settlementId());
+                throw new BusinessException(failure.errorCode());
             } catch(RuntimeException failure) {
                 transactions.unknown(userId,number);
                 throw new BusinessException(ErrorCode.SETTLEMENT_PROVIDER_FAILED);
