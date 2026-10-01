@@ -10,7 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="400",description="COMMON_001/002: 입력 오류. REFUND_005: 반품 수령 확인 누락. REFUND_001: 전액과 다른 금액. PAYMENT_005: PG 요청 실패 후 상태 조회 필요.")
+@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="400",description="COMMON_001/002: 입력 오류. REFUND_005: 반품 수령 확인 누락. REFUND_001: 전액과 다른 금액.")
 @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="401",description="AUTH_004: 인증 오류.")
 @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="403",description="ORDER_004: 요청 구매자 또는 조회 당사자 아님. REFUND_004: 검수 운영자 권한 없음.")
 @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="404",description="ORDER_001/REFUND_003: 주문 또는 환불 없음.")
