@@ -20,6 +20,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -98,7 +99,7 @@ public class PurchaseOrder {
 
     public void confirmPurchase() {
         orderStatus = OrderStatus.PURCHASE_CONFIRMED;
-        if (confirmedAt == null) confirmedAt = LocalDateTime.now();
+        if (confirmedAt == null) confirmedAt = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
         if (settlement == null) settlement = OrderSettlement.waiting();
     }
 
