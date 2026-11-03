@@ -1,6 +1,16 @@
 // 실제 HTTP·JWT·DB로 관심 상품의 사용자 격리·동시성·조회 연동을 공통 검증한다.
 package com.kitschcatch.backend.domain.post;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
+import org.springframework.test.context.bean.override.convention.TestBean;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.services.s3.S3Client;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.kitschcatch.backend.domain.post.entity.Post;
@@ -34,6 +44,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestClient;
 
 abstract class PostFavoriteHttpContract {
+    @TestBean(methodName = "testPresigner") S3Presigner s3Presigner;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")))
+            .build();
+    }
+    @MockitoBean S3Client s3;
+
     @LocalServerPort int port;
     @Autowired PostRepository posts;
     @Autowired UserRepository users;
@@ -270,12 +289,15 @@ abstract class PostFavoriteHttpContract {
         var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         statistics.clear();
         var result = get("/api/users/me/favorite-posts?size=100", token);
-        assertThat(result.rows("content")).hasSize(100).allSatisfy(row ->
-            assertThat(row).containsEntry("thumbnailUrl", "https://images.example.test/first.jpg")
-                .containsEntry("sellerNickname", "검증사용자"));
+        assertThat(result.status()).isEqualTo(200);
+        assertThat(result.rows("content")).hasSize(100).allSatisfy(row -> {
+            assertGetUrl(row.get("thumbnailUrl").toString(), "test-bucket", "first.jpg", 900, "test-access", "test-secret");
+            assertThat(row).containsEntry("sellerNickname", "검증사용자");
+        });
         assertThat(statistics.getPrepareStatementCount()).isEqualTo(5); // 인증 시 종료 계정 확인 쿼리 1회 포함
         assertThat(statistics.getCollectionFetchCount()).isZero();
         assertThat(statistics.getEntityFetchCount()).isZero();
+        verifyNoInteractions(s3);
     }
 
     @Test

@@ -1,6 +1,16 @@
 // 실제 HTTP와 JWT로 방향성·권한·동시성·페이지·비노출·쿼리 수를 검증한다.
 package com.kitschcatch.backend.domain.follow;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
+import org.springframework.test.context.bean.override.convention.TestBean;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.services.s3.S3Client;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.kitschcatch.backend.domain.auth.oidc.KakaoOidcUser;
@@ -25,6 +35,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestClient;
 
 abstract class FollowHttpContract {
+    @TestBean(methodName = "testPresigner") S3Presigner s3Presigner;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")))
+            .build();
+    }
+    @MockitoBean S3Client s3;
+
     @LocalServerPort int port;
     @Autowired UserRepository users;
     @Autowired JwtTokenProvider tokens;
@@ -92,11 +111,15 @@ abstract class FollowHttpContract {
     void publicRowsExcludeEmailProviderKeysAndRegistrationMetadata() {
         jdbc.update("UPDATE users SET profile_image_key=? WHERE id=?", "profiles/" + actor.getId() + "/avatar.png", actor.getId());
         change("POST", target.getId(), token);
-        var row = list(target.getId(), "followers", targetToken).rows().getFirst();
+        var response = list(target.getId(), "followers", targetToken);
+        assertThat(response.status()).isEqualTo(200);
+        var row = response.rows().getFirst();
         assertThat(row).containsOnlyKeys("id", "nickname", "profileImageUrl");
-        assertThat(row).containsEntry("profileImageUrl", "https://images.example.test/profiles/" + actor.getId() + "/avatar.png");
+        assertGetUrl(row.get("profileImageUrl").toString(), "test-bucket", "profiles/" + actor.getId() + "/avatar.png",
+            900, "test-access", "test-secret");
         var following = list(actor.getId(), "followings", token).rows().getFirst();
         assertThat(following).containsOnlyKeys("id", "nickname", "profileImageUrl").containsEntry("profileImageUrl", null);
+        verifyNoInteractions(s3);
     }
 
     @Test

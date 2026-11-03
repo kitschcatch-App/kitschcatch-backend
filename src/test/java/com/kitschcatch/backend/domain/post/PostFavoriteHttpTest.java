@@ -7,7 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
     "spring.datasource.url=jdbc:h2:mem:post-favorite-http;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.driver-class-name=org.h2.Driver",
     "spring.datasource.username=sa", "spring.datasource.password=",
-    "spring.jpa.hibernate.ddl-auto=create-drop", "app.s3.public-base-url=https://images.example.test", "kakao.oauth.native-app-key=test-native-app-key",
+    "spring.jpa.hibernate.ddl-auto=create-drop", "app.s3.public-base-url=https://images.example.test", "app.s3.download-url-ttl=15m", "app.s3.bucket=test-bucket", "kakao.oauth.native-app-key=test-native-app-key",
     "app.orders.expiration-enabled=false", "app.payments.recovery.enabled=false",
     "springdoc.api-docs.enabled=true", "spring.jpa.properties.hibernate.generate_statistics=true"
 })

@@ -14,7 +14,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
     "spring.datasource.driver-class-name=org.postgresql.Driver", "spring.jpa.hibernate.ddl-auto=create",
     "kakao.oauth.native-app-key=test-native-app-key", "app.orders.expiration-enabled=false",
-    "app.payments.recovery.enabled=false", "app.s3.public-base-url=https://cdn.example.test",
+    "app.payments.recovery.enabled=false", "app.s3.public-base-url=https://cdn.example.test", "app.s3.download-url-ttl=15m",
     "app.s3.bucket=test-bucket", "springdoc.api-docs.enabled=true",
     "spring.jpa.properties.hibernate.generate_statistics=true"
 })

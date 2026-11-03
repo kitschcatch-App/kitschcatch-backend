@@ -1,6 +1,13 @@
 // 실제 HTTP·JWT·DB로 판매자 목록과 채팅 필터의 권한·페이지·SQL 횟수를 검증한다.
 package com.kitschcatch.backend.domain.post;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
+import org.springframework.test.context.bean.override.convention.TestBean;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -30,6 +37,14 @@ import org.springframework.web.client.RestClient;
 import software.amazon.awssdk.services.s3.S3Client;
 
 abstract class SellerQueriesHttpContract {
+    @TestBean(methodName = "testPresigner") S3Presigner s3Presigner;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")))
+            .build();
+    }
+
     @LocalServerPort int port;
     @Autowired UserRepository users;
     @Autowired PostRepository posts;
@@ -159,6 +174,9 @@ abstract class SellerQueriesHttpContract {
         assertThat(page.rows()).hasSize(25);
         assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(5);
         assertThat(((List<?>) page.rows().getFirst().get("images"))).hasSize(1);
+        var image = (Map<?, ?>) ((List<?>) page.rows().getFirst().get("images")).getFirst();
+        assertGetUrl(image.get("imageUrl").toString(), "test-bucket", image.get("imageKey").toString(),
+            900, "test-access", "test-secret");
         verifyNoInteractions(s3, toss);
     }
 

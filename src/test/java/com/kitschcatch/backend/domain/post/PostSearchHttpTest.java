@@ -8,7 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
     "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa", "spring.datasource.password=",
     "spring.jpa.hibernate.ddl-auto=create-drop", "kakao.oauth.native-app-key=test-native-app-key",
     "app.orders.expiration-enabled=false", "app.payments.recovery.enabled=false",
-    "app.s3.public-base-url=https://cdn.example.test", "app.s3.bucket=test-bucket",
+    "app.s3.public-base-url=https://cdn.example.test", "app.s3.download-url-ttl=15m", "app.s3.bucket=test-bucket",
     "springdoc.api-docs.enabled=true", "spring.jpa.properties.hibernate.generate_statistics=true"
 })
 class PostSearchHttpTest extends PostSearchHttpContract {}

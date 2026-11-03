@@ -11,7 +11,7 @@ public record UserMeResponse(
 	@Schema(description = "사용자 이메일") String email,
 	@Schema(description = "사용자 닉네임") String nickname,
 	@Schema(description = "프로필 이미지 object key") String profileImageKey,
-	@Schema(description = "프로필 이미지 URL") String profileImageUrl,
+	@Schema(description = "프로필 이미지 S3 GET 서명 URL. 기본 15분 유효하며 만료되면 내 정보를 다시 조회합니다.") String profileImageUrl,
 	@Schema(description = "프로필 등록 시각") Instant profileRegisteredAt,
 	@Schema(description = "닉네임과 별도인 사용자 아이디. 미설정 시 null") String username,
 	@Schema(description = "한줄소개. 미설정 시 null") String bio

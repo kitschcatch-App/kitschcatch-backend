@@ -1,4 +1,4 @@
-// 프로필 이미지의 S3 업로드 URL 발급과 객체 메타데이터 조회를 담당한다.
+// 프로필 이미지의 S3 업로드·조회 서명 URL 발급과 객체 메타데이터 조회를 담당한다.
 package com.kitschcatch.backend.domain.user.storage;
 
 import com.kitschcatch.backend.domain.post.storage.S3Properties;
@@ -9,19 +9,19 @@ import com.kitschcatch.backend.domain.user.service.ProfileImageStorage;
 import com.kitschcatch.backend.domain.user.service.ProfileImageUploadUrl;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 @Component
@@ -81,17 +81,11 @@ public class S3ProfileImageStorage implements ProfileImageStorage {
 
 	@Override
 	public String imageUrl(String objectKey) {
-		String path;
-		try {
-			path = new URI(null, null, "/" + objectKey, null).toASCIIString();
-		} catch (URISyntaxException exception) {
-			throw new BusinessException(ErrorCode.USER_PROFILE_IMAGE_INVALID);
-		}
-		if (StringUtils.hasText(properties.publicBaseUrl())) {
-			return properties.publicBaseUrl() + path;
-		}
 		validateBucket();
-		return "https://" + properties.bucket() + ".s3." + properties.region() + ".amazonaws.com" + path;
+		return presigner.presignGetObject(GetObjectPresignRequest.builder()
+			.signatureDuration(properties.downloadUrlTtl())
+			.getObjectRequest(GetObjectRequest.builder().bucket(properties.bucket()).key(objectKey).build())
+			.build()).url().toString();
 	}
 
 	private void validateBucket() {

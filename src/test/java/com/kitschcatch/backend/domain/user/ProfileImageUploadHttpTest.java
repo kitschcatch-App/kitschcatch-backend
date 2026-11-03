@@ -1,6 +1,7 @@
 // 실제 HTTP·JWT·JSON·S3 서명을 연결해 프로필 이미지 발급 계약을 검증한다.
 package com.kitschcatch.backend.domain.user;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -54,6 +55,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 	"spring.jpa.hibernate.ddl-auto=create-drop", "kakao.oauth.native-app-key=test-native-app-key",
 	"app.orders.expiration-enabled=false", "app.payments.recovery.enabled=false",
 	"app.s3.bucket=test-bucket", "app.s3.public-base-url=https://cdn.example.com",
+	"app.s3.download-url-ttl=20m",
 	"springdoc.api-docs.enabled=true"
 })
 class ProfileImageUploadHttpTest {
@@ -86,7 +88,8 @@ class ProfileImageUploadHttpTest {
 		assertThat(first.status()).isEqualTo(200);
 		assertThat(first.body().get("success")).isEqualTo(true);
 		assertThat(first.data().get("imageKey").toString()).matches("profiles/" + user.getId() + "/[0-9a-f-]{36}\\.png");
-		assertThat(first.data().get("imageUrl")).isEqualTo("https://cdn.example.com/" + first.data().get("imageKey"));
+		assertGetUrl(first.data().get("imageUrl").toString(), "test-bucket", first.data().get("imageKey").toString(),
+			1200, "test-access", "test-secret");
 		assertThat(first.data().get("expiresIn")).isEqualTo(600);
 		assertThat(Instant.parse(first.data().get("expiresAt").toString())).isAfter(Instant.now());
 		assertThat((Map<?, ?>) first.data().get("uploadHeaders")).isEqualTo(Map.of("content-type", "image/png", "if-none-match", "*"));
@@ -191,12 +194,15 @@ class ProfileImageUploadHttpTest {
 		Map<?, ?> me = RestClient.create("http://127.0.0.1:" + port).get().uri("/api/users/me")
 			.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.createAccessToken(user.getId()))
 			.retrieve().body(Map.class);
-		assertThat(((Map<?, ?>) me.get("data")).get("profileImageUrl")).isEqualTo("https://cdn.example.com/" + firstKey);
+		assertGetUrl(((Map<?, ?>) me.get("data")).get("profileImageUrl").toString(), "test-bucket", firstKey,
+			1200, "test-access", "test-secret");
 
 		String secondKey = issue(VALID).data().get("imageKey").toString();
 		Response replaced = profile(HttpMethod.PATCH, "/api/users/me", Map.of("profileImageKey", secondKey));
 		assertThat(replaced.status()).isEqualTo(200);
 		assertThat(replaced.data().get("profileImageKey")).isEqualTo(secondKey);
+		assertGetUrl(replaced.data().get("profileImageUrl").toString(), "test-bucket", secondKey,
+			1200, "test-access", "test-secret");
 		assertThat(replaced.data().get("profileRegisteredAt")).isEqualTo(registeredAt);
 		verify(s3Client).headObject(HeadObjectRequest.builder().bucket("test-bucket").key(secondKey).build());
 
@@ -207,6 +213,7 @@ class ProfileImageUploadHttpTest {
 		Response cleared = profile(HttpMethod.PATCH, "/api/users/me", "{\"profileImageKey\":null}");
 		assertThat(cleared.status()).isEqualTo(200);
 		assertThat(cleared.data().get("profileImageKey")).isNull();
+		assertThat(cleared.data().get("profileImageUrl")).isNull();
 		assertThat(cleared.data().get("profileRegisteredAt")).isEqualTo(registeredAt);
 		verifyNoInteractions(s3Client);
 	}
