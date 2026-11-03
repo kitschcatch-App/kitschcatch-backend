@@ -1,0 +1,156 @@
+name: CI and development deployment
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_DB: kitschcatch_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kitschcatch_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Create isolated databases for public-schema tests
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci27
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci53
+      - name: Run tests and build
+        env:
+          CI_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci
+          CI_TEST_DB_USER: postgres
+          CI_TEST_DB_PASSWORD: postgres
+        run: |
+          for issue in 31 39 41 43 45 47 48 49 50 51 52 54 55 56 57; do
+            export "ISSUE${issue}_TEST_DB_URL=$CI_TEST_DB_URL"
+            export "ISSUE${issue}_TEST_DB_USERNAME=$CI_TEST_DB_USER"
+            export "ISSUE${issue}_TEST_DB_PASSWORD=$CI_TEST_DB_PASSWORD"
+          done
+          export ISSUE27_TEST_DB_URL=jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci27
+          export ISSUE27_TEST_DB_DRIVER=org.postgresql.Driver
+          export ISSUE27_TEST_DB_USER="$CI_TEST_DB_USER"
+          export ISSUE27_TEST_DB_PASSWORD="$CI_TEST_DB_PASSWORD"
+          export ISSUE53_TEST_DB_URL=jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci53
+          export ISSUE53_TEST_DB_USER="$CI_TEST_DB_USER"
+          export ISSUE53_TEST_DB_PASSWORD="$CI_TEST_DB_PASSWORD"
+          export ISSUE54_TEST_DB_USER="$CI_TEST_DB_USER"
+          ./gradlew clean build --no-daemon --console=plain
+      - name: Publish test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-reports
+          path: build/reports/tests/test/
+          if-no-files-found: ignore
+
+  deploy-development:
+    name: Deploy to development ECS
+    needs: build
+    if: github.ref == 'refs/heads/develop' && vars.DEV_DEPLOY_ENABLED == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: development
+    concurrency:
+      group: development-ecs
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check deployment configuration
+        env:
+          AWS_REGION: ${{ vars.DEV_AWS_REGION }}
+          AWS_ROLE_ARN: ${{ vars.DEV_AWS_ROLE_ARN }}
+          ECR_REPOSITORY: ${{ vars.DEV_ECR_REPOSITORY }}
+          ECS_CLUSTER: ${{ vars.DEV_ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.DEV_ECS_SERVICE }}
+          ECS_CONTAINER: ${{ vars.DEV_ECS_CONTAINER }}
+        run: |
+          for name in AWS_REGION AWS_ROLE_ARN ECR_REPOSITORY ECS_CLUSTER ECS_SERVICE ECS_CONTAINER; do
+            if [ -z "${!name}" ]; then
+              echo "Missing development environment variable: $name" >&2
+              exit 1
+            fi
+          done
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.DEV_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.DEV_AWS_REGION }}
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push image
+        id: image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.DEV_ECR_REPOSITORY }}
+        run: |
+          image="$ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA"
+          docker build --pull -t "$image" .
+          docker push "$image"
+          echo "uri=$image" >> "$GITHUB_OUTPUT"
+      - name: Download the current task definition
+        env:
+          ECS_CLUSTER: ${{ vars.DEV_ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.DEV_ECS_SERVICE }}
+        run: |
+          task_definition=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          if [ -z "$task_definition" ] || [ "$task_definition" = None ]; then
+            echo "Development ECS service has no task definition" >&2
+            exit 1
+          fi
+          aws ecs describe-task-definition \
+            --task-definition "$task_definition" \
+            --query taskDefinition \
+            --output json | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' > task-definition.json
+      - name: Set image in task definition
+        id: task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ vars.DEV_ECS_CONTAINER }}
+          image: ${{ steps.image.outputs.uri }}
+      - name: Deploy and wait for ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task.outputs.task-definition }}
+          cluster: ${{ vars.DEV_ECS_CLUSTER }}
+          service: ${{ vars.DEV_ECS_SERVICE }}
+          wait-for-service-stability: true

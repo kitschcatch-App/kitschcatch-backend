@@ -112,10 +112,12 @@ class SocialLoginHttpTest {
 		registry.add("kakao.oauth.jwk-set-uri", () -> root + "/jwks");
 		registry.add("spring.datasource.url", () -> dbUrl());
 		registry.add("spring.datasource.driver-class-name", () -> postgres() ? "org.postgresql.Driver" : "org.h2.Driver");
-		registry.add("spring.datasource.username", () -> postgres() ? "issue53" : "sa");
-		registry.add("spring.datasource.password", () -> "");
+		registry.add("spring.datasource.username", SocialLoginHttpTest::dbUser);
+		registry.add("spring.datasource.password", SocialLoginHttpTest::dbPassword);
 	}
 	private static boolean postgres() { return System.getenv("ISSUE53_TEST_DB_URL") != null; }
+	private static String dbUser() { return postgres() ? System.getenv().getOrDefault("ISSUE53_TEST_DB_USER", "issue53") : "sa"; }
+	private static String dbPassword() { return postgres() ? System.getenv().getOrDefault("ISSUE53_TEST_DB_PASSWORD", "") : ""; }
 	private static String dbUrl() {
 		return postgres() ? System.getenv("ISSUE53_TEST_DB_URL") : "jdbc:h2:mem:issue53-social;MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
 	}
@@ -129,7 +131,7 @@ class SocialLoginHttpTest {
 	@BeforeAll
 	void legacyMigrationWhenPostgres() throws Exception {
 		if (!postgres()) return;
-		try (var connection = DriverManager.getConnection(dbUrl(), "issue53", ""); var sql = connection.createStatement()) {
+		try (var connection = DriverManager.getConnection(dbUrl(), dbUser(), dbPassword()); var sql = connection.createStatement()) {
 			sql.execute("ALTER TABLE users ALTER COLUMN email SET NOT NULL");
 			sql.execute("ALTER TABLE users ADD CONSTRAINT legacy_unique_email UNIQUE (email)");
 			sql.execute("ALTER TABLE users ADD CONSTRAINT legacy_provider CHECK (auth_provider IN ('KAKAO'))");
@@ -247,7 +249,7 @@ class SocialLoginHttpTest {
 		assertThat(EXCHANGES.get()).isZero();
 		var expired = nonces.findAll().stream().filter(n -> n.getNonceHash().equals(JwtTokenProvider.hash("APPLE:" + nonce))).findFirst().orElseThrow();
 		// 실제 DB 만료 상태를 만들어 nonce 수명의 경계를 검증한다.
-		try (var connection = DriverManager.getConnection(dbUrl(), postgres() ? "issue53" : "sa", "");
+		try (var connection = DriverManager.getConnection(dbUrl(), dbUser(), dbPassword());
 			var sql = connection.prepareStatement("UPDATE login_nonces SET expires_at = ? WHERE id = ?")) {
 			sql.setObject(1, LocalDateTime.now().minusSeconds(1)); sql.setLong(2, expired.getId()); sql.executeUpdate();
 		}
@@ -321,7 +323,7 @@ class SocialLoginHttpTest {
 	@Test
 	void postgresMigrationRollsBackIfStandaloneEmailIndexNeedsReview() throws Exception {
 		org.junit.jupiter.api.Assumptions.assumeTrue(postgres(), "PostgreSQL 전용 SQL 검증");
-		try (var connection = DriverManager.getConnection(dbUrl(), "issue53", ""); var sql = connection.createStatement()) {
+		try (var connection = DriverManager.getConnection(dbUrl(), dbUser(), dbPassword()); var sql = connection.createStatement()) {
 			sql.execute("ALTER TABLE users ALTER COLUMN email SET NOT NULL");
 			sql.execute("CREATE UNIQUE INDEX issue53_standalone_email ON users (email)");
 			try {
