@@ -16,8 +16,8 @@ public record ChatRoomDetailResponse(
         String postTitle,
 
         @Schema(
-                description = "판매 게시글 대표 이미지 URL",
-                example = "https://example-bucket.s3.ap-northeast-2.amazonaws.com/posts/1/thumbnail.png"
+                description = "판매 게시글 대표 이미지 S3 GET 서명 URL. 기본 15분 유효하며 만료되면 채팅방 상세를 다시 조회합니다.",
+                example = "https://example-bucket.s3.ap-northeast-2.amazonaws.com/posts/1/thumbnail.png?X-Amz-Signature=..."
         )
         String postThumbnailImageUrl
 ) {

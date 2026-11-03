@@ -11,11 +11,13 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
@@ -98,11 +100,11 @@ public class S3PostImageStorage implements PostImageStorage {
 
 	@Override
 	public String imageUrl(String objectKey) {
-		if (StringUtils.hasText(properties.publicBaseUrl())) {
-			return properties.publicBaseUrl() + "/" + objectKey;
-		}
 		validateBucket();
-		return "https://" + properties.bucket() + ".s3." + properties.region() + ".amazonaws.com/" + objectKey;
+		return s3Presigner.presignGetObject(GetObjectPresignRequest.builder()
+			.signatureDuration(properties.downloadUrlTtl())
+			.getObjectRequest(GetObjectRequest.builder().bucket(properties.bucket()).key(objectKey).build())
+			.build()).url().toString();
 	}
 
 	private String objectKey(Long userId, String originalFileName, String contentType) {

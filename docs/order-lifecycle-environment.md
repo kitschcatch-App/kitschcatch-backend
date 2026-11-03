@@ -30,7 +30,7 @@
 | `APP_TOSS_PAYMENTS_BASE_URL`, `APP_TOSS_PAYMENTS_SECRET_KEY` | 기존 카드 승인/취소/조회용 Toss 설정. 지급대행 설정과 동일하다고 가정하지 않는다. |
 | `APP_PAYMENTS_RECOVERY_ENABLED` | Spring relaxed binding으로 기존 `app.payments.recovery.enabled`를 설정. 기본 false이므로 자동 복구를 사용할 환경에서 true가 필요하다. |
 | `app.payments.recovery.scan-delay`, `success-scan-delay`, `batch-size` | 기존 복구 스케줄러 설정. 기본 30s, 1h, 100. |
-| `APP_S3_PUBLIC_BASE_URL` 또는 `APP_S3_BUCKET/APP_S3_REGION` | 기존 거래 상세 이미지 URL 구성. 신규 API 자체에 별도 S3 자격 증명은 추가하지 않는다. |
+| `APP_S3_BUCKET`, `APP_S3_REGION`, `APP_S3_DOWNLOAD_URL_TTL` | 거래 상세 대표 이미지 GET 서명 설정. 해당 객체의 `s3:GetObject` 권한을 가진 서버 AWS 자격 증명이 필요하다. 기본 유효기간은 15분이다. |
 | `SPRING_JPA_HIBERNATE_DDL_AUTO` | 배포 시 수동 SQL 적용 후 `validate`로 확인. |
 
 PG 응답 미확정 시 상품 예약을 임의 해제하지 않는다. 스케줄러/웹훅 복구가 비활성화돼 있으면 불확실 상태가 자동 종료되지 않으므로 운영에서 복구 상태를 확인해야 한다. 정산에는 아직 주기 조회 스케줄러가 없으며 내부 POST 재요청이 같은 지급 식별자를 조회한다.

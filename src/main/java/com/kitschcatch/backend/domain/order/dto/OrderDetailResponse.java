@@ -27,7 +27,7 @@ public record OrderDetailResponse(
     }
 
     public record OrderedPost(Long id, String title,
-        @Schema(description = "주문 당시 대표 이미지 키로 만든 URL. 이미지가 없으면 null", nullable = true) String thumbnailUrl) {}
+        @Schema(description = "주문 당시 대표 이미지 키의 S3 GET 서명 URL. 기본 15분 유효하며 이미지가 없으면 null", nullable = true) String thumbnailUrl) {}
 
     public record OrderedPayment(String paymentId, PaymentMethod method, PaymentStatus status,
         PaymentOperation processingOperation, PaymentRecoveryState recoveryState,

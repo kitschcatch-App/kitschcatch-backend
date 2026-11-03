@@ -1,6 +1,7 @@
 // 실제 SDK 서명 결과와 프로필 저장소의 전송 조건을 AWS 연결 없이 검증한다.
 package com.kitschcatch.backend.domain.user.storage;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -61,7 +62,7 @@ class S3ProfileImageStorageTest {
 		String query = URLDecoder.decode(URI.create(result.uploadUrl()).getRawQuery(), StandardCharsets.UTF_8);
 
 		assertThat(result.imageKey()).matches("profiles/42/[0-9a-f-]{36}\\.jpg");
-		assertThat(result.imageUrl()).isEqualTo("https://cdn.example.com/" + result.imageKey());
+		assertGetUrl(result.imageUrl(), "test-bucket", result.imageKey(), 900, "test-access", "test-secret");
 		assertThat(result.expiresIn()).isEqualTo(600);
 		assertThat(result.expiresAt()).isBetween(before.plusSeconds(599), Instant.now().plusSeconds(601));
 		assertThat(query).contains("X-Amz-Expires=600", "X-Amz-SignedHeaders=content-length;content-type;host;if-none-match");
@@ -77,19 +78,30 @@ class S3ProfileImageStorageTest {
 			.isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
 		assertThatThrownBy(() -> storage("", "").createUploadUrl(42L, "photo.png", "image/png", 1))
 			.isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(ErrorCode.S3_BUCKET_NOT_CONFIGURED);
+		assertThatThrownBy(() -> storage("", "https://cdn.example.com").imageUrl("profiles/42/image.png"))
+			.isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(ErrorCode.S3_BUCKET_NOT_CONFIGURED);
+		verifyNoInteractions(client);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"", "https://cdn.example.com"})
+	void signsExistingKeysAndEncodesLegacyFileNamesRegardlessOfPublicBaseUrl(String baseUrl) {
+		String key = "profiles/42/내 사진+?#%.png";
+		assertGetUrl(storage("test-bucket", baseUrl).imageUrl(key), "test-bucket", key, 900, "test-access", "test-secret");
 		verifyNoInteractions(client);
 	}
 
 	@Test
-	void encodesLegacyFileNamesAndSupportsS3Fallback() {
-		assertThat(storage.imageUrl("profiles/42/내 사진.png"))
-			.isEqualTo("https://cdn.example.com/profiles/42/%EB%82%B4%20%EC%82%AC%EC%A7%84.png");
-		assertThat(storage("test-bucket", "").imageUrl("profiles/42/image.png"))
-			.isEqualTo("https://test-bucket.s3.ap-northeast-2.amazonaws.com/profiles/42/image.png");
+	void usesDownloadTtlIndependentlyOfProfileUploadTtl() {
+		var properties = new S3Properties("ap-northeast-2", "test-bucket", "", null, Duration.ofSeconds(120), null, null);
+		var storage = new S3ProfileImageStorage(client, properties, presigner, new ProfileImagePolicy(profileProperties), profileProperties);
+		var result = storage.createUploadUrl(42L, "photo.png", "image/png", 1024);
+		assertGetUrl(result.imageUrl(), "test-bucket", result.imageKey(), 120, "test-access", "test-secret");
+		assertThat(result.expiresIn()).isEqualTo(600);
 	}
 
 	private S3ProfileImageStorage storage(String bucket, String baseUrl) {
-		return new S3ProfileImageStorage(client, new S3Properties("ap-northeast-2", bucket, baseUrl, null, null, null),
+		return new S3ProfileImageStorage(client, new S3Properties("ap-northeast-2", bucket, baseUrl, null, null, null, null),
 			presigner, new ProfileImagePolicy(profileProperties), profileProperties);
 	}
 

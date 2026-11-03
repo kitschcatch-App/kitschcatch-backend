@@ -1,6 +1,13 @@
 // 탈퇴 HTTP 계약과 거래 보존·인증 차단·동시성 불변식을 실제 서버에서 검증한다.
 package com.kitschcatch.backend.domain.order;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
+import org.springframework.test.context.bean.override.convention.TestBean;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -47,11 +54,19 @@ import org.springframework.transaction.support.TransactionTemplate;
     "spring.datasource.url=jdbc:h2:mem:issue57;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.driver-class-name=org.h2.Driver","spring.datasource.username=sa","spring.datasource.password=",
     "spring.jpa.hibernate.ddl-auto=create-drop","kakao.oauth.native-app-key=test-native-app-key",
-    "app.orders.expiration-enabled=false","app.payments.recovery.enabled=false","app.s3.public-base-url=https://cdn.example.test","springdoc.api-docs.enabled=true"
+    "app.orders.expiration-enabled=false","app.payments.recovery.enabled=false","app.s3.public-base-url=https://cdn.example.test", "app.s3.download-url-ttl=15m", "app.s3.bucket=test-bucket","springdoc.api-docs.enabled=true"
 })
 class UserWithdrawalHttpTest extends UserWithdrawalHttpContract {}
 
 abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
+    @TestBean(methodName = "testPresigner") S3Presigner s3Presigner;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")))
+            .build();
+    }
+
     @Autowired RefreshTokenRepository refreshTokens;
     @Autowired com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository attempts;
     @Autowired com.kitschcatch.backend.domain.order.repository.PaymentRepository paymentRecords;
@@ -181,6 +196,9 @@ abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
         assertThat(get("/api/posts/"+o.postId(),buyerToken).status()).isEqualTo(404);
         var detail=get("/api/orders/"+o.orderId(),buyerToken);
         assertThat(detail.status()).isEqualTo(200);
+        var orderPost = (Map<?, ?>) detail.data().get("post");
+        assertGetUrl(orderPost.get("thumbnailUrl").toString(), "test-bucket", o.imageKey(),
+            900, "test-access", "test-secret");
         assertThat(detail.body().toString()).contains("판매자","구매자").doesNotContain(seller.getEmail(),seller.getProviderUserId());
         verify(s3,never()).deleteObject(any(software.amazon.awssdk.services.s3.model.DeleteObjectRequest.class));
     }

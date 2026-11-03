@@ -7,7 +7,7 @@ public record PostImageResponse(
 	@Schema(description = "이미지 저장 키")
 	String imageKey,
 
-	@Schema(description = "이미지 조회 URL")
+	@Schema(description = "S3 GET 서명 URL. 기본 15분 유효하며 만료되면 상품 API를 다시 조회합니다.")
 	String imageUrl,
 
 	@Schema(description = "이미지 정렬 순서")

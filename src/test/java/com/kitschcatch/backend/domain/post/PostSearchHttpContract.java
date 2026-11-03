@@ -1,6 +1,13 @@
 // 상품 검색의 JWT·필터 결합·정렬·페이지·삭제·SQL 부작용과 쿼리 수를 실제 HTTP로 검증한다.
 package com.kitschcatch.backend.domain.post;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
+import org.springframework.test.context.bean.override.convention.TestBean;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -42,6 +49,14 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 @Import(PostSearchHttpContract.SqlObservation.class)
 abstract class PostSearchHttpContract {
+    @TestBean(methodName = "testPresigner") S3Presigner s3Presigner;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")))
+            .build();
+    }
+
     @TestConfiguration
     static class SqlObservation {
         @Bean CountBoundary countBoundary() { return new CountBoundary(); }
@@ -257,7 +272,8 @@ abstract class PostSearchHttpContract {
         assertThat((List<?>) row.get("images")).hasSize(2);
         @SuppressWarnings("unchecked") var image = ((List<Map<String, Object>>) row.get("images")).getFirst();
         assertThat(image).containsEntry("sortOrder", 0);
-        assertThat(image.get("imageUrl").toString()).startsWith("https://cdn.example.test/posts/");
+        assertGetUrl(image.get("imageUrl").toString(), "test-bucket", image.get("imageKey").toString(),
+            900, "test-access", "test-secret");
         assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(6); // 인증 시 종료 계정 확인 쿼리 1회 포함
         assertThat(statistics.getEntityInsertCount() + statistics.getEntityUpdateCount() + statistics.getEntityDeleteCount()).isZero();
         verifyNoInteractions(s3, toss);

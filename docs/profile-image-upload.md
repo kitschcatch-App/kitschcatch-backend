@@ -36,7 +36,7 @@ HTTP 200으로 반환한다. 아래 URL은 형식 설명용이며 유효한 서�
   "data": {
     "uploadUrl": "https://s3.example.com/presigned-upload-url",
     "imageKey": "profiles/123/550e8400-e29b-41d4-a716-446655440000.jpg",
-    "imageUrl": "https://cdn.example.com/profiles/123/550e8400-e29b-41d4-a716-446655440000.jpg",
+    "imageUrl": "https://test-bucket.s3.ap-northeast-2.amazonaws.com/profiles/123/550e8400-e29b-41d4-a716-446655440000.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=900&X-Amz-Signature=...",
     "expiresAt": "2026-09-27T03:10:00Z",
     "expiresIn": 600,
     "uploadHeaders": {
@@ -49,7 +49,7 @@ HTTP 200으로 반환한다. 아래 URL은 형식 설명용이며 유효한 서�
 
 - `uploadUrl`: 파일 바이트를 PUT하는 URL. 저장하거나 로그에 남길 프로필 조회 URL이 아니다.
 - `imageKey`: 업로드 성공 후 기존 프로필 API의 `profileImageKey`로 전달한다.
-- `imageUrl`: 업로드 후 조회할 URL. 공개 또는 CDN 접근 설정은 별도로 필요하다.
+- `imageUrl`: 업로드 후 사용할 GET 서명 URL. 발급 시점부터 기본 15분 유효하며 비공개 버킷을 지원한다. 예시의 서명 쿼리는 축약했다. `expiresIn`·`expiresAt`은 업로드 URL 기준이다.
 - `expiresAt`: SDK 서명의 만료 시각. 임시 AWS 자격 증명이 먼저 만료되면 이보다 일찍 사용할 수 없게 된다.
 - `expiresIn`: 발급 시점 기준 유효 초. 기본 600초다.
 - `uploadHeaders`: SDK 서명 결과의 필수 헤더. HTTP 클라이언트가 생성하는 Host·Content-Length는 제외한다.
@@ -105,11 +105,12 @@ S3 HEAD 403을 미업로드로 바꾸지 않는다. 없는 객체가 404로 구�
 | `AWS_PROFILE`. | 로컬 실행 시 사용할 AWS 프로필. 코드에 자격 증명을 저장하지 않는다. |
 | `APP_S3_REGION`. | `ap-northeast-2`. |
 | `APP_S3_BUCKET`. | 기본 빈 값. 실제 발급·HEAD 사용 시 필요하다. |
-| `APP_S3_PUBLIC_BASE_URL`. | 선택. 미설정 시 리전별 S3 객체 URL을 반환한다. |
+| `APP_S3_DOWNLOAD_URL_TTL`. | 상품·프로필 조회 URL 유효기간. 기본 `15m`. 1초~7일의 정수 초. |
+| `APP_S3_PUBLIC_BASE_URL`. | 상품·프로필에는 적용하지 않는다. 기존 채팅 첨부 이미지에만 사용한다. |
 | `APP_PROFILE_IMAGE_MAX_SIZE_BYTES`. | `5000000`. 양수여야 한다. |
 | `APP_PROFILE_IMAGE_UPLOAD_URL_TTL`. | `10m`. 1초~7일의 정수 초여야 한다. |
 
-판매글·채팅이 사용하는 `APP_S3_UPLOAD_URL_TTL` 기본 5분은 그대로다. 웹 사용 시 PUT과 반환 서명 헤더를 허용하는 S3 CORS 및 실제 조회 경로도 구성해야 한다.
+판매글·채팅이 사용하는 `APP_S3_UPLOAD_URL_TTL` 기본 5분은 그대로다. 서버 자격 증명에는 해당 객체의 `s3:GetObject` 권한이 필요하다. 조회 URL이 만료되면 `GET /api/users/me`로 새 URL을 받는다. 웹 사용 시 필요한 PUT·GET과 반환 서명 헤더를 허용하는 S3 CORS를 구성한다. [비공개 이미지 조회 계약](private-image-urls.md)을 참고한다.
 
 ## 실행한 검증
 

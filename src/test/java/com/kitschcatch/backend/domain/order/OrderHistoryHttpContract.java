@@ -1,6 +1,7 @@
 // 실제 HTTP·JWT·DB로 거래 내역의 권한·상태·스냅샷·페이지와 읽기 전용 동작을 검증한다.
 package com.kitschcatch.backend.domain.order;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
@@ -33,10 +34,15 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.web.client.RestClient;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 
 abstract class OrderHistoryHttpContract {
     @LocalServerPort int port;
@@ -47,12 +53,19 @@ abstract class OrderHistoryHttpContract {
     @Autowired EntityManagerFactory entityManagerFactory;
     @MockitoBean TossPaymentsClient toss;
     @MockitoBean S3Client s3;
+    @TestBean(methodName = "testPresigner") S3Presigner s3Presigner;
     User buyer;
     User seller;
     User stranger;
     String buyerToken;
     String sellerToken;
     String strangerToken;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")))
+            .build();
+    }
 
     @BeforeEach
     void resetData() {
@@ -73,8 +86,9 @@ abstract class OrderHistoryHttpContract {
             assertThat(response.status()).isEqualTo(200);
             var data = response.data();
             assertThat(data).containsEntry("orderId", order.orderId()).containsEntry("status", "PENDING").containsEntry("amount", 12000);
-            assertThat(child(data, "post")).containsEntry("title", "주문 당시 상품")
-                .containsEntry("thumbnailUrl", "https://cdn.example.test/" + order.imageKey());
+            assertThat(child(data, "post")).containsEntry("title", "주문 당시 상품");
+            assertGetUrl(child(data, "post").get("thumbnailUrl").toString(), "test-bucket", order.imageKey(),
+                900, "test-access", "test-secret");
             assertThat(((Number) child(data, "post").get("id")).longValue()).isEqualTo(order.postId());
             assertThat(child(data, "buyer")).containsEntry("nickname", "구매자");
             assertThat(child(data, "seller")).containsEntry("nickname", "판매자");
@@ -253,8 +267,9 @@ abstract class OrderHistoryHttpContract {
         clearInvocations(s3, toss);
         var detail = get("/api/orders/" + order.orderId(), buyerToken);
         assertThat(detail.data()).containsEntry("amount", 12000);
-        assertThat(child(detail.data(), "post")).containsEntry("title", "주문 당시 상품")
-            .containsEntry("thumbnailUrl", "https://cdn.example.test/" + order.imageKey());
+        assertThat(child(detail.data(), "post")).containsEntry("title", "주문 당시 상품");
+        assertGetUrl(child(detail.data(), "post").get("thumbnailUrl").toString(), "test-bucket", order.imageKey(),
+            900, "test-access", "test-secret");
         assertThat(child(detail.data(), "buyer")).containsEntry("nickname", "구매자");
         assertThat(child(detail.data(), "seller")).containsEntry("nickname", "판매자");
         assertThat(get("/api/users/me/purchase-orders", buyerToken).rows().getFirst()).containsEntry("postTitle", "주문 당시 상품").containsEntry("amount", 12000);
