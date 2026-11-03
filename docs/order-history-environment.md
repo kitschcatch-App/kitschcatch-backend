@@ -1,6 +1,6 @@
 # 거래 내역 환경 변수와 DB 적용 설정
 
-새로 추가하는 백엔드 환경 변수는 없다. 기존 DB·JWT·이미지 URL 설정을 사용한다. 실제 값과 자격 증명은 저장소·Obsidian에 기록하지 않는다.
+거래 내역은 기존 DB·JWT와 공통 이미지 서명 설정을 사용한다. 실제 값과 자격 증명은 저장소·Obsidian에 기록하지 않는다.
 
 ## 기존 실행 변수
 
@@ -12,11 +12,11 @@
 | `PROD_DB_URL`, `PROD_DB_USERNAME`, `PROD_DB_PASSWORD` | 운영 DB 접속 값. |
 | `APP_JWT_SECRET` | 기존 access token 발급·검증과 동일한 키. 최소 32 UTF-8 바이트. 운영에서 개발 기본값을 사용하지 않는다. |
 | `KAKAO_NATIVE_APP_KEY` | 기존 인증 구성 초기화용. 거래 조회에서 카카오를 호출하지 않는다. |
-| `APP_S3_PUBLIC_BASE_URL` | 대표 이미지 URL의 기존 CDN 기본 주소. 값이 있으면 이 주소와 저장된 객체 키를 조합한다. |
-| `APP_S3_BUCKET`, `APP_S3_REGION` | CDN 주소가 없을 때 S3 URL을 조합하는 기존 버킷과 리전. 리전 기본값 `ap-northeast-2`. |
+| `APP_S3_BUCKET`, `APP_S3_REGION` | 대표 이미지 GET 서명에 사용할 버킷과 리전. 리전 기본값 `ap-northeast-2`. |
+| `APP_S3_DOWNLOAD_URL_TTL` | 대표 이미지 GET 서명 URL 유효기간. 기본 `15m`. |
 | `SPRING_JPA_HIBERNATE_DDL_AUTO` | 수동 SQL 적용 뒤 운영 전체 스키마 검증에는 `validate`. 기존 local의 `update`가 기존 데이터 보완 SQL을 대체하지 않는다. |
 
-대표 이미지가 있는 주문은 CDN 주소 또는 버킷 설정이 필요하다. 이미지가 없는 주문의 URL은 null이다. 조회에서는 서명 URL 발급이나 S3·PG 네트워크 요청을 하지 않으므로 거래 조회만을 위한 AWS 자격 증명이나 Toss 비밀키를 추가하지 않는다. 기존 업로드·결제 기능의 자격 증명 요구사항은 그대로다.
+대표 이미지가 있는 주문은 버킷 설정과 해당 객체의 `s3:GetObject` 권한을 가진 AWS 자격 증명이 필요하다. 저장된 객체 키로 GET 서명 URL을 발급하며 `APP_S3_PUBLIC_BASE_URL`은 사용하지 않는다. 이미지가 없는 주문의 URL은 null이다. URL 발급 자체는 S3 객체 HEAD/GET이나 PG 호출을 하지 않는다. 자격 증명 공급자의 갱신 요청은 발생할 수 있다. [공통 이미지 조회 계약](private-image-urls.md)을 참고한다.
 
 프로젝트는 `.env`를 자동으로 읽지 않는다. 셸·IDE 실행 구성·배포 시스템에서 주입한다. 앱은 기존 백엔드 주소와 access token을 사용한다.
 
@@ -45,4 +45,4 @@
 ./gradlew clean test build --console=plain
 ```
 
-PostgreSQL 변수가 없으면 전용 테스트를 건너뛰므로 테스트 결과의 skipped 수를 확인한다. HTTP 테스트는 고정 테스트 CDN 주소와 외부 서비스 대역을 사용하며 실제 업로드·PG 거래를 발생시키지 않는다.
+PostgreSQL 변수가 없으면 전용 테스트를 건너뛰므로 테스트 결과의 skipped 수를 확인한다. HTTP 테스트는 테스트용 자격 증명의 실제 SDK 서명과 외부 서비스 대역을 사용하며 실제 업로드·PG 거래를 발생시키지 않는다.
