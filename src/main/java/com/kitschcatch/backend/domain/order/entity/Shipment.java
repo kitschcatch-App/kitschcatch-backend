@@ -3,6 +3,7 @@ package com.kitschcatch.backend.domain.order.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 @Embeddable
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -13,11 +14,11 @@ public class Shipment {
     @Column(name="shipment_updated_at") private LocalDateTime updatedAt;
     public Shipment(String carrierCode, String trackingNumber) {
         this.carrierCode=carrierCode; this.trackingNumber=trackingNumber;
-        this.registeredAt=LocalDateTime.now(); this.updatedAt=registeredAt;
+        this.registeredAt=LocalDateTime.now().truncatedTo(ChronoUnit.MICROS); this.updatedAt=registeredAt;
     }
     public void update(String carrierCode, String trackingNumber) {
         if (matches(carrierCode,trackingNumber)) return;
-        this.carrierCode=carrierCode; this.trackingNumber=trackingNumber; this.updatedAt=LocalDateTime.now();
+        this.carrierCode=carrierCode; this.trackingNumber=trackingNumber; this.updatedAt=LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
     }
     public boolean matches(String carrierCode, String trackingNumber) {
         return this.carrierCode.equals(carrierCode) && this.trackingNumber.equals(trackingNumber);

@@ -4,6 +4,14 @@
 
 `develop` 푸시 또는 `develop`에서 수동 실행한 빌드가 통과하면 `DEV_DEPLOY_ENABLED=true`일 때만 `development` 환경의 ECS 서비스에 배포한다. 새 커밋의 Docker 이미지를 ECR에 올리고 현재 서비스의 태스크 정의에서 컨테이너 이미지만 바꾼 새 리비전을 등록한 뒤 서비스가 안정화될 때까지 기다린다. GitHub OIDC로 단기 AWS 자격 증명을 얻으며 장기 AWS 액세스 키는 GitHub에 저장하지 않는다.
 
+## 시간 정밀도 회귀 검증
+
+프로필 등록·배송 등록/수정·구매 확정·수취인 검증 시각은 엔티티에 대입할 때 마이크로초로 절삭한다. 나노초 값을 최초 응답에 그대로 반환하면 DB의 마이크로초 저장 정밀도 때문에 재조회 응답과 달라질 수 있다. 기존 시간대와 DB 스키마는 유지하며, 과거 데이터는 변경하지 않는다.
+
+`StoredTimestampPrecisionTest`는 실행 환경의 시계 해상도에 의존하지 않고 나노초 값과 초 경계 직전 값을 주입한다. 실제 DB 저장·재조회, 부분 수정 및 반복 호출 후에도 최초 시각이 보존되는지 확인한다. 기존 HTTP 응답 동등성 검사도 유지한다.
+
+2026-11-03 로컬의 격리 PostgreSQL 14.18에서 CI와 동일한 DB 환경 변수 및 분리 DB를 사용해 `./gradlew clean build --no-daemon --console=plain`을 실행했다. 1,240개 테스트가 통과했고 실패·오류·건너뜀은 0개였다. 검증용 DB는 종료·제거했다. 이 결과는 GitHub Actions 실행 결과 및 서버 배포와 구분한다.
+
 ## 배포 전 준비
 
 1. 개발 계정에 ECR 저장소, ECS 클러스터·서비스·태스크 정의, 개발 PostgreSQL과 네트워크를 먼저 준비한다. 태스크 정의의 컨테이너 환경에는 `SPRING_PROFILES_ACTIVE=dev`, `DEV_DB_URL`, `DEV_DB_USERNAME`, `DEV_DB_PASSWORD`, `APP_JWT_SECRET` 등 필요한 값을 AWS Secrets Manager 또는 SSM Parameter Store 참조로 설정한다. S3·Toss는 실제 연동을 준비하기 전까지 비활성 상태로 둔다.

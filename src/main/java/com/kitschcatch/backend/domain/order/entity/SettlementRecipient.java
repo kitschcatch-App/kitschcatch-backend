@@ -2,6 +2,7 @@
 package com.kitschcatch.backend.domain.order.entity;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import lombok.*;
 @Entity @Table(name="settlement_recipients") @Getter @NoArgsConstructor(access=AccessLevel.PROTECTED)
 public class SettlementRecipient {
@@ -10,6 +11,6 @@ public class SettlementRecipient {
     @Column(nullable=false) private Long registeredBy;
     @Column(nullable=false) private LocalDateTime verifiedAt;
     public SettlementRecipient(long sellerId,String providerSellerId,long operatorId) {
-        this.sellerId=sellerId;this.providerSellerId=providerSellerId;this.registeredBy=operatorId;this.verifiedAt=LocalDateTime.now();
+        this.sellerId=sellerId;this.providerSellerId=providerSellerId;this.registeredBy=operatorId;this.verifiedAt=LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
     }
 }

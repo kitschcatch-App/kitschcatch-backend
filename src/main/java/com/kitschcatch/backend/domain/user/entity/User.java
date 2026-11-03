@@ -14,6 +14,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -109,7 +110,7 @@ public class User {
 		this.nickname = nickname;
 		this.nicknameKey = nicknameKey;
 		this.profileImageKey = profileImageKey;
-		this.profileRegisteredAt = registeredAt;
+		this.profileRegisteredAt = registeredAt.truncatedTo(ChronoUnit.MICROS);
 	}
 
 	public void updateProfile(String nickname, String nicknameKey, String profileImageKey, boolean imageProvided) {
