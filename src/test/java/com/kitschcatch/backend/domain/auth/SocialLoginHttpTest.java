@@ -42,6 +42,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -74,6 +76,7 @@ class SocialLoginHttpTest {
 	private static volatile String exchangeForm;
 	private static volatile String profileAuthorization;
 	private static final AtomicInteger EXCHANGES = new AtomicInteger();
+	private static final AtomicInteger PROFILE_CALLS = new AtomicInteger();
 	static {
 		try {
 			KEY = new RSAKeyGenerator(2048).keyID("local-key").generate();
@@ -94,6 +97,7 @@ class SocialLoginHttpTest {
 				try (var out = exchange.getResponseBody()) { out.write(body); }
 			});
 			PROVIDER.createContext("/me", exchange -> {
+				PROFILE_CALLS.incrementAndGet();
 				profileAuthorization = exchange.getRequestHeaders().getFirst("Authorization");
 				byte[] body = profileResponse.getBytes(StandardCharsets.UTF_8);
 				exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -154,7 +158,7 @@ class SocialLoginHttpTest {
 	@BeforeEach
 	void reset() {
 		refreshTokens.deleteAllInBatch(); nonces.deleteAllInBatch(); users.deleteAllInBatch();
-		tokenStatus = 200; profileStatus = 200; jwksStatus = 200; EXCHANGES.set(0);
+		tokenStatus = 200; profileStatus = 200; jwksStatus = 200; EXCHANGES.set(0); PROFILE_CALLS.set(0);
 		jwksBody = new JWKSet(KEY.toPublicJWK()).toString();
 		tokenResponse = "{\"access_token\":\"provider-token\",\"token_type\":\"bearer\",\"expires_in\":\"3600\"}";
 		profileResponse = "{\"resultcode\":\"00\",\"response\":{\"id\":\"naver-user\",\"email\":\"same@example.com\"}}";
@@ -260,20 +264,88 @@ class SocialLoginHttpTest {
 		assertThat(naverLogin(state).status()).isEqualTo(401);
 		assertThat(EXCHANGES.get()).isEqualTo(1);
 	}
-	@Test
-	void naverRejectsProviderErrorsExpiredTokenMalformedProfileAndMissingSubject() {
+	@ParameterizedTest
+	@ValueSource(strings = {"{\"error\":\"invalid_grant\"}", "{}", "not-json",
+		"{\"access_token\":\"token\",\"token_type\":\"bearer\",\"expires_in\":\"0\"}",
+		"{\"access_token\":\"token\",\"token_type\":\"MAC\",\"expires_in\":\"3600\"}",
+		"{\"access_token\":\"token\",\"token_type\":\"bearer\",\"expires_in\":\"invalid\"}"})
+	void naverRejectsEachInvalidTokenResponseAfterActuallyExchangingCode(String invalid) {
 		String state = state();
-		for (String invalid : List.of("{\"error\":\"invalid_grant\"}", "{}", "not-json",
-			"{\"access_token\":\"token\",\"token_type\":\"bearer\",\"expires_in\":\"0\"}",
-			"{\"access_token\":\"token\",\"token_type\":\"MAC\",\"expires_in\":\"3600\"}")) {
-			tokenResponse = invalid; assertThat(naverLogin(state).status()).isEqualTo(401);
-		}
-		reset(); state = state(); tokenStatus = 401;
-		assertThat(naverLogin(state).status()).isEqualTo(401); tokenStatus = 200;
-		for (String invalid : List.of("{\"resultcode\":\"024\"}", "{}", "not-json", "{\"resultcode\":\"00\",\"response\":{}}")) {
-			profileResponse = invalid; assertThat(naverLogin(state).status()).isEqualTo(401);
-		}
+		tokenResponse = invalid;
+		assertThat(naverLogin(state).status()).isEqualTo(401);
+		assertThat(EXCHANGES.get()).isEqualTo(1);
+		assertThat(PROFILE_CALLS.get()).isZero();
+		assertThat(naverLogin(state).status()).isEqualTo(401);
+		assertThat(EXCHANGES.get()).isEqualTo(1);
 		assertThat(users.count()).isZero(); assertThat(refreshTokens.count()).isZero();
+	}
+	@ParameterizedTest
+	@ValueSource(strings = {"{\"resultcode\":\"024\"}", "{}", "not-json", "{\"resultcode\":\"00\",\"response\":{}}",
+		"{\"resultcode\":\"00\",\"response\":{\"id\":\"  \"}}"})
+	void naverRejectsEachInvalidProfileAfterActuallyFetchingIt(String invalid) {
+		profileResponse = invalid;
+		assertThat(naverLogin(state()).status()).isEqualTo(401);
+		assertThat(EXCHANGES.get()).isEqualTo(1);
+		assertThat(PROFILE_CALLS.get()).isEqualTo(1);
+		assertThat(users.count()).isZero(); assertThat(refreshTokens.count()).isZero();
+	}
+	@ParameterizedTest
+	@ValueSource(ints = {401, 500})
+	void naverRejectsTokenEndpointHttpErrors(int status) {
+		tokenStatus = status;
+		assertThat(naverLogin(state()).status()).isEqualTo(401);
+		assertThat(EXCHANGES.get()).isEqualTo(1); assertThat(PROFILE_CALLS.get()).isZero();
+		assertThat(users.count()).isZero(); assertThat(refreshTokens.count()).isZero();
+	}
+	@ParameterizedTest
+	@ValueSource(ints = {401, 500})
+	void naverRejectsProfileEndpointHttpErrors(int status) {
+		profileStatus = status;
+		assertThat(naverLogin(state()).status()).isEqualTo(401);
+		assertThat(EXCHANGES.get()).isEqualTo(1); assertThat(PROFILE_CALLS.get()).isEqualTo(1);
+		assertThat(users.count()).isZero(); assertThat(refreshTokens.count()).isZero();
+	}
+	@Test
+	void expiredNaverStateIsRejectedBeforeCodeExchange() throws Exception {
+		String state = state();
+		try (var connection = DriverManager.getConnection(dbUrl(), dbUser(), dbPassword());
+			var sql = connection.prepareStatement("UPDATE login_nonces SET expires_at = ? WHERE nonce_hash = ?")) {
+			sql.setObject(1, LocalDateTime.now().minusSeconds(1));
+			sql.setString(2, JwtTokenProvider.hash("NAVER:" + state));
+			assertThat(sql.executeUpdate()).isEqualTo(1);
+		}
+		assertThat(naverLogin(state).status()).isEqualTo(401);
+		assertThat(EXCHANGES.get()).isZero(); assertThat(PROFILE_CALLS.get()).isZero();
+	}
+	@Test
+	void concurrentNaverStateReplayExchangesCodeOnlyOnce() throws Exception {
+		String state = state();
+		assertThat(concurrently(() -> naverLogin(state), () -> naverLogin(state)))
+			.extracting(Response::status).containsExactlyInAnyOrder(200, 401);
+		assertThat(EXCHANGES.get()).isEqualTo(1); assertThat(PROFILE_CALLS.get()).isEqualTo(1);
+		assertThat(users.count()).isEqualTo(1); assertThat(refreshTokens.count()).isEqualTo(1);
+	}
+	@Test
+	void naverTokensAccessProfileRotateAndKeepTheSameMemberOnNextLogin() {
+		Response first = naverLogin(state());
+		assertThat(first.status()).isEqualTo(200);
+		assertThat(first.user().get("profileRegistered")).isEqualTo(false);
+		String access = (String) first.data().get("accessToken");
+		assertThat(request(HttpMethod.GET, "/api/users/me", null, access).status()).isEqualTo(200);
+		assertThat(request(HttpMethod.POST, "/api/users/me/profile", Map.of("nickname", "네이버회원"), access).status()).isEqualTo(201);
+		Response second = naverLogin(state());
+		assertThat(second.status()).isEqualTo(200);
+		assertThat(second.user().get("id")).isEqualTo(first.user().get("id"));
+		assertThat(second.user().get("profileRegistered")).isEqualTo(true);
+		assertThat(users.count()).isEqualTo(1);
+		String refresh = (String) second.data().get("refreshToken");
+		Response rotated = post("/api/auth/token/refresh", Map.of("refreshToken", refresh));
+		assertThat(rotated.status()).isEqualTo(200);
+		assertThat(rotated.data().get("refreshToken")).isNotEqualTo(refresh);
+		assertThat(post("/api/auth/token/refresh", Map.of("refreshToken", refresh)).status()).isEqualTo(401);
+		String next = (String) rotated.data().get("refreshToken");
+		assertThat(post("/api/auth/logout", Map.of("refreshToken", next)).status()).isEqualTo(200);
+		assertThat(post("/api/auth/token/refresh", Map.of("refreshToken", next)).status()).isEqualTo(401);
 	}
 	@Test
 	void concurrentNewIdentityUsesOneUserAndConcurrentNonceReplaySucceedsOnce() throws Exception {
@@ -344,11 +416,16 @@ class SocialLoginHttpTest {
 	private String state() {
 		Response response = post("/api/auth/naver/state", null); assertThat(response.status()).isEqualTo(200);
 		String state = (String) response.data().get("state");
+		assertThat(state).hasSize(43);
+		assertThat(((Number) response.data().get("expiresIn")).longValue()).isEqualTo(300);
 		assertThat(response.data().get("authorizationUrl").toString()).contains("client_id=naver-app", "state=" + state);
 		return state;
 	}
 	private Response appleLogin(String token, String nonce) { return post("/api/auth/apple/mobile-login", Map.of("idToken", token, "nonce", nonce)); }
-	private Response naverLogin(String state) { return post("/api/auth/naver/mobile-login", Map.of("authorizationCode", "code", "state", state)); }
+	private Response naverLogin(String state) {
+		Response response = post("/api/auth/naver/mobile-login", Map.of("authorizationCode", "code", "state", state));
+		return response;
+	}
 	private String token(String subject, String nonce, String email) throws Exception {
 		return sign(KEY, subject, nonce, "https://appleid.apple.com", "apple-app", Instant.now().plusSeconds(300), Instant.now().minusSeconds(1), email);
 	}

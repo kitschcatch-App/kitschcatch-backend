@@ -41,6 +41,7 @@ public class SocialAuthService {
 		return new KakaoNonceResponse(challenge(AuthProvider.APPLE), TTL_SECONDS);
 	}
 	public NaverAuthorizationResponse naverAuthorization() {
+		naver.validateConfiguration();
 		String state = challenge(AuthProvider.NAVER);
 		return new NaverAuthorizationResponse(state, naver.authorizationUrl(state), TTL_SECONDS);
 	}
@@ -50,6 +51,7 @@ public class SocialAuthService {
 		return login(identity);
 	}
 	public AuthTokenResponse naverLogin(String code, String state) {
+		naver.validateConfiguration();
 		consume(AuthProvider.NAVER, state, ErrorCode.NAVER_LOGIN_FAILED);
 		return login(naver.verify(code, state));
 	}
