@@ -294,7 +294,7 @@ abstract class PostFavoriteHttpContract {
             assertGetUrl(row.get("thumbnailUrl").toString(), "test-bucket", "first.jpg", 900, "test-access", "test-secret");
             assertThat(row).containsEntry("sellerNickname", "검증사용자");
         });
-        assertThat(statistics.getPrepareStatementCount()).isEqualTo(5); // 인증 시 종료 계정 확인 쿼리 1회 포함
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(7); // 집계 2회 및 인증 시 종료 계정 확인 쿼리 1회 포함
         assertThat(statistics.getCollectionFetchCount()).isZero();
         assertThat(statistics.getEntityFetchCount()).isZero();
         verifyNoInteractions(s3);

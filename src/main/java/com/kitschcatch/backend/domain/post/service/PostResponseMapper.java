@@ -11,11 +11,11 @@ public class PostResponseMapper {
     private final PostImageStorage images;
     public PostResponseMapper(PostImageStorage images) { this.images = images; }
 
-    public PostResponse from(Post post) {
+    public PostResponse from(Post post, PostCounts counts) {
         return new PostResponse(post.getId(), post.getUser().getId(), post.getUser().getNickname(),
             post.getTitle(), post.getDescription(), post.getPrice(), post.getProductCategory(),
             post.getProductCondition(), post.getProductStatus(), post.getImages().stream()
                 .map(image -> new PostImageResponse(image.getObjectKey(), images.imageUrl(image.getObjectKey()), image.getSortOrder()))
-                .toList(), post.getCreatedAt(), post.getUpdatedAt());
+                .toList(), post.getCreatedAt(), post.getUpdatedAt(), counts.favoriteCount(), counts.chatRoomCount());
     }
 }

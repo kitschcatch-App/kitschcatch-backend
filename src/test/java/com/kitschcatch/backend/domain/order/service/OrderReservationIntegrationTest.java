@@ -68,7 +68,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({OrderService.class, OrderReservationService.class, OrderReservationScheduler.class,
-	PaymentTransactionService.class, PaymentService.class, PaymentRecoveryService.class, PostService.class})
+	PaymentTransactionService.class, PaymentService.class, PaymentRecoveryService.class, PostService.class, com.kitschcatch.backend.domain.post.service.PostCountQueryService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class OrderReservationIntegrationTest {
 

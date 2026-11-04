@@ -10,13 +10,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
 public class SellerPostService {
     private final SellerPostRepository posts;
     private final UserRepository users;
     private final PostResponseMapper mapper;
-    public SellerPostService(SellerPostRepository posts, UserRepository users, PostResponseMapper mapper) {
-        this.posts = posts; this.users = users; this.mapper = mapper;
+    private final PostCountQueryService counts;
+    public SellerPostService(SellerPostRepository posts, UserRepository users, PostResponseMapper mapper, PostCountQueryService counts) {
+        this.posts = posts; this.users = users; this.mapper = mapper; this.counts = counts;
     }
     public SellerPostPageResponse list(long currentUserId, long sellerId, SellerPostQuery query) {
         if (sellerId < 1) throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
@@ -24,6 +25,8 @@ public class SellerPostService {
         if (sellerId != currentUserId && !users.existsById(sellerId)) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
-        return SellerPostPageResponse.from(posts.findSellerPosts(sellerId, query.status(), query.pageable()).map(mapper::from));
+        var page = posts.findSellerPosts(sellerId, query.status(), query.pageable());
+        var totals = counts.findByPostIds(page.getContent().stream().map(post -> post.getId()).toList());
+        return SellerPostPageResponse.from(page.map(post -> mapper.from(post, totals.get(post.getId()))));
     }
 }

@@ -43,6 +43,12 @@ public record PostResponse(
 	LocalDateTime createdAt,
 
 	@Schema(description = "수정 시각")
-	LocalDateTime updatedAt
+	LocalDateTime updatedAt,
+
+    @Schema(description = "현재 전체 관심 등록 수", minimum = "0")
+    long favoriteCount,
+
+    @Schema(description = "상품의 보관된 문의방 수. 빈 방과 참여자가 숨긴 방 포함", minimum = "0")
+    long chatRoomCount
 ) {
 }
