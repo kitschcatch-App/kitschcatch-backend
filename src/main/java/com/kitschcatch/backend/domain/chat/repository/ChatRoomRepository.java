@@ -10,6 +10,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
+    @Query("select r.post.id as postId, count(r) as total from ChatRoom r where r.post.id in :postIds group by r.post.id")
+    java.util.List<PostCount> countByPostIds(@Param("postIds") java.util.List<Long> postIds);
+
+    interface PostCount {
+        Long getPostId();
+        long getTotal();
+    }
+
 
     @EntityGraph(attributePaths = {"post", "buyer", "seller"})
     Optional<ChatRoom> findByPostIdAndBuyerIdAndSellerId(Long postId, Long buyerId, Long sellerId);
