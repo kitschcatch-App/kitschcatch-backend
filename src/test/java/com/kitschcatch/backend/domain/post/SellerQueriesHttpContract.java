@@ -60,13 +60,66 @@ abstract class SellerQueriesHttpContract {
 
     @BeforeEach
     void reset() {
-        for (String table : List.of("chat_messages", "chat_rooms", "payment_webhook_events", "payment_attempts", "payments", "orders", "post_images", "posts", "users")) {
+        for (String table : List.of("post_favorites", "chat_messages", "chat_rooms", "payment_webhook_events", "payment_attempts", "payments", "orders", "post_images", "posts", "users")) {
             jdbc.update("DELETE FROM " + table);
         }
         seller = user(); buyer = user(); outsider = user();
         sellerToken = tokens.createAccessToken(seller.getId());
         buyerToken = tokens.createAccessToken(buyer.getId());
         outsiderToken = tokens.createAccessToken(outsider.getId());
+    }
+
+    @Test
+    void postCountsStayExactAcrossDetailSearchSellerFavoritesAndUpdate() {
+        var item = post(seller, ProductStatus.ON_SALE);
+        item.addImage("posts/extra.jpg", 1); posts.save(item);
+        var first = room(item, buyer, seller);
+        room(item, outsider, seller); // 메시지 없는 문의방도 센다.
+        jdbc.update("UPDATE chat_rooms SET buyer_deleted_at=?,seller_deleted_at=? WHERE id=?",
+            LocalDateTime.now(), LocalDateTime.now(), first.getId());
+        for (var owner : List.of(buyer, seller, outsider)) {
+            jdbc.update("INSERT INTO post_favorites(user_id,post_id,created_at) VALUES (?,?,?)",
+                owner.getId(), item.getId(), LocalDateTime.of(2026, 11, 4, 10, 0));
+        }
+        jdbc.update("UPDATE posts SET created_at=? WHERE id=?", LocalDateTime.of(2026, 1, 1, 9, 0), item.getId());
+        assertCounts(get("/api/posts/" + item.getId(), buyerToken).data(), 3, 2);
+        assertCounts(get("/api/posts", buyerToken).rows().getFirst(), 3, 2);
+        assertCounts(get("/api/users/me/posts", sellerToken).rows().getFirst(), 3, 2);
+        assertCounts(get("/api/users/" + seller.getId() + "/posts", buyerToken).rows().getFirst(), 3, 2);
+        var favorite = get("/api/users/me/favorite-posts", buyerToken).rows().getFirst();
+        assertCounts(favorite, 3, 2);
+        assertThat(favorite.get("createdAt")).isEqualTo("2026-01-01T09:00:00");
+        assertThat(favorite.get("favoritedAt")).isEqualTo("2026-11-04T10:00:00");
+        var updated = RestClient.create("http://localhost:" + port).patch().uri("/api/posts/" + item.getId())
+            .header("Authorization", "Bearer " + sellerToken).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .body(Map.of("title", "수정 상품"))
+            .exchange((req,res) -> new Response(res.getStatusCode().value(), res.bodyTo(Map.class)));
+        assertThat(updated.status()).isEqualTo(200);
+        assertCounts(updated.data(), 3, 2);
+        jdbc.update("DELETE FROM post_favorites WHERE user_id=? AND post_id=?", outsider.getId(), item.getId());
+        assertCounts(get("/api/posts/" + item.getId(), buyerToken).data(), 2, 2);
+        var zero = post(seller, ProductStatus.SOLD_OUT);
+        assertCounts(get("/api/posts/" + zero.getId(), buyerToken).data(), 0, 0);
+    }
+
+    @Test
+    void favoriteOrderUsesFavoriteTimeInsteadOfProductTime() {
+        var old = post(seller, ProductStatus.RESERVED);
+        var newer = post(seller, ProductStatus.SOLD_OUT);
+        jdbc.update("UPDATE posts SET created_at=? WHERE id=?", LocalDateTime.of(2020,1,1,0,0), old.getId());
+        jdbc.update("INSERT INTO post_favorites(user_id,post_id,created_at) VALUES (?,?,?)",
+            buyer.getId(), newer.getId(), LocalDateTime.of(2025,1,1,0,0));
+        jdbc.update("INSERT INTO post_favorites(user_id,post_id,created_at) VALUES (?,?,?)",
+            buyer.getId(), old.getId(), LocalDateTime.of(2026,1,1,0,0));
+        assertThat(get("/api/users/me/favorite-posts?size=1", buyerToken).rows().getFirst().get("id"))
+            .isEqualTo(old.getId().intValue());
+        assertThat(get("/api/users/me/favorite-posts?page=1&size=1", buyerToken).rows().getFirst().get("id"))
+            .isEqualTo(newer.getId().intValue());
+    }
+
+    void assertCounts(Map<String,Object> row, long favorites, long chats) {
+        assertThat(((Number) row.get("favoriteCount")).longValue()).isEqualTo(favorites);
+        assertThat(((Number) row.get("chatRoomCount")).longValue()).isEqualTo(chats);
     }
 
     @Test
@@ -221,7 +274,7 @@ abstract class SellerQueriesHttpContract {
         stats.clear();
         var page = get("/api/users/me/posts?size=100", sellerToken);
         assertThat(page.rows()).hasSize(25);
-        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(5);
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(7);
         assertThat(((List<?>) page.rows().getFirst().get("images"))).hasSize(1);
         var image = (Map<?, ?>) ((List<?>) page.rows().getFirst().get("images")).getFirst();
         assertGetUrl(image.get("imageUrl").toString(), "test-bucket", image.get("imageKey").toString(),

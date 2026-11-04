@@ -27,6 +27,9 @@ import org.springframework.test.context.DynamicPropertySource;
 })
 class SellerQueriesPostgresHttpTest extends SellerQueriesHttpContract {
     @MockitoSpyBean
+    com.kitschcatch.backend.domain.post.repository.PostFavoriteRepository favorites;
+
+    @MockitoSpyBean
     ChatMessageRepository messageRepository;
 
     @Test
@@ -65,6 +68,32 @@ class SellerQueriesPostgresHttpTest extends SellerQueriesHttpContract {
             assertThat(unread(sellerToken)).containsEntry(room.getId(), 1L);
         } finally {
             org.mockito.Mockito.reset(messageRepository);
+        }
+    }
+
+    @Test
+    void favoritePageAndBothCountsUseOneSnapshotDuringConcurrentChanges() {
+        var item = post(seller, ProductStatus.ON_SALE);
+        jdbc.update("INSERT INTO post_favorites(user_id,post_id,created_at) VALUES (?,?,?)",
+            buyer.getId(), item.getId(), java.time.LocalDateTime.now());
+        var once = new AtomicBoolean();
+        doAnswer(invocation -> {
+            if (once.compareAndSet(false, true)) {
+                CompletableFuture.runAsync(() -> {
+                    jdbc.update("DELETE FROM post_favorites WHERE post_id=?", item.getId());
+                    room(item, outsider, seller);
+                }).get(10, SECONDS);
+            }
+            return mockingDetails(favorites).getMockCreationSettings().getDefaultAnswer().answer(invocation);
+        }).when(favorites).countByPostIds(anyList());
+        try {
+            var page = get("/api/users/me/favorite-posts", buyerToken);
+            assertThat(page.rows()).hasSize(1);
+            assertCounts(page.rows().getFirst(), 1, 0);
+            assertThat(get("/api/users/me/favorite-posts", buyerToken).rows()).isEmpty();
+            assertCounts(get("/api/posts/" + item.getId(), buyerToken).data(), 0, 1);
+        } finally {
+            org.mockito.Mockito.reset(favorites);
         }
     }
 
