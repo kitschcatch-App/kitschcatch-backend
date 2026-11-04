@@ -202,7 +202,7 @@ class PostControllerTest {
 			ProductStatus.ON_SALE,
 			List.of(new PostImageResponse("posts/1/image.png", "https://cdn.example.com/posts/1/image.png", 0)),
 			now,
-			now
+			now, 0L, 0L
 		);
 	}
 }

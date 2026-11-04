@@ -47,6 +47,15 @@ class PostServiceTest {
 	private PostService postService;
 	private User seller;
 
+    private PostCountQueryService counts() {
+        var counts = mock(PostCountQueryService.class);
+        when(counts.findByPostIds(org.mockito.ArgumentMatchers.anyList())).thenAnswer(invocation -> {
+            java.util.List<Long> ids = invocation.getArgument(0);
+            return ids.stream().collect(java.util.stream.Collectors.toMap(id -> id, id -> PostCounts.ZERO));
+        });
+        return counts;
+    }
+
 	@BeforeEach
 	void setUp() {
 		postRepository = mock(PostRepository.class);
@@ -54,7 +63,7 @@ class PostServiceTest {
 		postImageStorage = mock(PostImageStorage.class);
 		transactionOperations = new TrackingTransactionOperations();
 		postService = new PostService(postRepository, userRepository, postImageStorage, transactionOperations,
-			mock(PurchaseOrderRepository.class));
+			mock(PurchaseOrderRepository.class), counts());
 		seller = User.builder()
 			.nickname("seller")
 			.email("seller@example.com")
@@ -155,6 +164,7 @@ class PostServiceTest {
 	@DisplayName("판매 게시글 수정은 전달된 이미지 목록으로 교체한다")
 	void updatePostReplacesImages() {
 		Post post = postWithImage("posts/1/old.png");
+        ReflectionTestUtils.setField(post, "id", 10L);
 		when(postRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(post));
 		when(postImageStorage.isOwnedPostImageKey(1L, "posts/1/new.png")).thenReturn(true);
 		when(postImageStorage.exists("posts/1/new.png")).thenAnswer(invocation -> {

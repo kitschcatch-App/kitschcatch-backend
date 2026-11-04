@@ -38,6 +38,7 @@ public class PostService {
 	private final PostImageStorage postImageStorage;
 	private final TransactionOperations transactionOperations;
 	private final PurchaseOrderRepository orderRepository;
+    private final PostCountQueryService counts;
 
 	@Autowired
 	public PostService(
@@ -45,9 +46,10 @@ public class PostService {
 		UserRepository userRepository,
 		PostImageStorage postImageStorage,
 		PlatformTransactionManager transactionManager,
-		PurchaseOrderRepository orderRepository
+		PurchaseOrderRepository orderRepository,
+        PostCountQueryService counts
 	) {
-		this(postRepository, userRepository, postImageStorage, new TransactionTemplate(transactionManager), orderRepository);
+		this(postRepository, userRepository, postImageStorage, new TransactionTemplate(transactionManager), orderRepository, counts);
 	}
 
 	PostService(
@@ -55,13 +57,15 @@ public class PostService {
 		UserRepository userRepository,
 		PostImageStorage postImageStorage,
 		TransactionOperations transactionOperations,
-		PurchaseOrderRepository orderRepository
+		PurchaseOrderRepository orderRepository,
+        PostCountQueryService counts
 	) {
 		this.postRepository = postRepository;
 		this.userRepository = userRepository;
 		this.postImageStorage = postImageStorage;
 		this.transactionOperations = transactionOperations;
 		this.orderRepository = orderRepository;
+        this.counts = counts;
 	}
 
 	public CreatePostImageUploadUrlResponse createImageUploadUrls(
@@ -92,17 +96,18 @@ public class PostService {
 				.build();
 			addImages(post, imageKeys);
 
-			return toResponse(postRepository.save(post));
+			return new PostResponseMapper(postImageStorage).from(postRepository.save(post), PostCounts.ZERO);
 		});
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
 	public Page<PostResponse> getPosts(Pageable pageable) {
-		return postRepository.findAllByDeletedAtIsNullOrderByCreatedAtDesc(pageable)
-			.map(this::toResponse);
+		var page = postRepository.findAllByDeletedAtIsNullOrderByCreatedAtDesc(pageable);
+        var totals = counts.findByPostIds(page.getContent().stream().map(Post::getId).toList());
+        return page.map(post -> new PostResponseMapper(postImageStorage).from(post, totals.get(post.getId())));
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
 	public PostResponse getPost(Long postId) {
 		return toResponse(findActivePostDetail(postId));
 	}
@@ -216,6 +221,6 @@ public class PostService {
 	}
 
 	private PostResponse toResponse(Post post) {
-        return new PostResponseMapper(postImageStorage).from(post);
+        return new PostResponseMapper(postImageStorage).from(post, counts.findByPostIds(List.of(post.getId())).get(post.getId()));
     }
 }
