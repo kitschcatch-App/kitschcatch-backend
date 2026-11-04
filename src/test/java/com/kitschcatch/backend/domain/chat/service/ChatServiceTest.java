@@ -15,6 +15,7 @@ import com.kitschcatch.backend.domain.chat.dto.ChatRoomResponse;
 import com.kitschcatch.backend.domain.chat.dto.CreateChatRoomRequest;
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
 import com.kitschcatch.backend.domain.chat.repository.ChatRoomRepository;
+import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
@@ -38,6 +39,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 class ChatServiceTest {
 
 	private ChatRoomRepository chatRoomRepository;
+    private ChatMessageRepository chatMessageRepository;
 	private PostRepository postRepository;
 	private UserRepository userRepository;
 	private PostImageStorage postImageStorage;
@@ -50,10 +52,11 @@ class ChatServiceTest {
 	@BeforeEach
 	void setUp() {
 		chatRoomRepository = mock(ChatRoomRepository.class);
+        chatMessageRepository = mock(ChatMessageRepository.class);
 		postRepository = mock(PostRepository.class);
 		userRepository = mock(UserRepository.class);
 		postImageStorage = mock(PostImageStorage.class);
-		chatService = new ChatService(chatRoomRepository, postRepository, userRepository, postImageStorage);
+		chatService = new ChatService(chatRoomRepository, chatMessageRepository, postRepository, userRepository, postImageStorage);
 
 		// 채팅방 상세 조회와 생성 테스트에서 공통으로 사용할 기본 데이터를 준비한다.
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");
@@ -61,6 +64,14 @@ class ChatServiceTest {
 		stranger = user(3L, "stranger", "stranger@example.com", "stranger-provider");
 		post = post(10L, seller);
 	}
+
+    @Test
+    void emptyRoomsSkipUnreadAggregation() {
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(chatRoomRepository.findMyChatRooms(1L, null, null)).thenReturn(List.of());
+        assertThat(chatService.getMyChatRooms(1L)).isEmpty();
+        verifyNoInteractions(chatMessageRepository);
+    }
 
 	@Test
 	@DisplayName("채팅방 생성은 게시글 구매자 판매자로 새 채팅방을 저장한다")
@@ -175,7 +186,13 @@ class ChatServiceTest {
 		when(userRepository.existsById(1L)).thenReturn(true);
 		when(chatRoomRepository.findMyChatRooms(1L, null, null)).thenReturn(List.of(buyerChatRoom, sellerChatRoom));
 
-		List<ChatRoomListResponse> responses = chatService.getMyChatRooms(1L);
+		var count = mock(ChatMessageRepository.UnreadCount.class);
+        when(count.getChatRoomId()).thenReturn(101L);
+        when(count.getUnreadCount()).thenReturn(3L);
+        when(chatMessageRepository.countUnreadByRoomIds(List.of(101L, 102L), 1L)).thenReturn(List.of(count));
+        List<ChatRoomListResponse> responses = chatService.getMyChatRooms(1L);
+        assertThat(responses.get(0).unreadCount()).isEqualTo(3L);
+        assertThat(responses.get(1).unreadCount()).isZero();
 
 		assertThat(responses).hasSize(2);
 		assertThat(responses.get(0).chatRoomId()).isEqualTo(101L);

@@ -13,6 +13,22 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 	@EntityGraph(attributePaths = {"chatRoom", "sender"})
 	List<ChatMessage> findByChatRoomIdOrderByCreatedAtAsc(Long chatRoomId);
 
+    // 반환 대상 채팅방의 상대방 미읽음 메시지 수만 한 번에 집계한다.
+    @Query("""
+        select m.chatRoom.id as chatRoomId, count(m) as unreadCount
+        from ChatMessage m
+        where m.chatRoom.id in :roomIds
+          and m.sender.id <> :userId and m.isRead = false
+        group by m.chatRoom.id
+        """)
+    List<UnreadCount> countUnreadByRoomIds(@Param("roomIds") List<Long> roomIds,
+        @Param("userId") Long userId);
+
+    interface UnreadCount {
+        Long getChatRoomId();
+        long getUnreadCount();
+    }
+
 	// 안읽은 메세지 목록 조회
 	@Query("""
 		select m.id

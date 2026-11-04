@@ -105,7 +105,7 @@ class ChatControllerTest {
 				4L,
 				"another-seller",
 				"판매 중인가요?",
-				LocalDateTime.of(2026, 5, 27, 10, 0)
+				LocalDateTime.of(2026, 5, 27, 10, 0), 3L
 			),
 			new ChatRoomListResponse(
 				102L,
@@ -114,7 +114,7 @@ class ChatControllerTest {
 				3L,
 				"another-buyer",
 				"네 가능합니다.",
-				LocalDateTime.of(2026, 5, 27, 9, 0)
+				LocalDateTime.of(2026, 5, 27, 9, 0), 0L
 			)
 		));
 
@@ -122,7 +122,9 @@ class ChatControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.length()").value(2))
-			.andExpect(jsonPath("$.data[0].chatRoomId").value(101))
+			.andExpect(jsonPath("$.data[0].unreadCount").value(3))
+            .andExpect(jsonPath("$.data[1].unreadCount").value(0))
+            .andExpect(jsonPath("$.data[0].chatRoomId").value(101))
 			.andExpect(jsonPath("$.data[0].opponentId").value(4))
 			.andExpect(jsonPath("$.data[0].opponentNickname").value("another-seller"))
 			.andExpect(jsonPath("$.data[0].lastMessageContent").value("판매 중인가요?"))

@@ -49,6 +49,7 @@ abstract class SellerQueriesHttpContract {
     @Autowired UserRepository users;
     @Autowired PostRepository posts;
     @Autowired ChatRoomRepository rooms;
+    @Autowired com.kitschcatch.backend.domain.chat.service.ChatMessageService chatMessages;
     @Autowired JdbcTemplate jdbc;
     @Autowired JwtTokenProvider tokens;
     @Autowired EntityManagerFactory entityManagerFactory;
@@ -66,6 +67,50 @@ abstract class SellerQueriesHttpContract {
         sellerToken = tokens.createAccessToken(seller.getId());
         buyerToken = tokens.createAccessToken(buyer.getId());
         outsiderToken = tokens.createAccessToken(outsider.getId());
+    }
+
+    @Test
+    void unreadCountsRespectSenderTypeFiltersAndReadCompletion() {
+        Post sale = post(seller, ProductStatus.ON_SALE);
+        ChatRoom first = room(sale, buyer, seller);
+        ChatRoom empty = room(sale, outsider, seller);
+        ChatRoom purchase = room(post(buyer, ProductStatus.ON_SALE), seller, buyer);
+        message(first, buyer, "TEXT", false);
+        message(first, buyer, "IMAGE", false);
+        message(first, buyer, "TEXT", true);
+        message(first, seller, "TEXT", false);
+        message(purchase, buyer, "TEXT", false);
+        var counts = unread(sellerToken);
+        assertThat(counts).containsEntry(first.getId(), 2L).containsEntry(empty.getId(), 0L)
+            .containsEntry(purchase.getId(), 1L);
+        assertThat(unread(buyerToken)).containsEntry(first.getId(), 1L).containsEntry(purchase.getId(), 0L);
+        assertThat(get("/api/chat-rooms?role=BUYER", sellerToken).ids("chatRoomId"))
+            .containsExactly(purchase.getId());
+        var filtered = get("/api/chat-rooms?role=SELLER&postId=" + sale.getId(), sellerToken);
+        assertThat(filtered.chatRows()).hasSize(2);
+        assertThat(filtered.chatRows()).allSatisfy(row -> assertThat(row).containsKey("unreadCount"));
+        assertThat(unread(sellerToken)).containsEntry(first.getId(), 2L); // 조회는 읽음 처리하지 않는다.
+        chatMessages.markMessagesAsRead(seller.getId(), first.getId());
+        assertThat(unread(sellerToken)).containsEntry(first.getId(), 0L);
+        assertThat(unread(buyerToken)).containsEntry(first.getId(), 1L);
+        message(first, buyer, "TEXT", false);
+        assertThat(unread(sellerToken)).containsEntry(first.getId(), 1L);
+        jdbc.update("UPDATE chat_rooms SET seller_deleted_at=? WHERE id=?", LocalDateTime.now(), first.getId());
+        assertThat(unread(sellerToken)).doesNotContainKey(first.getId());
+        assertThat(unread(buyerToken)).containsKey(first.getId());
+        assertThat(unread(outsiderToken)).containsOnlyKeys(empty.getId());
+    }
+
+    Map<Long, Long> unread(String token) {
+        return get("/api/chat-rooms", token).chatRows().stream().collect(java.util.stream.Collectors.toMap(
+            row -> ((Number) row.get("chatRoomId")).longValue(),
+            row -> ((Number) row.get("unreadCount")).longValue()));
+    }
+
+    void message(ChatRoom room, User sender, String type, boolean read) {
+        jdbc.update("INSERT INTO chat_messages(chat_room_id,sender_id,message_type,content,image_url,is_read,created_at) VALUES (?,?,?,?,?,?,?)",
+            room.getId(), sender.getId(), type, type.equals("TEXT") ? "메시지" : null,
+            type.equals("IMAGE") ? "https://test.invalid/image.jpg" : null, read, LocalDateTime.now());
     }
 
     @Test
@@ -161,14 +206,18 @@ abstract class SellerQueriesHttpContract {
 
     @Test
     void chatTieOrderAndBoundedSqlCountsDoNotGrowPerResult() {
-        for (int i=0; i<25; i++) room(post(seller, ProductStatus.ON_SALE), buyer, seller);
+        for (int i=0; i<25; i++) {
+            var room = room(post(seller, ProductStatus.ON_SALE), buyer, seller);
+            message(room, buyer, "TEXT", false);
+        }
         jdbc.update("UPDATE chat_rooms SET last_message_at=?", LocalDateTime.of(2026,1,1,0,0));
         var stats = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         stats.clear();
         var chats = get("/api/chat-rooms?role=SELLER", sellerToken);
         assertThat(chats.chatRows()).hasSize(25);
+        assertThat(chats.chatRows()).allSatisfy(row -> assertThat(((Number) row.get("unreadCount")).longValue()).isEqualTo(1));
         assertThat(chats.ids("chatRoomId")).isSortedAccordingTo(java.util.Comparator.reverseOrder());
-        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(3);
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(4);
         stats.clear();
         var page = get("/api/users/me/posts?size=100", sellerToken);
         assertThat(page.rows()).hasSize(25);

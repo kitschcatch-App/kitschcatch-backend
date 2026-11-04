@@ -39,6 +39,25 @@ class ChatMessageRepositoryTest {
 	@Autowired
 	private EntityManager entityManager;
 
+    @Test
+    void aggregatesOnlyOpponentUnreadMessagesInRequestedRooms() {
+        User me = saveUser("me", "batch@test.invalid", "batch-me");
+        User other = saveUser("other", "other@test.invalid", "batch-other");
+        Post post = savePost(other, "집계 상품");
+        ChatRoom room = saveChatRoom(post, me, other);
+        ChatRoom excluded = saveChatRoom(savePost(other, "제외 상품"), me, other);
+        saveMessage(room, other, "미읽음", false);
+        saveMessage(room, me, "내 메시지", false);
+        saveMessage(room, other, "읽음", true);
+        saveMessage(excluded, other, "범위 밖", false);
+        entityManager.flush();
+        entityManager.clear();
+        var counts = chatMessageRepository.countUnreadByRoomIds(List.of(room.getId()), me.getId());
+        assertThat(counts).hasSize(1);
+        assertThat(counts.getFirst().getChatRoomId()).isEqualTo(room.getId());
+        assertThat(counts.getFirst().getUnreadCount()).isEqualTo(1);
+    }
+
 	@Test
 	@DisplayName("상대방이 보낸 안 읽은 메시지 ID만 조회한다")
 	void findUnreadMessageIdsReturnsOnlyOpponentUnreadMessages() {

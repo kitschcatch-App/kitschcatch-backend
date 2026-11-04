@@ -30,7 +30,7 @@ public class ChatController {
     @GetMapping
     @Operation(
             summary = "채팅방 목록 조회",
-            description = "본인이 참여하고 본인에게 삭제되지 않은 채팅방만 조회합니다. role은 BUYER 또는 SELLER이며 생략하면 전체입니다. postId는 참여 조건 안에서 적용됩니다. 마지막 메시지 시각·ID 역순, 빈 목록도 200입니다."
+            description = "본인이 참여하고 본인에게 삭제되지 않은 채팅방만 조회합니다. role은 BUYER 또는 SELLER이며 생략하면 전체입니다. postId는 참여 조건 안에서 적용됩니다. 마지막 메시지 시각·ID 역순, 빈 목록도 200입니다. unreadCount는 현재 사용자가 읽지 않은 상대방 텍스트·이미지 메시지 수이며 없으면 0입니다. 목록 조회는 읽음 상태를 변경하지 않습니다."
     )
     public ApiResponse<List<ChatRoomListResponse>> getMyChatRooms(
             @AuthenticationPrincipal AuthenticatedUser user,
