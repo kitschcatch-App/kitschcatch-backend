@@ -6,6 +6,10 @@ import com.kitschcatch.backend.domain.chat.dto.ChatRoomResponse;
 import com.kitschcatch.backend.domain.chat.dto.CreateChatRoomRequest;
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
 import com.kitschcatch.backend.domain.chat.repository.ChatRoomRepository;
+import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
+import org.springframework.transaction.annotation.Isolation;
+import java.util.Map;
+import java.util.stream.Collectors;
 import com.kitschcatch.backend.domain.post.entity.Post;
 import com.kitschcatch.backend.domain.post.repository.PostRepository;
 import com.kitschcatch.backend.domain.post.service.PostImageStorage;
@@ -26,6 +30,7 @@ import java.util.List;
 public class ChatService {
 
     private final ChatRoomRepository chatRoomRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final PostImageStorage postImageStorage;
@@ -74,17 +79,23 @@ public class ChatService {
     /**
      * 현재 로그인 사용자가 참여 중인 채팅방 목록을 조회한다.
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public List<ChatRoomListResponse> getMyChatRooms(Long userId) {
         return getMyChatRooms(userId, new ChatRoomListQuery(null, null));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public List<ChatRoomListResponse> getMyChatRooms(Long userId, ChatRoomListQuery query) {
         if (!userRepository.existsById(userId)) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
-        return chatRoomRepository.findMyChatRooms(userId,
-                query.role() == null ? null : query.role().name(), query.postId()).stream()
-                .map(chatRoom -> ChatRoomListResponse.from(chatRoom, userId))
+        var rooms = chatRoomRepository.findMyChatRooms(userId,
+                query.role() == null ? null : query.role().name(), query.postId());
+        if (rooms.isEmpty()) return List.of();
+        Map<Long, Long> counts = chatMessageRepository.countUnreadByRoomIds(
+                rooms.stream().map(ChatRoom::getId).toList(), userId).stream()
+            .collect(Collectors.toMap(ChatMessageRepository.UnreadCount::getChatRoomId,
+                ChatMessageRepository.UnreadCount::getUnreadCount));
+        return rooms.stream()
+                .map(chatRoom -> ChatRoomListResponse.from(chatRoom, userId, counts.getOrDefault(chatRoom.getId(), 0L)))
                 .toList();
     }
 

@@ -27,10 +27,13 @@ public record ChatRoomListResponse(
         String lastMessageContent,
 
         @Schema(description = "마지막 메시지 시간", example = "2026-06-04T14:30:00")
-        LocalDateTime lastMessageAt
+        LocalDateTime lastMessageAt,
+
+        @Schema(description = "현재 사용자가 읽지 않은 상대방 메시지 수. 텍스트·이미지 포함, 없으면 0", example = "3", minimum = "0")
+        long unreadCount
 ) {
 
-    public static ChatRoomListResponse from(ChatRoom chatRoom, Long currentUserId) {
+    public static ChatRoomListResponse from(ChatRoom chatRoom, Long currentUserId, long unreadCount) {
         User opponent = findOpponent(chatRoom, currentUserId);
 
         return new ChatRoomListResponse(
@@ -40,7 +43,8 @@ public record ChatRoomListResponse(
                 opponent.getId(),
                 opponent.getNickname(),
                 chatRoom.getLastMessageContent(),
-                chatRoom.getLastMessageAt()
+                chatRoom.getLastMessageAt(),
+                unreadCount
         );
     }
 
