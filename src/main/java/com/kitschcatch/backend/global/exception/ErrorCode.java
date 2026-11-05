@@ -27,6 +27,11 @@ public enum ErrorCode {
 
 	STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE_001", "매장을 찾을 수 없습니다."),
 	STORE_QUERY_INVALID(HttpStatus.BAD_REQUEST, "STORE_002", "위도, 경도 또는 조회 반경이 올바르지 않습니다."),
+	STORE_REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE_REVIEW_001", "매장 리뷰를 찾을 수 없습니다."),
+	STORE_REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, "STORE_REVIEW_002", "이미 이 매장에 리뷰를 작성했습니다."),
+	STORE_REVIEW_FORBIDDEN(HttpStatus.FORBIDDEN, "STORE_REVIEW_003", "본인의 매장 리뷰만 변경할 수 있습니다."),
+	STORE_REVIEW_VERSION_CONFLICT(HttpStatus.CONFLICT, "STORE_REVIEW_004", "리뷰가 변경되었습니다. 다시 조회해 주세요."),
+	STORE_REVIEW_CREATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "STORE_REVIEW_005", "이 매장에 작성할 수 있는 리뷰 횟수를 초과했습니다."),
 
 	USER_WITHDRAWAL_BLOCKED(HttpStatus.CONFLICT, "USER_057_001", "진행 중이거나 확인이 필요한 거래가 있어 탈퇴할 수 없습니다."),
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),

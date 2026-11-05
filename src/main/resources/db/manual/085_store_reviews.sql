@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS store_reviews (
     CONSTRAINT ck_store_reviews_version CHECK (version >= 0)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_store_reviews_active
-    ON store_reviews (store_id, author_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_store_reviews_creation_guard
+    ON store_reviews (store_id, author_id) WHERE deleted_at IS NULL OR hidden_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_store_reviews_public
     ON store_reviews (store_id, created_at DESC, id DESC) WHERE deleted_at IS NULL AND hidden_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_store_reviews_author_store_created

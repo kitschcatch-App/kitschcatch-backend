@@ -30,6 +30,13 @@ public interface StoreReviewRepository extends JpaRepository<StoreReview, Long> 
 
     Optional<StoreReview> findByStoreIdAndAuthorIdAndDeletedAtIsNull(long storeId, long authorId);
 
+    @Query("""
+        select count(r) > 0 from StoreReview r
+        where r.store.id = :storeId and r.author.id = :authorId
+          and (r.deletedAt is null or r.hiddenAt is not null)
+        """)
+    boolean existsBlockingCreation(long storeId, long authorId);
+
     long countByAuthorIdAndStoreIdAndCreatedAtGreaterThanEqual(long authorId, long storeId, Instant cutoff);
 
     @Query("""
