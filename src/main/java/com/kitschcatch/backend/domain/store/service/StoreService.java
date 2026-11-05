@@ -31,14 +31,17 @@ public class StoreService {
     private final StoreImageRepository images;
     private final StoreAmenityRepository amenities;
     private final StoreImageStorage imageStorage;
+    private final StoreReviewService reviews;
 
     public StoreService(StoreRepository storeRepository, StoreFavoriteQueryService favorites,
-                        StoreImageRepository images, StoreAmenityRepository amenities, StoreImageStorage imageStorage) {
+                        StoreImageRepository images, StoreAmenityRepository amenities, StoreImageStorage imageStorage,
+                        StoreReviewService reviews) {
         this.storeRepository = storeRepository;
         this.favorites = favorites;
         this.images = images;
         this.amenities = amenities;
         this.imageStorage = imageStorage;
+        this.reviews = reviews;
     }
 
     public StorePageResponse list(long userId, String region, StorePageQuery query) {
@@ -71,6 +74,7 @@ public class StoreService {
         var photoResponses = photoRows.stream().map(photo -> new StoreDetailResponse.Image(
             photo.getId(), imageStorage.imageUrl(storeId, photo.getObjectKey()), photo.getSortOrder(),
             photo.getCaption(), photo.getCredit(), photo.getSourceUrl())).toList();
-        return StoreDetailResponse.from(store, favorited, photoResponses, facilityResponses);
+        return StoreDetailResponse.from(store, favorited, photoResponses, facilityResponses,
+            reviews.summaryForExistingStore(storeId).preview());
     }
 }

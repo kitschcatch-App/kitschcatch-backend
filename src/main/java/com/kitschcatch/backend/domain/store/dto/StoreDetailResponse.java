@@ -18,16 +18,18 @@ public record StoreDetailResponse(Long id, String name, String address,
                                   @Schema(nullable = true, description = "검수한 매장 소개") String description,
                                   @Schema(nullable = true, description = "첫 사진의 임시 GET URL") String thumbnailUrl,
                                   @Schema(description = "표시 순서대로 정렬한 매장 사진. 없으면 빈 배열") List<Image> images,
-                                  @Schema(description = "편의시설 확인 결과. 미등록은 UNKNOWN") List<Amenity> amenities) {
+                                  @Schema(description = "편의시설 확인 결과. 미등록은 UNKNOWN") List<Amenity> amenities,
+                                  StoreReviewSummary.Preview reviewSummary) {
     public static StoreDetailResponse from(Store store, boolean favorited,
-                                          List<Image> images, List<Amenity> amenities) {
+                                          List<Image> images, List<Amenity> amenities,
+                                          StoreReviewSummary.Preview reviewSummary) {
         return new StoreDetailResponse(store.getId(), store.getName(), store.getAddress(),
             store.getLatitude(), store.getLongitude(), store.getPhone(),
             store.getBusinessHours().stream()
                 .sorted(Comparator.comparing(StoreBusinessHours::getDayOfWeek))
                 .map(hours -> new BusinessHours(hours.getDayOfWeek(), hours.getOpenTime(),
                     hours.getCloseTime(), hours.isClosed())).toList(), favorited,
-            store.getDescription(), images.isEmpty() ? null : images.getFirst().imageUrl(), images, amenities);
+            store.getDescription(), images.isEmpty() ? null : images.getFirst().imageUrl(), images, amenities, reviewSummary);
     }
 
     public record Image(long id, @Schema(description = "만료되는 S3 GET 서명 URL") String imageUrl, int sortOrder,

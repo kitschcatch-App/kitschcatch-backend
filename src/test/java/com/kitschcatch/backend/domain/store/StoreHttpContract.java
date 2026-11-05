@@ -105,6 +105,9 @@ abstract class StoreHttpContract {
         var response = get("/api/stores/" + store.getId());
         assertThat(response.status()).isEqualTo(200);
         assertThat(response.data()).containsEntry("phone", null).containsEntry("latitude", 37.5);
+        assertThat((Map<?, ?>) response.data().get("reviewSummary"))
+            .extracting(summary -> summary.get("reviewCount"), summary -> summary.get("averageRating"))
+            .containsExactly(0, null);
         var hours = response.rows("businessHours");
         assertThat(hours).extracting(row -> row.get("dayOfWeek")).containsExactly("MONDAY", "FRIDAY", "SUNDAY");
         assertThat(hours.getFirst()).containsEntry("openTime", "11:00").containsEntry("closeTime", "20:00");
