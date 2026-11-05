@@ -38,6 +38,9 @@ app:
       base-url: ${APP_FCM_BASE_URL:https://fcm.googleapis.com}
       token-url: ${APP_FCM_TOKEN_URL:https://oauth2.googleapis.com/token}
       scan-delay: ${APP_NOTIFICATIONS_PUSH_SCAN_DELAY:30s}
+  store-review-images:
+    cleanup-enabled: ${APP_STORE_REVIEW_IMAGES_CLEANUP_ENABLED:false}
+    cleanup-delay-ms: ${APP_STORE_REVIEW_IMAGES_CLEANUP_DELAY_MS:60000}
   profile-image:
     max-size-bytes: ${APP_PROFILE_IMAGE_MAX_SIZE_BYTES:5000000}
     upload-url-ttl: ${APP_PROFILE_IMAGE_UPLOAD_URL_TTL:10m}

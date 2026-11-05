@@ -77,9 +77,11 @@ class StoreReviewPostgresHttpTest {
     @BeforeAll
     static void applyManualSql() throws Exception {
         try (var connection = database.connect(); var statement = connection.createStatement()) {
-            statement.execute("DROP TABLE store_reviews");
+            statement.execute("DROP TABLE store_review_images, store_reviews");
             PostgresStoreTestDatabase.migrateReviews(connection);
+            PostgresStoreTestDatabase.migrateReviewImages(connection);
             PostgresStoreTestDatabase.migrateReviews(connection);
+            PostgresStoreTestDatabase.migrateReviewImages(connection);
         }
     }
 
@@ -248,6 +250,7 @@ class StoreReviewPostgresHttpTest {
         var created = create(author, 4);
         try (var connection = database.connect()) {
             PostgresStoreTestDatabase.migrateReviews(connection);
+            PostgresStoreTestDatabase.migrateReviewImages(connection);
         }
         assertThat(call("GET", reviewPath(created.id()), reader, null).data()).containsEntry("rating", 4);
         assertThatThrownBy(() -> jdbc.update("""

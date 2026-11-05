@@ -79,12 +79,13 @@ class StorePostgresHttpTest extends StoreHttpContract {
     @BeforeAll
     static void replaceGeneratedStoreTablesWithManualSql() throws Exception {
         try (var connection = database.connect(); var statement = connection.createStatement()) {
-            statement.execute("DROP TABLE store_reviews, store_amenities, store_images, store_favorites, store_business_hours, stores");
+            statement.execute("DROP TABLE store_review_images, store_reviews, store_amenities, store_images, store_favorites, store_business_hours, stores");
             PostgresStoreTestDatabase.migrate(connection);
             PostgresStoreTestDatabase.migrate(connection);
             PostgresStoreTestDatabase.migrateFavorites(connection);
             PostgresStoreTestDatabase.migrateDetails(connection);
             PostgresStoreTestDatabase.migrateReviews(connection);
+            PostgresStoreTestDatabase.migrateReviewImages(connection);
         }
     }
 

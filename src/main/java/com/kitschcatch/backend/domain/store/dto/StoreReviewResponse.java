@@ -7,7 +7,7 @@ import java.util.List;
 
 public record StoreReviewResponse(long reviewId, long storeId, Author author, int rating, String content,
                                   Instant createdAt, Instant updatedAt, boolean mine, boolean hidden, long version,
-                                  @Schema(description = "리뷰 사진 목록. 현재는 빈 배열") List<Image> images) {
+                                  @Schema(description = "지정 순서의 리뷰 사진 목록. 비공개 S3 GET 서명 URL은 만료되면 재조회") List<Image> images) {
     public record Author(long id, String nickname, @Schema(nullable = true) String profileImageUrl) {}
 
     public record Image(long id, String imageUrl, int sortOrder) {}

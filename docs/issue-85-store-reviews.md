@@ -8,11 +8,11 @@
 | `GET /api/stores/{storeId}/reviews?page=0&size=20` | `200`, `content, page, size, totalElements, totalPages`. |
 | `GET /api/stores/{storeId}/reviews/me` | `200`, `{ "review": ... }`. 없으면 `review: null`. |
 | `GET /api/store-reviews/{reviewId}` | `200`, 공개 리뷰. |
-| `PATCH /api/store-reviews/{reviewId}` | `200`, 수정한 리뷰. `version`과 변경할 `rating` 또는 `content`를 보낸다. |
+| `PATCH /api/store-reviews/{reviewId}` | `200`, 수정한 리뷰. `version`과 변경할 `rating`, `content` 또는 `imageIds`를 보낸다. |
 | `DELETE /api/store-reviews/{reviewId}` | `200`, 공통 성공 응답. 같은 작성자의 재요청도 성공한다. |
 | `GET /api/stores/{storeId}/reviews/summary` | `200`, `reviewCount, averageRating, ratingCounts, visibleReviewCount`. |
 
-리뷰에는 `reviewId, storeId, author, rating, content, createdAt, updatedAt, mine, hidden, version, images`가 있다. `author`는 공개 ID, 닉네임, 현재 프로필 이미지의 GET 서명 URL 또는 null을 제공한다. `images`는 사진 기능이 추가되기 전까지 빈 배열이다. 작성·수정 시각은 UTC ISO 8601이다. 목록은 작성 시각과 ID 내림차순으로 조회하며 `page`는 0~10000, `size`는 1~100이다.
+리뷰에는 `reviewId, storeId, author, rating, content, createdAt, updatedAt, mine, hidden, version, images`가 있다. `author`는 공개 ID, 닉네임, 현재 프로필 이미지의 GET 서명 URL 또는 null을 제공한다. `images`는 사진이 없으면 빈 배열이며, 사진 업로드·연결 계약은 [리뷰 사진 API](issue-87-store-review-images.md)를 참고한다. 작성·수정 시각은 UTC ISO 8601이다. 목록은 작성 시각과 ID 내림차순으로 조회하며 `page`는 0~10000, `size`는 1~100이다.
 
 별점은 정수 1~5다. 본문은 앞뒤 공백을 제거한 뒤 1~1,000자로 저장한다. PATCH의 별점·본문 중 생략 또는 null인 필드는 유지한다. 변경 필드가 하나 이상 필요하다. 버전이 오래됐다면 리뷰를 다시 조회해 최신 내용을 확인한다.
 
