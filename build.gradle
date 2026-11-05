@@ -52,3 +52,10 @@ tasks.register('storeCsv', JavaExec) {
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'com.kitschcatch.backend.tools.storecsv.StoreCsvCommand'
 }
+
+tasks.register('storeContent', JavaExec) {
+	group = 'application'
+	description = '검수한 매장 상세 JSON을 명시한 PostgreSQL 대상에 검증·반영한다.'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.kitschcatch.backend.tools.storecontent.StoreContentCommand'
+}
