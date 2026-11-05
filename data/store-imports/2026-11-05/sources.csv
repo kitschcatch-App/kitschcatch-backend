@@ -1,0 +1,31 @@
+store_id,store_source_url,additional_source_url,coordinate_source_url,coordinate_dataset_date,coordinate_source_row_id,coordinate_kind,coordinate_address,checked_at
+1,https://shop.aniplustv.com/offline-shop/HAPJEONG,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220813605653,building,서울특별시 마포구 월드컵로3길 14,2026-11-05
+2,https://aniplustv.com/storeInfo/busan,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220800235609,building,부산광역시 부산진구 중앙대로 672,2026-11-05
+3,https://www.animate.co.jp/en/shop/hongdae/,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220812135505,store,서울특별시 마포구 양화로 188,2026-11-05
+4,https://www.animate.co.jp/en/shop/jamsillotte/,https://daewonmedia.com/upload/files/20250401/%EB%8C%80%EC%9B%90%EB%AF%B8%EB%94%94%EC%96%B4%202024%EB%85%84%20%EC%98%A8%EA%B8%B0%20IR-Book.pdf,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220804017747,building,서울특별시 송파구 올림픽로 240,2026-11-05
+5,https://www.animate.co.jp/en/shop/suwon/,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220803309189,building,경기도 수원시 팔달구 덕영대로 924,2026-11-05
+6,https://www.animate.co.jp/en/shop/busan/,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220811405923,building,부산광역시 부산진구 가야대로 772,2026-11-05
+7,https://www.popmart.com/kr/store-list,https://sungsimdang.co.kr/31/18,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220805199832,building,대전광역시 서구 계룡로 598,2026-11-05
+9,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220800017495,building,서울특별시 종로구 창경궁로 88,2026-11-05
+10,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220810627710,building,부산광역시 해운대구 센텀남대로 35,2026-11-05
+11,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA0101202406A0571293,building,경기도 수원시 장안구 수성로 175,2026-11-05
+12,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220813614833,building,경기도 고양시 덕양구 고양대로 1955,2026-11-05
+13,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA0101202311A0021794,store,서울특별시 마포구 와우산로23길 56,2026-11-05
+14,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220800235609,building,부산광역시 부산진구 중앙대로 672,2026-11-05
+15,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220803730410,building,서울특별시 용산구 한강대로23길 55,2026-11-05
+16,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220806462158,building,서울특별시 강남구 봉은사로 524,2026-11-05
+17,https://www.popmart.com/kr/store-list,https://www.ehyundai.com/newPortal/DP/FG/FG000000_V.do?branchCd=B00140000&floorIdx=B2,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220800382986,building,서울특별시 영등포구 여의대로 108,2026-11-05
+18,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220811854019,building,서울특별시 중구 명동8길 36,2026-11-05
+19,https://www.popmart.com/kr/store-list,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220800316871,building,경기도 안성시 공도읍 서동대로 3930-39,2026-11-05
+20,https://www.starfield.co.kr/coexmall/tenant/tenantDetail/TN201708291105560346.do,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220806462158,building,서울특별시 강남구 봉은사로 524,2026-11-05
+21,https://www.starfield.co.kr/goyang/tenant/tenantDetail/TN202212271342420021.do,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA0106202301A0046179,store,경기도 고양시 덕양구 고양대로 1955,2026-11-05
+22,https://gw.iparkmall.co.kr/shop/store/dtl.do?chnlNo=003219,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220803730410,building,서울특별시 용산구 한강대로23길 55,2026-11-05
+23,https://toy.bandai.co.jp/assets/products/tamagotchi/documents/storelist/labtama_gl.pdf,https://www.bandainamcokorea.co.kr/company/history.do,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA0106202411A0046604,store,서울특별시 영등포구 영중로 15,2026-11-05
+24,https://toy.bandai.co.jp/assets/products/tamagotchi/documents/storelist/labtama_gl.pdf,https://www.bandainamcokorea.co.kr/company/history.do,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA0101202406A0571293,building,경기도 수원시 장안구 수성로 175,2026-11-05
+25,https://www.starfield.co.kr/coexmall/tenant/tenantDetail/TN202501151251335884.do,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220806462158,building,서울특별시 강남구 봉은사로 524,2026-11-05
+26,https://gw.iparkmall.co.kr/shop/store/dtl.do?chnlNo=001852,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220803730410,building,서울특별시 용산구 한강대로23길 55,2026-11-05
+27,https://m.visitjeju.net/kr/detail/view?contentsid=CNTS_300000000012985,https://www.popcondplay.com/ip/news/view/608,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA0101202406A0546041,store,제주특별자치도 제주시 구좌읍 대천서길 16,2026-11-05
+28,https://gw.iparkmall.co.kr/shop/store/dtl.do?chnlNo=002766,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220803730410,building,서울특별시 용산구 한강대로23길 55,2026-11-05
+29,https://www.figurepresso.com/article/%EC%9E%90%EC%A3%BC%ED%95%98%EB%8A%94%EC%A7%88%EB%AC%B8/3/88189/,,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220800329585,building,서울특별시 서초구 효령로 304,2026-11-05
+30,https://m.figurepresso.com/article/%EA%B3%B5%EC%A7%80%EC%82%AC%ED%95%AD/1/128956/,https://www.figurepresso.com/fp_contect.html,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220803576081,building,서울특별시 구로구 새말로 97,2026-11-05
+31,https://www.figurepresso.com/article/%EC%9E%90%EC%A3%BC%ED%95%98%EB%8A%94%EC%A7%88%EB%AC%B8/3/88189/,https://m.figurepresso.com/article/%EA%B3%B5%EC%A7%80%EC%82%AC%ED%95%AD/1/128956/,https://www.data.go.kr/data/15083033/fileData.do,2026-09-30,MA010120220812173951,building,서울특별시 마포구 와우산로29길 48-11,2026-11-05
