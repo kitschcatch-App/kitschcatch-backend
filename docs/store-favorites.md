@@ -30,7 +30,7 @@
 - 빈 목록은 `content=[]`, `totalElements=0`, `totalPages=0`. 마지막 페이지를 넘으면 내용만 비고 전체 건수는 유지한다.
 - 페이지 사이에 등록·해제가 일어나면 항목 위치가 바뀔 수 있다. 전체 페이지를 하나의 스냅샷으로 고정하지 않는다.
 - `favorited`는 항상 true다. WGS84 좌표와 전화번호를 함께 반환한다.
-- 현재 위치를 입력받지 않아 `distanceMeters=null`이다. 거리 기반 조회에는 `/api/stores/nearby`를 사용한다. 매장 이미지 모델이 없어 `thumbnailUrl=null`이다. 가상의 거리·이미지 주소는 반환하지 않는다.
+- 현재 위치를 입력받지 않아 `distanceMeters=null`이다. 거리 기반 조회에는 `/api/stores/nearby`를 사용한다. 관심 목록의 `thumbnailUrl`은 null이다. 매장 대표 사진은 [매장 상세 API](issue-83-store-details.md)에서 제공한다. 가상의 거리·이미지 주소는 반환하지 않는다.
 
 ```json
 {

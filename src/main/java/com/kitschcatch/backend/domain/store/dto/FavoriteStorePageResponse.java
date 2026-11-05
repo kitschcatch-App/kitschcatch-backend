@@ -19,5 +19,5 @@ public record FavoriteStorePageResponse(List<FavoriteStore> content, int page, i
     public record FavoriteStore(Long id, String name, String address, double latitude, double longitude,
         String phone, boolean favorited,
         @Schema(description = "현재 위치 입력이 없으므로 null. 거리 조회는 주변 매장 API 사용", nullable = true) Long distanceMeters,
-        @Schema(description = "매장 이미지 데이터가 아직 없어 null", nullable = true) String thumbnailUrl) {}
+        @Schema(description = "관심 목록에서는 null. 매장 대표 사진은 상세 API에서 제공", nullable = true) String thumbnailUrl) {}
 }

@@ -1,0 +1,334 @@
+{
+  "reviewer": "Codex",
+  "reviewedAt": "2026-11-05T06:18:01Z",
+  "stores": [
+    {
+      "storeId": 1,
+      "expectedName": "애니플러스샵 서울 합정점",
+      "expectedAddress": "서울특별시 마포구 월드컵로3길 14 딜라이트스퀘어 지하 1층 B101~B105호",
+      "description": "애니메이션 관련 굿즈를 판매하고 작품과 연계한 콜라보 카페를 운영하는 애니플러스 직영점입니다.",
+      "descriptionSourceUrl": "https://shop.aniplustv.com/offline-shop/HAPJEONG",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "마포한강2차 푸르지오 지하주차장 이용. 구매 금액에 따라 무료 주차 시간이 달라집니다.",
+          "sourceUrl": "https://shop.aniplustv.com/offline-shop/HAPJEONG"
+        }
+      ]
+    },
+    {
+      "storeId": 2,
+      "expectedName": "애니플러스샵 부산 서면점",
+      "expectedAddress": "부산광역시 부산진구 중앙대로 672 삼정타워 9층",
+      "description": "삼정타워에 있는 애니플러스 직영점입니다. 애니메이션 관련 굿즈를 취급하며 콜라보 카페를 운영합니다.",
+      "descriptionSourceUrl": "https://aniplustv.com/storeInfo/busan"
+    },
+    {
+      "storeId": 3,
+      "expectedName": "애니메이트 홍대점",
+      "expectedAddress": "서울특별시 마포구 양화로 188 AK플라자 홍대 5층",
+      "description": "홍대 AK플라자에 있는 애니메이션 굿즈 전문점입니다. 애니메이트의 한국 메인 스토어입니다.",
+      "descriptionSourceUrl": "https://www.animate.co.jp/en/shop/hongdae/"
+    },
+    {
+      "storeId": 4,
+      "expectedName": "애니메이트 잠실롯데점",
+      "expectedAddress": "서울특별시 송파구 올림픽로 240 지하 1층 29호",
+      "description": "잠실 롯데월드몰에 있는 애니메이트 지점입니다. 애니메이션과 만화 관련 상품을 취급합니다.",
+      "descriptionSourceUrl": "https://www.animate.co.jp/en/shop/jamsillotte/"
+    },
+    {
+      "storeId": 5,
+      "expectedName": "애니메이트 수원점",
+      "expectedAddress": "경기도 수원시 팔달구 덕영대로 924 AK플라자 수원 5층",
+      "description": "수원역 인근 AK플라자에 있는 애니메이트 지점입니다. 애니메이션 관련 상품을 취급합니다.",
+      "descriptionSourceUrl": "https://www.animate.co.jp/en/shop/suwon/"
+    },
+    {
+      "storeId": 6,
+      "expectedName": "애니메이트 부산점",
+      "expectedAddress": "부산광역시 부산진구 가야대로 772 롯데백화점 부산본점 지하 1층",
+      "description": "애니메이션 굿즈와 만화, 라이트노벨 등 작품 관련 상품을 취급하는 애니메이트 지점입니다.",
+      "descriptionSourceUrl": "https://www.animate.co.jp/en/shop/busan/"
+    },
+    {
+      "storeId": 7,
+      "expectedName": "팝마트 대전점",
+      "expectedAddress": "대전광역시 서구 계룡로 598 롯데백화점 대전점 1층",
+      "description": "롯데백화점 대전점에 있는 팝마트 매장입니다. 캐릭터를 바탕으로 한 수집용 아트토이를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 9,
+      "expectedName": "팝마트 히로노 광장마켓점",
+      "expectedAddress": "서울특별시 종로구 창경궁로 88",
+      "description": "광장시장에 자리한 팝마트의 히로노 테마 매장입니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 10,
+      "expectedName": "팝마트 신세계 센텀시티점",
+      "expectedAddress": "부산광역시 해운대구 센텀남대로 35 신세계 센텀시티 지하 2층 하이퍼그라운드",
+      "description": "신세계 센텀시티 하이퍼그라운드에 있는 팝마트 매장입니다. 수집용 캐릭터 피규어를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 11,
+      "expectedName": "팝마트 스타필드 수원점",
+      "expectedAddress": "경기도 수원시 장안구 수성로 175 스타필드 수원 4층 4174호",
+      "description": "스타필드 수원에 입점한 팝마트 매장입니다. 캐릭터 아트토이를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "스타필드 수원 공용 주차장 이용. 처음 6시간은 무료입니다.",
+          "sourceUrl": "https://www.starfield.co.kr/suwon/about/parkingInfo.do"
+        },
+        {
+          "code": "WIFI",
+          "status": "AVAILABLE",
+          "note": "스타필드 수원 공용 와이파이를 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/suwon/service/faq.do"
+        }
+      ]
+    },
+    {
+      "storeId": 12,
+      "expectedName": "팝마트 스타필드 고양점",
+      "expectedAddress": "경기도 고양시 덕양구 고양대로 1955 스타필드 고양 3층",
+      "description": "스타필드 고양에 있는 팝마트 매장입니다. 수집용 캐릭터 피규어를 취급합니다.",
+      "descriptionSourceUrl": "https://www.starfield.co.kr/goyang/tenant/tenantDetail/TN202505201050066222.do",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "스타필드 고양 공용 주차장을 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/goyang/about/parkingInfo.do"
+        },
+        {
+          "code": "WIFI",
+          "status": "AVAILABLE",
+          "note": "스타필드 고양 공용 와이파이를 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/goyang/service/faq.do"
+        },
+        {
+          "code": "PET_FRIENDLY",
+          "status": "AVAILABLE",
+          "note": "반려동물 입장 시 이동장 사용이 필요합니다.",
+          "sourceUrl": "https://www.starfield.co.kr/goyang/tenant/tenantDetail/TN202505201050066222.do"
+        }
+      ]
+    },
+    {
+      "storeId": 13,
+      "expectedName": "팝마트 홍대 플래그십 스토어",
+      "expectedAddress": "서울특별시 마포구 와우산로23길 56",
+      "description": "홍대에 있는 팝마트 플래그십 매장입니다. 팝마트 캐릭터를 바탕으로 한 아트토이를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 14,
+      "expectedName": "팝마트 부산 삼정타워점",
+      "expectedAddress": "부산광역시 부산진구 중앙대로 672 삼정타워 1층",
+      "description": "부산 서면 삼정타워에 있는 팝마트 매장입니다. 캐릭터 아트토이를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 15,
+      "expectedName": "팝마트 아이파크몰 용산점",
+      "expectedAddress": "서울특별시 용산구 한강대로23길 55 아이파크몰 리빙파크 6층",
+      "description": "용산 아이파크몰 리빙파크에 있는 팝마트 매장입니다. 수집용 캐릭터 피규어를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 16,
+      "expectedName": "팝마트 코엑스점",
+      "expectedAddress": "서울특별시 강남구 봉은사로 524 코엑스몰 지하 1층 메가박스 입구",
+      "description": "스타필드 코엑스몰의 메가박스 입구 쪽에 있는 팝마트 매장입니다. 캐릭터 아트토이를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "코엑스몰 공용 유료 주차장을 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/coexmall/about/parkingInfo.do"
+        }
+      ]
+    },
+    {
+      "storeId": 17,
+      "expectedName": "팝마트 더현대 서울점",
+      "expectedAddress": "서울특별시 영등포구 여의대로 108 더현대 서울 지하 2층",
+      "description": "더현대 서울에 있는 팝마트 매장입니다. 캐릭터를 바탕으로 한 수집용 아트토이를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 18,
+      "expectedName": "팝마트 명동 프리미엄 테마샵",
+      "expectedAddress": "서울특별시 중구 명동8길 36",
+      "description": "명동에 있는 팝마트 테마 매장입니다. 캐릭터 아트토이를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list"
+    },
+    {
+      "storeId": 19,
+      "expectedName": "팝마트 스타필드 안성점",
+      "expectedAddress": "경기도 안성시 공도읍 서동대로 3930-39 스타필드 안성 2142호",
+      "description": "스타필드 안성에 있는 팝마트 매장입니다. 수집용 캐릭터 피규어를 취급합니다.",
+      "descriptionSourceUrl": "https://www.popmart.com/kr/store-list",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "스타필드 안성 공용 주차장을 무료로 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/anseong/about/parkingInfo.do"
+        }
+      ]
+    },
+    {
+      "storeId": 20,
+      "expectedName": "건담베이스 코엑스점",
+      "expectedAddress": "서울특별시 강남구 봉은사로 524 스타필드 코엑스몰 지하 2층",
+      "description": "스타필드 코엑스몰에 있는 건담베이스 매장입니다. 건담 프라모델을 취급합니다.",
+      "descriptionSourceUrl": "https://www.starfield.co.kr/coexmall/tenant/tenantDetail/TN201708291105560346.do",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "코엑스몰 공용 유료 주차장을 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/coexmall/about/parkingInfo.do"
+        }
+      ]
+    },
+    {
+      "storeId": 21,
+      "expectedName": "건담베이스 스타필드 고양점",
+      "expectedAddress": "경기도 고양시 덕양구 고양대로 1955 스타필드 고양 2층",
+      "description": "스타필드 고양에 있는 건담베이스 매장입니다. 건담 프라모델을 취급합니다.",
+      "descriptionSourceUrl": "https://www.starfield.co.kr/goyang/tenant/tenantDetail/TN202212271342420021.do",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "스타필드 고양 공용 주차장을 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/goyang/about/parkingInfo.do"
+        },
+        {
+          "code": "WIFI",
+          "status": "AVAILABLE",
+          "note": "스타필드 고양 공용 와이파이를 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/goyang/service/faq.do"
+        }
+      ]
+    },
+    {
+      "storeId": 22,
+      "expectedName": "반다이남코코리아 스토어 용산점",
+      "expectedAddress": "서울특별시 용산구 한강대로23길 55 아이파크몰 리빙파크 6층",
+      "description": "용산 아이파크몰에 있는 반다이남코코리아의 종합 플래그십 매장입니다.",
+      "descriptionSourceUrl": "https://www.bandainamcokorea.co.kr/company/history.do"
+    },
+    {
+      "storeId": 23,
+      "expectedName": "펀스퀘어 영등포점",
+      "expectedAddress": "서울특별시 영등포구 영중로 15 타임스퀘어 지하 1층",
+      "description": "영등포 타임스퀘어에 있는 반다이남코코리아의 펀스퀘어 직영점입니다.",
+      "descriptionSourceUrl": "https://www.bandainamcokorea.co.kr/company/history.do",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "타임스퀘어 공용 주차장을 이용할 수 있습니다.",
+          "sourceUrl": "https://www.timessquare.co.kr/parking-info"
+        }
+      ]
+    },
+    {
+      "storeId": 24,
+      "expectedName": "펀스퀘어 수원점",
+      "expectedAddress": "경기도 수원시 장안구 수성로 175 스타필드 수원 5층",
+      "description": "스타필드 수원에 있는 반다이남코코리아의 펀스퀘어 직영점입니다.",
+      "descriptionSourceUrl": "https://www.bandainamcokorea.co.kr/company/history.do",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "스타필드 수원 공용 주차장 이용. 처음 6시간은 무료입니다.",
+          "sourceUrl": "https://www.starfield.co.kr/suwon/about/parkingInfo.do"
+        },
+        {
+          "code": "WIFI",
+          "status": "AVAILABLE",
+          "note": "스타필드 수원 공용 와이파이를 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/suwon/service/faq.do"
+        }
+      ]
+    },
+    {
+      "storeId": 25,
+      "expectedName": "캡슐팡 코엑스점",
+      "expectedAddress": "서울특별시 강남구 봉은사로 524 스타필드 코엑스몰 지하 2층",
+      "description": "스타필드 코엑스몰에 있는 캡슐토이 매장입니다.",
+      "descriptionSourceUrl": "https://www.starfield.co.kr/coexmall/tenant/tenantDetail/TN202501151251335884.do",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "코엑스몰 공용 유료 주차장을 이용할 수 있습니다.",
+          "sourceUrl": "https://www.starfield.co.kr/coexmall/about/parkingInfo.do"
+        }
+      ]
+    },
+    {
+      "storeId": 26,
+      "expectedName": "도토리숲 용산점",
+      "expectedAddress": "서울특별시 용산구 한강대로23길 55 아이파크몰 리빙파크 6층",
+      "description": "용산 아이파크몰에 있는 스튜디오 지브리 캐릭터 상품 매장입니다.",
+      "descriptionSourceUrl": "https://gw.iparkmall.co.kr/shop/store/dtl.do?chnlNo=001852"
+    },
+    {
+      "storeId": 27,
+      "expectedName": "도토리숲 제주점",
+      "expectedAddress": "제주특별자치도 제주시 구좌읍 대천서길 16 송당 동화마을",
+      "description": "송당 동화마을에 있는 스튜디오 지브리 공식 캐릭터 매장입니다.",
+      "descriptionSourceUrl": "https://m.visitjeju.net/kr/detail/view?contentsid=CNTS_300000000012985",
+      "amenities": [
+        {
+          "code": "PARKING",
+          "status": "AVAILABLE",
+          "note": "송당 동화마을 공용 주차장을 이용할 수 있습니다.",
+          "sourceUrl": "https://m.visitjeju.net/kr/detail/view?contentsid=CNTS_300000000012985"
+        }
+      ]
+    },
+    {
+      "storeId": 28,
+      "expectedName": "포켓몬 카드샵 용산점",
+      "expectedAddress": "서울특별시 용산구 한강대로23길 55 아이파크몰 리빙파크 8층",
+      "description": "포켓몬 카드 게임 상품을 취급하는 용산 아이파크몰 매장입니다.",
+      "descriptionSourceUrl": "https://gw.iparkmall.co.kr/shop/store/dtl.do?chnlNo=002766"
+    },
+    {
+      "storeId": 29,
+      "expectedName": "피규어프레소 서초점",
+      "expectedAddress": "서울특별시 서초구 효령로 304 국제전자센터 9층",
+      "description": "국제전자센터에 있는 피규어프레소 오프라인 매장입니다. 캐릭터 피규어를 취급합니다.",
+      "descriptionSourceUrl": "https://www.figurepresso.com/article/%EC%9E%90%EC%A3%BC%ED%95%98%EB%8A%94%EC%A7%88%EB%AC%B8/3/88189/"
+    },
+    {
+      "storeId": 30,
+      "expectedName": "피규어프레소 에프레소점",
+      "expectedAddress": "서울특별시 구로구 새말로 97 신도림 테크노마트 3층 58호",
+      "description": "신도림 테크노마트에 있는 피규어프레소 오프라인 매장입니다. 캐릭터 피규어를 취급합니다.",
+      "descriptionSourceUrl": "https://m.figurepresso.com/article/%EA%B3%B5%EC%A7%80%EC%82%AC%ED%95%AD/1/128956/"
+    },
+    {
+      "storeId": 31,
+      "expectedName": "피규어프레소 에프피점",
+      "expectedAddress": "서울특별시 마포구 와우산로29길 48-11",
+      "description": "홍대에 있는 피규어프레소 오프라인 매장입니다. 캐릭터 피규어를 취급합니다.",
+      "descriptionSourceUrl": "https://www.figurepresso.com/article/%EC%9E%90%EC%A3%BC%ED%95%98%EB%8A%94%EC%A7%88%EB%AC%B8/3/88189/"
+    }
+  ]
+}

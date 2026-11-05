@@ -44,6 +44,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 전체 통합 테스트에서 사용하지 않는 Spring 컨텍스트가 쌓이지 않게 한다.
+	systemProperty 'spring.test.context.cache.maxSize', '3'
 }
 
 tasks.register('storeCsv', JavaExec) {
@@ -51,4 +53,11 @@ tasks.register('storeCsv', JavaExec) {
 	description = '명시한 PostgreSQL 대상에서 검수 매장 CSV를 dry-run 또는 apply한다.'
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'com.kitschcatch.backend.tools.storecsv.StoreCsvCommand'
+}
+
+tasks.register('storeContent', JavaExec) {
+	group = 'application'
+	description = '검수한 매장 상세 JSON을 명시한 PostgreSQL 대상에 검증·반영한다.'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.kitschcatch.backend.tools.storecontent.StoreContentCommand'
 }

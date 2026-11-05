@@ -80,6 +80,8 @@
 
 ## 상세와 영업시간
 
+이슈 #83에서 추가한 소개·대표 사진·편의시설은 [매장 상세 정보](issue-83-store-details.md)를 참고한다. 아래 예시는 기본 정보와 영업시간을 보여 준다.
+
 `GET /api/stores/20`
 
 목록의 기본 필드에 `businessHours` 배열을 더한다. 요일은 MONDAY부터 SUNDAY까지 정렬한다. 시각은 한국 매장 현지 시각(Asia/Seoul)의 `HH:mm` 문자열이다.

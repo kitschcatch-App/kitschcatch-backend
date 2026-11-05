@@ -1,4 +1,4 @@
-// 매장 지도에 표시할 위치와 연락처, 요일별 영업시간을 저장한다.
+// 매장 기본 정보와 소개, 요일별 영업시간을 저장한다.
 package com.kitschcatch.backend.domain.store.entity;
 
 import jakarta.persistence.*;
@@ -33,6 +33,8 @@ public class Store {
     private double longitude;
     @Column(length = 30)
     private String phone;
+    @Column(length = 1000)
+    private String description;
 
     @ElementCollection
     @CollectionTable(name = "store_business_hours", joinColumns = @JoinColumn(name = "store_id"),
