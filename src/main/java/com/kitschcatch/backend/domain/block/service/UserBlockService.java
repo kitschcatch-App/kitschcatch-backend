@@ -6,6 +6,7 @@ import com.kitschcatch.backend.domain.block.dto.BlockResponse;
 import com.kitschcatch.backend.domain.block.entity.UserBlock;
 import com.kitschcatch.backend.domain.block.repository.UserBlockRepository;
 import com.kitschcatch.backend.domain.follow.repository.UserFollowRepository;
+import com.kitschcatch.backend.domain.notification.ChatPushCancellation;
 import com.kitschcatch.backend.domain.user.service.ProfileImageStorage;
 import com.kitschcatch.backend.domain.user.service.UserPairLock;
 import com.kitschcatch.backend.global.exception.BusinessException;
@@ -23,6 +24,7 @@ public class UserBlockService {
     private final UserFollowRepository follows;
     private final UserPairLock userLocks;
     private final ProfileImageStorage images;
+    private final ChatPushCancellation chatPushes;
 
     @Transactional
     public BlockResponse change(long actor, long target, boolean block) {
@@ -35,6 +37,7 @@ public class UserBlockService {
             }
             follows.deleteFollow(actor, target);
             follows.deleteFollow(target, actor);
+            chatPushes.cancelBetween(actor, target);
         } else {
             blocks.deleteDirection(actor, target);
         }

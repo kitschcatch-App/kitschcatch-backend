@@ -14,4 +14,7 @@ CREATE TABLE IF NOT EXISTS user_blocks (
 CREATE INDEX IF NOT EXISTS ix_user_blocks_blocker_created_id ON user_blocks(blocker_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS ix_user_blocks_blocked ON user_blocks(blocked_id);
 
+CREATE INDEX IF NOT EXISTS ix_chat_rooms_participants ON chat_rooms(buyer_id, seller_id);
+CREATE INDEX IF NOT EXISTS ix_notifications_user_type_target ON notifications(user_id, type, target_id);
+
 COMMIT;
