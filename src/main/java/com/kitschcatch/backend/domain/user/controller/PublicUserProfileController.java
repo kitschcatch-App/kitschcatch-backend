@@ -4,6 +4,8 @@ package com.kitschcatch.backend.domain.user.controller;
 import com.kitschcatch.backend.domain.user.dto.PublicUserProfileResponse;
 import com.kitschcatch.backend.domain.user.service.UserService;
 import com.kitschcatch.backend.global.response.ApiResponse;
+import com.kitschcatch.backend.global.security.AuthenticatedUser;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,8 +26,8 @@ public class PublicUserProfileController {
 	}
 
 	@GetMapping("/{userId}")
-	@Operation(summary = "공개 회원 프로필 조회", description = "본인과 타인에게 같은 공개 필드를 반환합니다. 미등록 또는 없는 사용자는 USER_001을 반환합니다.")
-	public ApiResponse<PublicUserProfileResponse> getProfile(@PathVariable Long userId) {
-		return ApiResponse.success(userService.getPublicProfile(userId));
+	@Operation(summary = "공개 회원 프로필 조회", description = "공개 필드와 조회자 기준 차단 및 팔로우 가능 상태를 반환합니다. 미등록 또는 없는 사용자는 USER_001을 반환합니다.")
+	public ApiResponse<PublicUserProfileResponse> getProfile(@AuthenticationPrincipal AuthenticatedUser actor, @PathVariable Long userId) {
+		return ApiResponse.success(userService.getPublicProfile(actor.userId(), userId));
 	}
 }

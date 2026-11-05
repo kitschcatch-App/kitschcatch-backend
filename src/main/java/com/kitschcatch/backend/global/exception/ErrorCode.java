@@ -41,6 +41,7 @@ public enum ErrorCode {
     STORE_REVIEW_IMAGE_HIDDEN(HttpStatus.CONFLICT, "STORE_REVIEW_IMAGE_007", "숨김 처리된 리뷰의 사진은 변경할 수 없습니다."),
 
 	USER_WITHDRAWAL_BLOCKED(HttpStatus.CONFLICT, "USER_057_001", "진행 중이거나 확인이 필요한 거래가 있어 탈퇴할 수 없습니다."),
+	USER_INTERACTION_BLOCKED(HttpStatus.FORBIDDEN, "USER_009", "이 사용자와는 현재 채팅이나 팔로우를 할 수 없습니다."),
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
 	USER_PROFILE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "USER_002", "프로필이 이미 등록되어 있습니다."),
 	USER_PROFILE_NOT_REGISTERED(HttpStatus.CONFLICT, "USER_003", "프로필을 먼저 등록해야 합니다."),

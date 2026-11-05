@@ -2,6 +2,7 @@
 package com.kitschcatch.backend.domain.follow.service;
 
 import com.kitschcatch.backend.domain.follow.dto.*;
+import com.kitschcatch.backend.domain.block.service.UserInteractionPolicy;
 import com.kitschcatch.backend.domain.follow.entity.UserFollow;
 import com.kitschcatch.backend.domain.follow.repository.UserFollowRepository;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
@@ -18,7 +19,11 @@ public class FollowService {
     private final UserFollowRepository follows;
     private final ProfileImageStorage images;
 
-    public FollowService(UserRepository users, UserFollowRepository follows, ProfileImageStorage images) {
+    private final UserInteractionPolicy interactions;
+
+    public FollowService(UserRepository users, UserFollowRepository follows, ProfileImageStorage images,
+        UserInteractionPolicy interactions) {
+        this.interactions = interactions;
         this.users = users;
         this.follows = follows;
         this.images = images;
@@ -43,6 +48,7 @@ public class FollowService {
         if (following) {
             if (!users.existsByIdAndWithdrawnAtIsNull(targetId))
                 throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+            interactions.requireAllowed(actorId, targetId);
             if (!follows.existsByFollowerIdAndFollowingId(actorId, targetId)) {
                 follows.saveAndFlush(new UserFollow(actor, target));
             }

@@ -34,7 +34,7 @@ class UserServiceTest {
 		profileImageStorage = org.mockito.Mockito.mock(ProfileImageStorage.class);
 		userService = new UserService(userRepository, new NicknamePolicy(), profileImageStorage,
 			new UserProfileTransactionService(userRepository),
-			new ProfileImagePolicy(new ProfileImageProperties(5_000_000, java.time.Duration.ofMinutes(10))), new PublicProfilePolicy());
+			new ProfileImagePolicy(new ProfileImageProperties(5_000_000, java.time.Duration.ofMinutes(10))), new PublicProfilePolicy(), org.mockito.Mockito.mock(com.kitschcatch.backend.domain.block.service.UserInteractionPolicy.class));
 		user = User.builder()
 			.nickname("kakao-default")
 			.email("user@example.com")

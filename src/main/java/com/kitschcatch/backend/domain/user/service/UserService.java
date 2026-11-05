@@ -1,6 +1,7 @@
 // 내 정보 조회와 사용자 프로필 등록·수정을 처리한다.
 package com.kitschcatch.backend.domain.user.service;
 
+import com.kitschcatch.backend.domain.block.service.UserInteractionPolicy;
 import com.kitschcatch.backend.domain.user.dto.RegisterUserProfileRequest;
 import com.kitschcatch.backend.domain.user.dto.NicknameAvailabilityResponse;
 import com.kitschcatch.backend.domain.user.dto.UpdateUserProfileRequest;
@@ -25,6 +26,7 @@ public class UserService {
 	private final UserProfileTransactionService transactionService;
 	private final ProfileImagePolicy profileImagePolicy;
 	private final PublicProfilePolicy publicProfilePolicy;
+	private final UserInteractionPolicy interactions;
 
 	public UserService(
 		UserRepository userRepository,
@@ -32,7 +34,8 @@ public class UserService {
 		ProfileImageStorage profileImageStorage,
 		UserProfileTransactionService transactionService,
 		ProfileImagePolicy profileImagePolicy,
-		PublicProfilePolicy publicProfilePolicy
+		PublicProfilePolicy publicProfilePolicy,
+		UserInteractionPolicy interactions
 	) {
 		this.userRepository = userRepository;
 		this.nicknamePolicy = nicknamePolicy;
@@ -40,10 +43,11 @@ public class UserService {
 		this.transactionService = transactionService;
 		this.profileImagePolicy = profileImagePolicy;
 		this.publicProfilePolicy = publicProfilePolicy;
+		this.interactions = interactions;
 	}
 
 	@Transactional(readOnly = true)
-	public PublicUserProfileResponse getPublicProfile(Long userId) {
+	public PublicUserProfileResponse getPublicProfile(long actor, Long userId) {
 		if (userId == null || userId <= 0) {
 			throw new BusinessException(ErrorCode.BAD_REQUEST, "사용자 ID는 양의 정수여야 합니다.");
 		}
@@ -52,7 +56,8 @@ public class UserService {
 			throw new BusinessException(ErrorCode.USER_NOT_FOUND);
 		}
 		String imageUrl = user.getProfileImageKey() == null ? null : profileImageStorage.imageUrl(user.getProfileImageKey());
-		return PublicUserProfileResponse.from(user, imageUrl);
+		var status = actor == userId ? new UserInteractionPolicy.Status(false, false) : interactions.status(actor, userId);
+		return PublicUserProfileResponse.from(user, imageUrl, status.blockedByMe(), status.allowed());
 	}
 
 	@Transactional(readOnly = true)

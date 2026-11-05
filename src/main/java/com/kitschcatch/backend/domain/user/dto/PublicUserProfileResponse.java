@@ -12,10 +12,12 @@ public record PublicUserProfileResponse(
 	String username,
 	String bio,
 	String profileImageUrl,
-	Instant profileRegisteredAt
+	Instant profileRegisteredAt,
+	boolean blockedByMe,
+	boolean canFollow
 ) {
-	public static PublicUserProfileResponse from(User user, String imageUrl) {
+	public static PublicUserProfileResponse from(User user, String imageUrl, boolean blockedByMe, boolean canFollow) {
 		return new PublicUserProfileResponse(user.getId(), user.getNickname(), user.getUsername(),
-			user.getBio(), imageUrl, user.getProfileRegisteredAt());
+			user.getBio(), imageUrl, user.getProfileRegisteredAt(), blockedByMe, canFollow);
 	}
 }
