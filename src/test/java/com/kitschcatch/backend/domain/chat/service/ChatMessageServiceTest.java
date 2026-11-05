@@ -69,7 +69,7 @@ class ChatMessageServiceTest {
 				chatRoomRepository,
 				userRepository,
 				chatImageStorage,
-				chatMessageCommandService
+				chatMessageCommandService, mock(ChatContactPolicy.class)
 		);
 
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");

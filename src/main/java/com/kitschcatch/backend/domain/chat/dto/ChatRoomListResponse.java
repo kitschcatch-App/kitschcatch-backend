@@ -1,6 +1,7 @@
 package com.kitschcatch.backend.domain.chat.dto;
 
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
+import com.kitschcatch.backend.domain.block.service.UserInteractionPolicy.Status;
 import com.kitschcatch.backend.domain.user.entity.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
@@ -30,10 +31,12 @@ public record ChatRoomListResponse(
         LocalDateTime lastMessageAt,
 
         @Schema(description = "현재 사용자가 읽지 않은 상대방 메시지 수. 텍스트·이미지 포함, 없으면 0", example = "3", minimum = "0")
-        long unreadCount
+        long unreadCount,
+        boolean blockedByMe,
+        boolean canSendMessage
 ) {
 
-    public static ChatRoomListResponse from(ChatRoom chatRoom, Long currentUserId, long unreadCount) {
+    public static ChatRoomListResponse from(ChatRoom chatRoom, Long currentUserId, long unreadCount, Status status) {
         User opponent = findOpponent(chatRoom, currentUserId);
 
         return new ChatRoomListResponse(
@@ -44,7 +47,7 @@ public record ChatRoomListResponse(
                 opponent.getNickname(),
                 chatRoom.getLastMessageContent(),
                 chatRoom.getLastMessageAt(),
-                unreadCount
+                unreadCount, status.blockedByMe(), status.allowed() && opponent.isActive()
         );
     }
 

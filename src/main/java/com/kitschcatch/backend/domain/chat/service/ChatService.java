@@ -19,7 +19,8 @@ import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
+import com.kitschcatch.backend.domain.block.service.UserInteractionPolicy;
+import com.kitschcatch.backend.domain.block.service.UserInteractionPolicy.Status;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,8 @@ public class ChatService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final PostImageStorage postImageStorage;
+    private final ChatContactPolicy contactPolicy;
+    private final UserInteractionPolicy interactions;
 
     // 채팅방 생성
     @Transactional
@@ -52,6 +55,7 @@ public class ChatService {
 
         // 판매자가 자기 자신의 게시글에 문의하는 경우 방지
         validateNotSelfChat(buyer, seller);
+        contactPolicy.requireWritable(userId, seller.getId());
 
         // 채팅방 생성
         ChatRoom chatRoom = findOrCreateChatRoom(post, buyer, seller);
@@ -62,19 +66,8 @@ public class ChatService {
     private ChatRoom findOrCreateChatRoom(Post post, User buyer, User seller) {
         return chatRoomRepository
                 .findByPostIdAndBuyerIdAndSellerId(post.getId(), buyer.getId(), seller.getId())
-                .orElseGet(() -> saveOrFindExistingChatRoom(post, buyer, seller));
+                .orElseGet(() -> chatRoomRepository.saveAndFlush(ChatRoom.create(post, buyer, seller)));
     }
-
-    private ChatRoom saveOrFindExistingChatRoom(Post post, User buyer, User seller) {
-        try {
-            return chatRoomRepository.saveAndFlush(ChatRoom.create(post, buyer, seller));
-        } catch (DataIntegrityViolationException e) {
-            return chatRoomRepository
-                    .findByPostIdAndBuyerIdAndSellerId(post.getId(), buyer.getId(), seller.getId())
-                    .orElseThrow(() -> e);
-        }
-    }
-
 
     /**
      * 현재 로그인 사용자가 참여 중인 채팅방 목록을 조회한다.
@@ -94,8 +87,11 @@ public class ChatService {
                 rooms.stream().map(ChatRoom::getId).toList(), userId).stream()
             .collect(Collectors.toMap(ChatMessageRepository.UnreadCount::getChatRoomId,
                 ChatMessageRepository.UnreadCount::getUnreadCount));
+        var statuses = interactions.statuses(userId,
+                rooms.stream().map(room -> ChatContactPolicy.opponentId(room, userId)).distinct().toList());
         return rooms.stream()
-                .map(chatRoom -> ChatRoomListResponse.from(chatRoom, userId, counts.getOrDefault(chatRoom.getId(), 0L)))
+                .map(room -> ChatRoomListResponse.from(room, userId, counts.getOrDefault(room.getId(), 0L),
+                        statuses.getOrDefault(ChatContactPolicy.opponentId(room, userId), Status.ALLOWED)))
                 .toList();
     }
 
@@ -114,7 +110,9 @@ public class ChatService {
 
         String postThumbnailImageUrl = getPostThumbnailImageUrl(chatRoom);
 
-        return ChatRoomDetailResponse.from(chatRoom, postThumbnailImageUrl);
+        var status = interactions.status(userId, ChatContactPolicy.opponentId(chatRoom, userId));
+        var opponent = chatRoom.getBuyer().getId().equals(userId) ? chatRoom.getSeller() : chatRoom.getBuyer();
+        return ChatRoomDetailResponse.from(chatRoom, postThumbnailImageUrl, status, opponent.isActive());
     }
 
     /**
