@@ -1,7 +1,9 @@
 // 실제 HTTP 서버에서 매장 조회 계약을 H2와 PostgreSQL에 공통 검증한다.
 package com.kitschcatch.backend.domain.store;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.kitschcatch.backend.domain.store.entity.Store;
 import com.kitschcatch.backend.domain.store.entity.StoreBusinessHours;
@@ -22,7 +24,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.convention.TestBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestClient;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 abstract class StoreHttpContract {
     @LocalServerPort int port;
@@ -30,10 +39,20 @@ abstract class StoreHttpContract {
     @Autowired JdbcTemplate jdbc;
     @Autowired JwtTokenProvider tokens;
     @Autowired UserRepository users;
+    @MockitoBean S3Client s3;
+    @TestBean(methodName = "testPresigner") S3Presigner presigner;
     String token;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2).credentialsProvider(
+            StaticCredentialsProvider.create(AwsSessionCredentials.create("test-access", "test-secret", "test-session")))
+            .build();
+    }
 
     @BeforeEach
     void resetData() {
+        jdbc.update("DELETE FROM store_images");
+        jdbc.update("DELETE FROM store_amenities");
         jdbc.update("DELETE FROM store_business_hours");
         jdbc.update("DELETE FROM stores");
         users.deleteAllInBatch();
@@ -96,8 +115,53 @@ abstract class StoreHttpContract {
     @Test
     void detailDistinguishesMissingHoursFromMissingStore() {
         var store = store("시간 미등록", "서울", 0, 0);
-        assertThat(get("/api/stores/" + store.getId()).rows("businessHours")).isEmpty();
+        var detail = get("/api/stores/" + store.getId());
+        assertThat(detail.rows("businessHours")).isEmpty();
+        assertThat(detail.data()).containsEntry("description", null).containsEntry("thumbnailUrl", null);
+        assertThat(detail.rows("images")).isEmpty();
+        assertThat(detail.rows("amenities")).hasSize(6).allSatisfy(row -> assertThat(row)
+            .containsEntry("status", "UNKNOWN").containsEntry("note", null));
         assertError(get("/api/stores/9223372036854775807"), 404, "STORE_001");
+    }
+
+    @Test
+    void detailShowsVerifiedFacilitiesAndSignsTheOrderedPhotosWithoutContactingS3() {
+        var store = store("소개 검증", "서울", 37.5, 127);
+        long id = store.getId();
+        String description = "첫 문단\n둘째 문단";
+        jdbc.update("UPDATE stores SET description = ? WHERE id = ?", description, id);
+        jdbc.update("INSERT INTO store_amenities(store_id,code,status,note) VALUES (?,?,?,?)",
+            id, "PARKING", "AVAILABLE", "건물 공용 유료");
+        jdbc.update("INSERT INTO store_amenities(store_id,code,status) VALUES (?,?,?)", id, "WIFI", "UNAVAILABLE");
+        String first = "stores/" + id + "/00000000-0000-4000-8000-000000000001.jpg";
+        String second = "stores/" + id + "/00000000-0000-4000-8000-000000000002.webp";
+        jdbc.update("INSERT INTO store_images(store_id,object_key,sort_order) VALUES (?,?,?)", id, second, 1);
+        jdbc.update("INSERT INTO store_images(store_id,object_key,sort_order,caption,credit,source_url) VALUES (?,?,?,?,?,?)",
+            id, first, 0, "매장 입구", "매장 제공", "https://example.test/source");
+
+        String path = "/api/stores/" + id;
+        var response = get(path);
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.data()).containsEntry("description", description).containsEntry("favorited", false);
+        var photos = response.rows("images");
+        assertThat(photos).extracting(row -> row.get("sortOrder")).containsExactly(0, 1);
+        var representative = photos.getFirst();
+        assertThat(representative).containsEntry("caption", "매장 입구").containsEntry("credit", "매장 제공")
+            .containsEntry("sourceUrl", "https://example.test/source").doesNotContainKeys("objectKey", "imageKey");
+        String thumbnail = (String) response.data().get("thumbnailUrl");
+        assertThat(thumbnail).isEqualTo(representative.get("imageUrl")).contains("X-Amz-Security-Token=test-session");
+        assertGetUrl(thumbnail, "store-test-bucket", first, 720, "test-access", "test-secret");
+        assertGetUrl((String) photos.get(1).get("imageUrl"), "store-test-bucket", second, 720, "test-access", "test-secret");
+        var facilities = response.rows("amenities");
+        assertThat(facilities).extracting(row -> row.get("code")).containsExactly(
+            "PARKING", "RESTROOM", "WIFI", "ELEVATOR", "WHEELCHAIR_ACCESS", "PET_FRIENDLY");
+        assertThat(facilities).extracting(row -> row.get("status")).containsExactly(
+            "AVAILABLE", "UNKNOWN", "UNAVAILABLE", "UNKNOWN", "UNKNOWN", "UNKNOWN");
+        assertThat(facilities.getFirst()).containsEntry("label", "주차").containsEntry("note", "건물 공용 유료");
+        var headers = RestClient.create("http://127.0.0.1:" + port).get().uri(path)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toBodilessEntity().getHeaders();
+        assertThat(headers.getCacheControl()).contains("no-store");
+        verifyNoInteractions(s3);
     }
 
     @ParameterizedTest
@@ -201,6 +265,8 @@ abstract class StoreHttpContract {
             assertThat(paths.get(path)).containsOnlyKeys("get");
             assertThat(paths.get(path).get("get").get("security").toString()).contains("bearerAuth");
         }
+        assertThat(response.body().get("components").toString())
+            .contains("thumbnailUrl", "description", "images", "amenities", "UNKNOWN");
         assertThat(paths.get("/api/stores/nearby").get("get").get("parameters").toString())
             .contains("latitude", "longitude", "radiusKm", "page", "size");
     }

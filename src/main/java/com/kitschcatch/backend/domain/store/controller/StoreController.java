@@ -74,7 +74,7 @@ public class StoreController {
     }
 
     @GetMapping("/{storeId}")
-    @Operation(summary = "매장 상세 및 운영 정보 조회", description = "favorited는 요청 사용자의 관심 여부입니다. 영업시간은 월요일부터 정렬합니다. 미등록은 빈 배열, 휴무일은 closed=true와 null 시각입니다. closeTime이 openTime 이하이면 다음 날 종료(같으면 24시간)입니다. phone 미등록은 null입니다.")
+    @Operation(summary = "매장 상세 및 운영 정보 조회", description = "favorited는 요청 사용자의 관심 여부입니다. 영업시간은 월요일부터 정렬합니다. 미등록은 빈 배열, 휴무일은 closed=true와 null 시각입니다. closeTime이 openTime 이하이면 다음 날 종료(같으면 24시간)입니다. 소개와 대표 사진 미등록은 null, 사진 미등록은 빈 배열입니다. 사진 URL은 임시 GET 서명입니다. 미확인 편의시설은 UNKNOWN입니다. phone 미등록은 null입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "매장 상세 조회 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_002: 매장 ID 형식·범위 오류")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "STORE_001: 매장을 찾을 수 없음")
