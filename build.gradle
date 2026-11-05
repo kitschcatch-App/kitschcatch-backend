@@ -44,6 +44,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 전체 통합 테스트에서 사용하지 않는 Spring 컨텍스트가 쌓이지 않게 한다.
+	systemProperty 'spring.test.context.cache.maxSize', '3'
 }
 
 tasks.register('storeCsv', JavaExec) {
