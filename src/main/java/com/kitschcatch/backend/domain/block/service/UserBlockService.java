@@ -31,6 +31,7 @@ public class UserBlockService {
         if (target <= 0 || actor == target) throw new BusinessException(ErrorCode.BAD_REQUEST);
         var pair = userLocks.lock(actor, target);
         if (block) {
+            if (pair.target() == null) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
             userLocks.requireActiveTarget(target);
             if (!blocks.existsByBlockerIdAndBlockedId(actor, target)) {
                 blocks.save(new UserBlock(pair.actor(), pair.target()));

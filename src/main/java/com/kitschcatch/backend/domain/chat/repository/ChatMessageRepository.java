@@ -13,13 +13,17 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 	@EntityGraph(attributePaths = {"chatRoom", "sender"})
 	List<ChatMessage> findByChatRoomIdOrderByCreatedAtAsc(Long chatRoomId);
 
-    // 반환 대상 채팅방의 상대방 미읽음 메시지 수만 한 번에 집계한다.
+    // 채팅방별 미읽음 수와 두 방향의 차단 상태를 한 번에 조회한다.
     @Query("""
-        select m.chatRoom.id as chatRoomId, count(m) as unreadCount
-        from ChatMessage m
-        where m.chatRoom.id in :roomIds
-          and m.sender.id <> :userId and m.isRead = false
-        group by m.chatRoom.id
+        select r.id as chatRoomId, count(m.id) as unreadCount,
+            case when exists (select 1 from UserBlock b where b.blocker.id = :userId
+                and b.blocked.id in (r.buyer.id, r.seller.id)) then true else false end as blockedByMe,
+            case when exists (select 1 from UserBlock b where b.blocked.id = :userId
+                and b.blocker.id in (r.buyer.id, r.seller.id)) then true else false end as blockedByOpponent
+        from ChatRoom r left join ChatMessage m
+            on m.chatRoom.id = r.id and m.sender.id <> :userId and m.isRead = false
+        where r.id in :roomIds
+        group by r.id, r.buyer.id, r.seller.id
         """)
     List<UnreadCount> countUnreadByRoomIds(@Param("roomIds") List<Long> roomIds,
         @Param("userId") Long userId);
@@ -27,6 +31,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     interface UnreadCount {
         Long getChatRoomId();
         long getUnreadCount();
+        boolean getBlockedByMe();
+        boolean getBlockedByOpponent();
     }
 
 	// 안읽은 메세지 목록 조회

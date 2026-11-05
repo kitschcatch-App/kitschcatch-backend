@@ -20,8 +20,10 @@ public class UserPairLock {
         long firstId = Math.min(actor, target);
         var first = users.findByIdForUpdate(firstId).orElse(null);
         var second = users.findByIdForUpdate(Math.max(actor, target)).orElse(null);
+        var pair = firstId == actor ? new Pair(first, second) : new Pair(second, first);
+        if (pair.actor() == null) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
         requireActiveActor(actor);
-        return firstId == actor ? new Pair(first, second) : new Pair(second, first);
+        return pair;
     }
 
     public void requireActiveActor(long actor) {

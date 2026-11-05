@@ -3,7 +3,6 @@ package com.kitschcatch.backend.domain.block.repository;
 
 import com.kitschcatch.backend.domain.block.entity.UserBlock;
 import java.time.Instant;
-import java.util.Collection;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,11 +22,11 @@ public interface UserBlockRepository extends JpaRepository<UserBlock, Long> {
     boolean existsBetween(@Param("first") long first, @Param("second") long second);
 
     @Query("""
-        select b.blocker.id as blockerId, b.blocked.id as blockedId from UserBlock b
-        where (b.blocker.id = :actor and b.blocked.id in :others)
-           or (b.blocked.id = :actor and b.blocker.id in :others)
+        select b.blocker.id from UserBlock b
+        where (b.blocker.id = :first and b.blocked.id = :second)
+           or (b.blocker.id = :second and b.blocked.id = :first)
         """)
-    List<Direction> findRelations(@Param("actor") long actor, @Param("others") Collection<Long> others);
+    List<Long> findBlockersBetween(@Param("first") long first, @Param("second") long second);
 
     @Modifying
     @Query("delete from UserBlock b where b.blocker.id = :actor and b.blocked.id = :target")
@@ -40,11 +39,6 @@ public interface UserBlockRepository extends JpaRepository<UserBlock, Long> {
         order by b.createdAt desc, b.id desc
         """, countQuery = "select count(b) from UserBlock b where b.blocker.id = :actor")
     Page<BlockRow> findBlockedUsers(@Param("actor") long actor, Pageable pageable);
-
-    interface Direction {
-        long getBlockerId();
-        long getBlockedId();
-    }
 
     interface BlockRow {
         long getUserId();

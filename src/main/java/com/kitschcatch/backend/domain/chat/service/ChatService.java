@@ -83,15 +83,16 @@ public class ChatService {
         var rooms = chatRoomRepository.findMyChatRooms(userId,
                 query.role() == null ? null : query.role().name(), query.postId());
         if (rooms.isEmpty()) return List.of();
-        Map<Long, Long> counts = chatMessageRepository.countUnreadByRoomIds(
+        Map<Long, ChatMessageRepository.UnreadCount> stats = chatMessageRepository.countUnreadByRoomIds(
                 rooms.stream().map(ChatRoom::getId).toList(), userId).stream()
-            .collect(Collectors.toMap(ChatMessageRepository.UnreadCount::getChatRoomId,
-                ChatMessageRepository.UnreadCount::getUnreadCount));
-        var statuses = interactions.statuses(userId,
-                rooms.stream().map(room -> ChatContactPolicy.opponentId(room, userId)).distinct().toList());
+            .collect(Collectors.toMap(ChatMessageRepository.UnreadCount::getChatRoomId, row -> row));
         return rooms.stream()
-                .map(room -> ChatRoomListResponse.from(room, userId, counts.getOrDefault(room.getId(), 0L),
-                        statuses.getOrDefault(ChatContactPolicy.opponentId(room, userId), Status.ALLOWED)))
+                .map(room -> {
+                    var row = stats.get(room.getId());
+                    if (row == null) return ChatRoomListResponse.from(room, userId, 0, Status.ALLOWED);
+                    var status = new Status(row.getBlockedByMe(), !row.getBlockedByMe() && !row.getBlockedByOpponent());
+                    return ChatRoomListResponse.from(room, userId, row.getUnreadCount(), status);
+                })
                 .toList();
     }
 

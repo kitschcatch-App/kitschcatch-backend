@@ -4,10 +4,6 @@ package com.kitschcatch.backend.domain.block.service;
 import com.kitschcatch.backend.domain.block.repository.UserBlockRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -25,20 +21,9 @@ public class UserInteractionPolicy {
     }
 
     public Status status(long actor, long target) {
-        return statuses(actor, List.of(target)).getOrDefault(target, Status.ALLOWED);
-    }
-
-    public Map<Long, Status> statuses(long actor, Collection<Long> targets) {
-        if (targets.isEmpty()) return Map.of();
-        var result = new HashMap<Long, Status>();
-        for (var row : blocks.findRelations(actor, targets)) {
-            if (row.getBlockerId() == actor) {
-                result.put(row.getBlockedId(), new Status(true, false));
-            } else {
-                result.putIfAbsent(row.getBlockerId(), new Status(false, false));
-            }
-        }
-        return result;
+        if (actor == target) return Status.ALLOWED;
+        var blockers = blocks.findBlockersBetween(actor, target);
+        return blockers.isEmpty() ? Status.ALLOWED : new Status(blockers.contains(actor), false);
     }
 
     public record Status(boolean blockedByMe, boolean allowed) {
