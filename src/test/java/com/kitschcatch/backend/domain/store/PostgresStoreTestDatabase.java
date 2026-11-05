@@ -49,6 +49,10 @@ final class PostgresStoreTestDatabase implements AutoCloseable {
         migrate(connection, "085_store_reviews.sql");
     }
 
+    static void migrateReviewImages(Connection connection) throws SQLException, IOException {
+        migrate(connection, "087_store_review_images.sql");
+    }
+
     private static void migrate(Connection connection, String file) throws SQLException, IOException {
         try (var stream = PostgresStoreTestDatabase.class.getResourceAsStream("/db/manual/" + file);
              var statement = connection.createStatement()) {
