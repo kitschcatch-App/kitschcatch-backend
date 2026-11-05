@@ -55,7 +55,7 @@ public class StoreReviewController {
     }
 
     @PatchMapping("/store-reviews/{reviewId}")
-    @Operation(summary = "내 매장 리뷰 수정", description = "조회한 version과 변경할 별점 또는 본문을 보냅니다.")
+    @Operation(summary = "내 매장 리뷰 수정", description = "조회한 version과 변경할 별점, 본문 또는 imageIds를 보냅니다. imageIds 생략은 유지, 빈 배열은 전체 제거입니다.")
     public ApiResponse<StoreReviewResponse> update(@AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable long reviewId, @Valid @RequestBody UpdateStoreReviewRequest request) {
         return ApiResponse.success(reviews.update(user.userId(), reviewId, request));

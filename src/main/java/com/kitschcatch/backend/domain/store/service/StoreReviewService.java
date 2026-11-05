@@ -39,6 +39,7 @@ public class StoreReviewService {
     private final StoreRepository stores;
     private final UserRepository users;
     private final ProfileImageStorage profileImages;
+    private final StoreReviewImageService reviewImages;
 
     @Transactional
     public StoreReviewResponse create(long userId, long storeId, CreateStoreReviewRequest request) {
@@ -56,14 +57,17 @@ public class StoreReviewService {
                 userId, storeId, now.minus(CREATE_WINDOW)) >= MAX_CREATES_PER_STORE) {
             throw new BusinessException(ErrorCode.STORE_REVIEW_CREATE_LIMIT);
         }
-        return response(reviews.saveAndFlush(new StoreReview(store, author, request.rating().intValueExact(), content, now)),
-            userId);
+        var review = reviews.saveAndFlush(new StoreReview(store, author, request.rating().intValueExact(), content, now));
+        reviewImages.replace(review, request.imageIds());
+        return response(review, userId);
     }
 
     public StoreReviewResponse.Page list(long userId, long storeId, StorePageQuery query) {
         requireStore(storeId);
         var page = reviews.findPublicPage(storeId, PageRequest.of(query.page(), query.size()));
-        return new StoreReviewResponse.Page(page.stream().map(review -> response(review, userId)).toList(),
+        var photos = reviewImages.responses(page.stream().map(StoreReview::getId).toList());
+        return new StoreReviewResponse.Page(page.stream()
+            .map(review -> response(review, userId, photos.getOrDefault(review.getId(), List.of()))).toList(),
             page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
     }
 
@@ -82,7 +86,7 @@ public class StoreReviewService {
     @Transactional
     public StoreReviewResponse update(long userId, long reviewId, UpdateStoreReviewRequest request) {
         requirePositiveId(reviewId);
-        if (request.rating() == null && request.content() == null) {
+        if (request.rating() == null && request.content() == null && request.imageIds() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
         }
         String content = request.content() == null ? null : normalizeContent(request.content());
@@ -94,6 +98,7 @@ public class StoreReviewService {
         if (review.getVersion() != request.version()) {
             throw new BusinessException(ErrorCode.STORE_REVIEW_VERSION_CONFLICT);
         }
+        reviewImages.replace(review, request.imageIds());
         int rating = request.rating() == null ? review.getRating() : request.rating().intValueExact();
         review.update(rating, content == null ? review.getContent() : content, now());
         flushReviewChange();
@@ -106,6 +111,7 @@ public class StoreReviewService {
         lockActiveUser(userId);
         var review = ownedReview(userId, reviewId);
         if (review.getDeletedAt() == null) {
+            reviewImages.retire(review);
             review.delete(now());
             flushReviewChange();
         }
@@ -155,13 +161,18 @@ public class StoreReviewService {
     }
 
     private StoreReviewResponse response(StoreReview review, long userId) {
+        return response(review, userId, reviewImages.responses(List.of(review.getId()))
+            .getOrDefault(review.getId(), List.of()));
+    }
+
+    private StoreReviewResponse response(StoreReview review, long userId, List<StoreReviewResponse.Image> photos) {
         var author = review.getAuthor();
         String key = author.getProfileImageKey();
         var authorResponse = new StoreReviewResponse.Author(author.getId(), author.getNickname(),
             key == null ? null : profileImages.imageUrl(key));
         return new StoreReviewResponse(review.getId(), review.getStore().getId(), authorResponse,
             review.getRating(), review.getContent(), review.getCreatedAt(), review.getUpdatedAt(),
-            author.getId() == userId, review.getHiddenAt() != null, review.getVersion(), List.of());
+            author.getId() == userId, review.getHiddenAt() != null, review.getVersion(), photos);
     }
 
     private User lockActiveUser(long userId) {
