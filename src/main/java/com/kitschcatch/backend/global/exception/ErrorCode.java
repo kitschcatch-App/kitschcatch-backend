@@ -32,6 +32,13 @@ public enum ErrorCode {
 	STORE_REVIEW_FORBIDDEN(HttpStatus.FORBIDDEN, "STORE_REVIEW_003", "본인의 매장 리뷰만 변경할 수 있습니다."),
 	STORE_REVIEW_VERSION_CONFLICT(HttpStatus.CONFLICT, "STORE_REVIEW_004", "리뷰가 변경되었습니다. 다시 조회해 주세요."),
 	STORE_REVIEW_CREATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "STORE_REVIEW_005", "이 매장에 작성할 수 있는 리뷰 횟수를 초과했습니다."),
+    STORE_REVIEW_IMAGE_INVALID(HttpStatus.BAD_REQUEST, "STORE_REVIEW_IMAGE_001", "리뷰 사진 형식, 크기 또는 연결 정보가 올바르지 않습니다."),
+    STORE_REVIEW_IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE_REVIEW_IMAGE_002", "리뷰 사진을 찾을 수 없습니다."),
+    STORE_REVIEW_IMAGE_NOT_UPLOADED(HttpStatus.CONFLICT, "STORE_REVIEW_IMAGE_003", "사진 업로드를 먼저 완료해 주세요."),
+    STORE_REVIEW_IMAGE_EXPIRED(HttpStatus.CONFLICT, "STORE_REVIEW_IMAGE_004", "사진 준비 시간이 만료되었습니다. 다시 업로드해 주세요."),
+    STORE_REVIEW_IMAGE_BUSY(HttpStatus.TOO_MANY_REQUESTS, "STORE_REVIEW_IMAGE_005", "잠시 후 사진 업로드를 다시 시도해 주세요."),
+    STORE_REVIEW_IMAGE_STORAGE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "STORE_REVIEW_IMAGE_006", "사진 저장소에 일시적으로 접근할 수 없습니다."),
+    STORE_REVIEW_IMAGE_HIDDEN(HttpStatus.CONFLICT, "STORE_REVIEW_IMAGE_007", "숨김 처리된 리뷰의 사진은 변경할 수 없습니다."),
 
 	USER_WITHDRAWAL_BLOCKED(HttpStatus.CONFLICT, "USER_057_001", "진행 중이거나 확인이 필요한 거래가 있어 탈퇴할 수 없습니다."),
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
