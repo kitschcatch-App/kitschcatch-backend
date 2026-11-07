@@ -105,7 +105,7 @@ class ChatControllerTest {
 				4L,
 				"another-seller",
 				"판매 중인가요?",
-				LocalDateTime.of(2026, 5, 27, 10, 0), 3L
+				LocalDateTime.of(2026, 5, 27, 10, 0), 3L, false, true
 			),
 			new ChatRoomListResponse(
 				102L,
@@ -114,7 +114,7 @@ class ChatControllerTest {
 				3L,
 				"another-buyer",
 				"네 가능합니다.",
-				LocalDateTime.of(2026, 5, 27, 9, 0), 0L
+				LocalDateTime.of(2026, 5, 27, 9, 0), 0L, false, true
 			)
 		));
 
@@ -178,7 +178,7 @@ class ChatControllerTest {
 				100L,
 				10L,
 				"키링 판매",
-				"https://cdn.test/posts/1/test-image.jpg"
+				"https://cdn.test/posts/1/test-image.jpg", false, true
 			));
 
 		mockMvc.perform(get("/api/chat-rooms/100").principal(authentication))
@@ -201,7 +201,7 @@ class ChatControllerTest {
 				100L,
 				10L,
 				"키링 판매",
-				"https://cdn.test/posts/1/test-image.jpg"
+				"https://cdn.test/posts/1/test-image.jpg", false, true
 			));
 
 		mockMvc.perform(get("/api/chat-rooms/100").principal(sellerAuthentication))

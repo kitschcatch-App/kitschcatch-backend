@@ -48,6 +48,7 @@ public class UserWithdrawalService {
         jdbc.update("delete from search_daily_users where user_id = ?", userId);
         jdbc.update("delete from post_favorites where user_id = ?", userId);
         jdbc.update("delete from user_follows where follower_id = ? or following_id = ?", userId, userId);
+        jdbc.update("delete from user_blocks where blocker_id = ? or blocked_id = ?", userId, userId);
         // 발송 워커의 발송 → 토큰 잠금 순서를 지켜 진행 중인 발송이 끝난 뒤 정리한다.
         jdbc.queryForList("""
             select id from push_deliveries

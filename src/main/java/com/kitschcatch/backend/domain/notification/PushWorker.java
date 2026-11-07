@@ -44,6 +44,11 @@ public class PushWorker {
       delivery.skip();
       return true;
     }
+    // 발송 행을 잠근 상태에서 읽기만 한다. 차단은 사용자 행을 먼저 잠근다.
+    if (isBlockedChat(notification)) {
+      delivery.skipBlocked();
+      return true;
+    }
     PushGateway.Result result;
     try {
       result = gateway.send(token, notification);
@@ -54,5 +59,15 @@ public class PushWorker {
     if (result.invalidToken()) token.deactivate();
     attempts.save(new PushAttempt(delivery));
     return true;
+  }
+  private boolean isBlockedChat(Notification notification) {
+    if (notification.getType() != NotificationType.CHAT_MESSAGE) return false;
+    final long roomId;
+    try {
+      roomId = Long.parseLong(notification.getTargetId());
+    } catch (NumberFormatException invalidTarget) {
+      return false;
+    }
+    return deliveries.isBlockedChat(roomId);
   }
 }

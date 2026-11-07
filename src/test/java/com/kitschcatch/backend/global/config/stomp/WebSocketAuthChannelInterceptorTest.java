@@ -128,4 +128,23 @@ class WebSocketAuthChannelInterceptorTest {
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
 	}
+    @Test
+    void rejectsBrokerSendWildcardAndNonParticipantReadSubscription() {
+        for (var destination : List.of("/sub/chat-rooms/100", "/sub/chat-rooms/100/read", "/pub/chat-rooms/*/read")) {
+            assertRejected(StompCommand.SEND, destination);
+        }
+        for (var destination : List.of("/sub/chat-rooms/**", "/sub/chat-rooms/100/read", "/sub/chat-rooms/9223372036854775808")) {
+            assertRejected(StompCommand.SUBSCRIBE, destination);
+        }
+    }
+
+    private void assertRejected(StompCommand command, String destination) {
+        var accessor = StompHeaderAccessor.create(command);
+        accessor.setDestination(destination);
+        accessor.setUser(new UsernamePasswordAuthenticationToken(new AuthenticatedUser(3L), null, List.of()));
+        accessor.setLeaveMutable(true);
+        var message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+        assertThatThrownBy(() -> interceptor.preSend(message, channel)).isInstanceOf(BusinessException.class)
+            .extracting("errorCode").isEqualTo(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+    }
 }

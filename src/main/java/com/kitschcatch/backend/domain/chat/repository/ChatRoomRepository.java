@@ -35,6 +35,16 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 	""")
 	boolean existsParticipant(@Param("chatRoomId") Long chatRoomId, @Param("userId") Long userId);
 
+    @Query("""
+        select case when count(r) > 0 then true else false end from ChatRoom r
+        where r.id = :roomId and (r.buyer.id = :userId or r.seller.id = :userId)
+          and r.buyer.withdrawnAt is null and r.seller.withdrawnAt is null
+          and not exists (select 1 from UserBlock b
+              where (b.blocker.id = r.buyer.id and b.blocked.id = r.seller.id)
+                 or (b.blocker.id = r.seller.id and b.blocked.id = r.buyer.id))
+        """)
+    boolean canDeliverTo(@Param("roomId") long roomId, @Param("userId") long userId);
+
     default List<ChatRoom> findMyChatRooms(Long userId) {
         return findMyChatRooms(userId, null, null);
     }

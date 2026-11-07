@@ -47,7 +47,7 @@ class ChatMessageCommandServiceTest {
         chatMessageCommandService = new ChatMessageCommandService(
                 chatRoomRepository,
                 userRepository,
-                chatMessageRepository
+                chatMessageRepository, mock(ChatContactPolicy.class)
         );
 
         buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");

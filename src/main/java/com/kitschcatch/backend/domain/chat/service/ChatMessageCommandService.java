@@ -27,6 +27,7 @@ public class ChatMessageCommandService {
     private final ChatRoomRepository chatRoomRepository;
     private final UserRepository userRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatContactPolicy contactPolicy;
 
     @Transactional
     public ChatMessageResponse saveImageMessage(
@@ -36,6 +37,8 @@ public class ChatMessageCommandService {
     ) {
         ChatRoom chatRoom = chatRoomRepository.findById(chatRoomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        contactPolicy.requireWritable(userId, ChatContactPolicy.opponentId(chatRoom, userId));
 
         User sender = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));

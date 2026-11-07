@@ -42,6 +42,7 @@ public class ChatMessageService {
 	private final UserRepository userRepository;
 	private final ChatImageStorage chatImageStorage;
 	private final ChatMessageCommandService chatMessageCommandService;
+	private final ChatContactPolicy contactPolicy;
 
 
 	@Transactional(readOnly = true)
@@ -67,6 +68,8 @@ public class ChatMessageService {
 		// 채팅방 참여자인지 검증
 		validateChatRoomParticipant(chatRoom, userId);
 
+		contactPolicy.requireWritable(userId, ChatContactPolicy.opponentId(chatRoom, userId));
+
 		// 텍스트 엔티티 생성
 		User sender = getUser(userId);
 		ChatMessage chatMessage = chatMessageRepository.saveAndFlush(
@@ -91,6 +94,8 @@ public class ChatMessageService {
 		ChatRoom chatRoom = getChatRoom(chatRoomId);
 		validateChatRoomParticipant(chatRoom, userId);
 
+		contactPolicy.requireAllowed(userId, ChatContactPolicy.opponentId(chatRoom, userId));
+
 		return chatImageStorage.createUploadUrl(
 				userId,
 				chatRoomId,
@@ -103,6 +108,8 @@ public class ChatMessageService {
 
 		ChatRoom chatRoom = getChatRoom(chatRoomId);
 		validateChatRoomParticipant(chatRoom, userId);
+
+		contactPolicy.requireAllowed(userId, ChatContactPolicy.opponentId(chatRoom, userId));
 
 		if (!chatImageStorage.isOwnedChatImageKey(userId, chatRoomId, objectKey)) {
 			throw new BusinessException(ErrorCode.CHAT_IMAGE_FORBIDDEN);
