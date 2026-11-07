@@ -54,6 +54,12 @@ app:
       success-scan-delay: 1h
       batch-size: 100
       enabled: false
+  reports:
+    minute-limit: ${APP_REPORTS_MINUTE_LIMIT:5}
+    daily-limit: ${APP_REPORTS_DAILY_LIMIT:20}
+    retention-days: ${APP_REPORTS_RETENTION_DAYS:90}
+    cleanup-enabled: ${APP_REPORTS_CLEANUP_ENABLED:false}
+    cleanup-delay: ${APP_REPORTS_CLEANUP_DELAY:1m}
   jwt:
     secret: ${APP_JWT_SECRET:dev-only-kitschcatch-jwt-secret-32-bytes}
     access-token-ttl: ${APP_JWT_ACCESS_TOKEN_TTL:30m}

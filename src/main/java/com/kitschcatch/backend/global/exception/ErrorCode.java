@@ -5,7 +5,15 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
 
-	INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "COMMON_001", "입력값이 올바르지 않습니다."),
+	REPORT_TARGET_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_001", "신고 대상을 찾을 수 없습니다."),
+    REPORT_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "REPORT_002", "본인 또는 본인 콘텐츠는 신고할 수 없습니다."),
+    REPORT_REASON_INVALID(HttpStatus.BAD_REQUEST, "REPORT_003", "이 대상에 사용할 수 없는 신고 사유입니다."),
+    REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "REPORT_004", "이미 접수된 신고가 있습니다."),
+    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_005", "신고를 찾을 수 없습니다."),
+    REPORT_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "REPORT_006", "신고 접수 횟수를 초과했습니다."),
+    REPORT_MESSAGE_INVALID(HttpStatus.BAD_REQUEST, "REPORT_007", "신고 메시지 연결 정보가 올바르지 않습니다."),
+
+    INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "COMMON_001", "입력값이 올바르지 않습니다."),
 	BAD_REQUEST(HttpStatus.BAD_REQUEST, "COMMON_002", "잘못된 요청입니다."),
 	KAKAO_LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_001", "카카오 로그인에 실패했습니다."),
 	KAKAO_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_002", "카카오 이메일 동의가 필요합니다."),
