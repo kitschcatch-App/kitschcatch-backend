@@ -49,6 +49,10 @@ public record PostResponse(
     long favoriteCount,
 
     @Schema(description = "상품의 보관된 문의방 수. 빈 방과 참여자가 숨긴 방 포함", minimum = "0")
-    long chatRoomCount
+    long chatRoomCount,
+    Long shippingAmount
 ) {
+ public PostResponse(Long id,Long sellerId,String sellerNickname,String title,String description,Long price,ProductCategory productCategory,ProductCondition productCondition,ProductStatus productStatus,List<PostImageResponse> images,LocalDateTime createdAt,LocalDateTime updatedAt,long favoriteCount,long chatRoomCount) {
+ this(id,sellerId,sellerNickname,title,description,price,productCategory,productCondition,productStatus,images,createdAt,updatedAt,favoriteCount,chatRoomCount,null);
+ }
 }

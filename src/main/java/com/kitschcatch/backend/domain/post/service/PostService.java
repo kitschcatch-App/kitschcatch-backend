@@ -94,7 +94,8 @@ public class PostService {
 				.productCondition(request.productCondition())
 				.productStatus(ProductStatus.ON_SALE)
 				.build();
-			addImages(post, imageKeys);
+			if(request.shippingAmount()!=null) post.changeShipping(request.shippingAmount());
+            addImages(post, imageKeys);
 
 			return new PostResponseMapper(postImageStorage).from(postRepository.save(post), PostCounts.ZERO);
 		});
@@ -125,7 +126,8 @@ public class PostService {
 			validateOwner(userId, post);
 			validateNoActiveOrder(post);
 
-			post.update(
+			if(request.shippingAmount()!=null) post.changeShipping(request.shippingAmount());
+            post.update(
 				request.title(),
 				request.description(),
 				request.price(),

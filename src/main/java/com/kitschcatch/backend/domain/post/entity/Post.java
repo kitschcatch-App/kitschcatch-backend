@@ -34,6 +34,13 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Post {
+    @Column(name="shipping_amount")
+    private Long shippingAmount;
+    public void changeShipping(long amount) {
+        if(amount<0 || amount>=1_000_000_000L) throw new IllegalArgumentException("배송비 범위 오류");
+        shippingAmount=amount;
+    }
+
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
