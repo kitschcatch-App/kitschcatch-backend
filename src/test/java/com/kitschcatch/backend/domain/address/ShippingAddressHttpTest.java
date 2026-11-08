@@ -28,7 +28,7 @@ class ShippingAddressHttpTest {
   String url=System.getenv("ADDRESS_TEST_DB_URL"); boolean pg=url!=null;
   r.add("spring.datasource.url",()->pg?url:"jdbc:h2:mem:addresses;MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
   r.add("spring.datasource.driver-class-name",()->pg?"org.postgresql.Driver":"org.h2.Driver");
-  r.add("spring.datasource.username",()->pg?System.getProperty("user.name"):"sa"); r.add("spring.datasource.password",()->"");
+  r.add("spring.datasource.username",()->pg?System.getenv().getOrDefault("ADDRESS_TEST_DB_USER",System.getProperty("user.name")):"sa"); r.add("spring.datasource.password",()->pg?System.getenv().getOrDefault("ADDRESS_TEST_DB_PASSWORD",""):"");
  }
  @LocalServerPort int port;
  @Autowired UserRepository users;
@@ -138,5 +138,38 @@ class ShippingAddressHttpTest {
    assertThat(add.get().status).isIn(201,401);assertThat(leave.get().status).isEqualTo(200);
   }
   assertThat(jdbc.queryForObject("select count(*) from user_shipping_addresses where user_id=?",Integer.class,owner)).isZero();
+ }
+
+ @Test @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="ADDRESS_TEST_DB_URL",matches=".+")
+ void migrationCreatesConstraintsAndPreservesLegacyOrders() throws Exception {
+  String schema="address_migration_"+UUID.randomUUID().toString().replace("-","");
+  String migration=Files.readString(Path.of("src/main/resources/db/manual/093_shipping_addresses.sql"));
+  try(var connection=java.util.Objects.requireNonNull(jdbc.getDataSource()).getConnection();var statement=connection.createStatement()) {
+   statement.execute("CREATE SCHEMA "+schema);
+   try {
+    statement.execute("SET search_path TO "+schema);
+    statement.execute("CREATE TABLE users(id BIGINT PRIMARY KEY)");
+    statement.execute("CREATE TABLE orders(id BIGINT PRIMARY KEY, amount BIGINT NOT NULL)");
+    statement.execute("INSERT INTO users VALUES(1)");
+    statement.execute("INSERT INTO orders VALUES(1,12000)");
+    statement.execute(migration);statement.execute(migration);
+    try(var rows=statement.executeQuery("SELECT amount,shipping_recipient_name,shipping_address_line1 FROM orders WHERE id=1")) {
+     assertThat(rows.next()).isTrue();assertThat(rows.getLong(1)).isEqualTo(12000);
+     assertThat(rows.getString(2)).isNull();assertThat(rows.getString(3)).isNull();
+    }
+    String insert="INSERT INTO user_shipping_addresses(user_id,recipient_name,recipient_phone,postal_code,address_line1,is_default,created_at,updated_at) VALUES";
+    statement.execute(insert+"(1,'수령인','01012345678','01234','서울',true,now(),now())");
+    for(String invalid:List.of(
+      "(1,'수령인','01012345678','01234','서울',true,now(),now())",
+      "(999,'수령인','01012345678','01234','서울',false,now(),now())",
+      "(1,'수령인','invalid','01234','서울',false,now(),now())",
+      "(1,'수령인','01012345678','1234','서울',false,now(),now())",
+      "(1,' ','01012345678','01234','서울',false,now(),now())")) {
+     assertThatThrownBy(()->statement.execute(insert+invalid)).isInstanceOf(java.sql.SQLException.class);
+    }
+    statement.execute("DELETE FROM users WHERE id=1");
+    try(var rows=statement.executeQuery("SELECT count(*) FROM user_shipping_addresses")) { rows.next();assertThat(rows.getInt(1)).isZero(); }
+   } finally { statement.execute("SET search_path TO public");statement.execute("DROP SCHEMA "+schema+" CASCADE"); }
+  }
  }
 }
