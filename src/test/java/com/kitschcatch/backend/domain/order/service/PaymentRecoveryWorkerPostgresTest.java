@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @EnabledIfEnvironmentVariable(named = "ISSUE54_TEST_DB_URL", matches = ".+")
 @DataJpaTest(showSql = false, properties = {"spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({OrderService.class, OrderReservationService.class, PaymentTransactionService.class,
+@Import({com.kitschcatch.backend.domain.address.service.ShippingAddressService.class, OrderService.class, OrderReservationService.class, PaymentTransactionService.class,
     PaymentService.class, PaymentRecoveryService.class, PaymentWebhookService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentRecoveryWorkerPostgresTest {
