@@ -37,8 +37,10 @@ public class OrderService {
 	private com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses;
     @org.springframework.beans.factory.annotation.Value("${app.orders.shipping-address-required:false}")
     private boolean shippingAddressRequired;
+    @org.springframework.beans.factory.annotation.Value("${app.orders.quote-required:false}") private boolean quoteRequired;
     @Autowired
     public void setAddresses(com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses) { this.addresses=addresses; }
+    @Autowired private com.kitschcatch.backend.domain.order.repository.OrderQuoteRepository quotes;
     private final PurchaseOrderRepository orderRepository;
 	private final PaymentRepository paymentRepository;
 	private final PostRepository postRepository;
@@ -84,7 +86,18 @@ public class OrderService {
 				.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
 			if (id.equals(userId)) buyer = participant;
 		}
-		Post post = postRepository.findByIdForUpdate(request.postId())
+		var quote=request.quoteId()==null?null:quotes.findByIdAndUserId(request.quoteId(),userId).orElseThrow(()->new BusinessException(ErrorCode.QUOTE_INVALID));
+        if(quote!=null) {
+            if(!quote.getPostId().equals(request.postId()) || !quote.getAddressId().equals(request.shippingAddressId()) || quote.getPricing().total()!=request.amount()) throw new BusinessException(ErrorCode.QUOTE_INVALID);
+            if(quote.getUsedOrderNumber()!=null) {
+                var existing=orderRepository.findByOrderNumber(quote.getUsedOrderNumber()).orElseThrow();
+                var payment=paymentRepository.findByOrderIdForUpdate(existing.getId()).orElseThrow();
+                if(payment.getPaymentMethod()!=request.paymentMethod()) throw new BusinessException(ErrorCode.QUOTE_INVALID);
+                var attempt=paymentAttemptRepository.findByAttemptId(payment.getCurrentAttemptId()).orElseThrow();
+                return new CreateOrderResponse(existing.getOrderNumber(),payment.getPaymentId(),payment.getPaymentStatus(),attempt.getAttemptId(),attempt.getPgOrderId(),existing.getReservationExpiresAt(),com.kitschcatch.backend.domain.order.dto.PriceBreakdown.from(existing.getPricing()));
+            }
+        }
+        Post post = postRepository.findByIdForUpdate(request.postId())
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 		if (!post.getUser().getId().equals(sellerId)) throw new BusinessException(ErrorCode.POST_NOT_FOUND);
 		if (post.getDeletedAt() != null) {
@@ -93,7 +106,10 @@ public class OrderService {
 
 		validatePostOnSale(post);
 		validateNotSeller(userId, post);
-		validateAmount(request.amount(), post.getPrice());
+		if(quote==null) {
+            if(quoteRequired || post.getShippingAmount()!=null) throw new BusinessException(ErrorCode.QUOTE_REQUIRED);
+            validateAmount(request.amount(), post.getPrice());
+        }
 		if (post.getActiveOrderNumber() != null || orderRepository.existsByPostIdAndOrderStatusIn(
 			post.getId(), List.of(OrderStatus.PENDING, OrderStatus.PAID))) {
 			throw new BusinessException(ErrorCode.POST_TRANSACTION_IN_PROGRESS);
@@ -101,6 +117,11 @@ public class OrderService {
 
 		if(shippingAddressRequired && request.shippingAddressId()==null) throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
         var shippingAddress=request.shippingAddressId()==null?null:new com.kitschcatch.backend.domain.order.entity.OrderShippingAddress(addresses.forOrder(userId,request.shippingAddressId()));
+        if(quote!=null && (quote.getExpiresAt().isBefore(LocalDateTime.now())
+            || !quote.getPricing().getProductAmount().equals(post.getPrice())
+            || !quote.getPricing().getShippingAmount().equals(post.getShippingAmount())
+            || !com.kitschcatch.backend.domain.order.entity.OrderPricing.POLICY.equals(quote.getPricing().getPolicy())
+            || !quote.getAddressUpdatedAt().equals(addresses.forOrder(userId,request.shippingAddressId()).getUpdatedAt()))) throw new BusinessException(ErrorCode.QUOTE_INVALID);
         PurchaseOrder order = PurchaseOrder.builder()
 			.orderNumber(generateId("ORD"))
 			.user(buyer)
@@ -111,6 +132,7 @@ public class OrderService {
 			.reservationExpiresAt(LocalDateTime.now().plus(reservationProperties.reservationTtl()))
 			.build();
 		order.captureShippingAddress(shippingAddress);
+        if(quote!=null) {order.capturePricing(quote.getPricing(),quote.getId());quote.consume(order.getOrderNumber());}
         order = orderRepository.save(order);
         post.reserve(order.getOrderNumber());
 		Payment payment = paymentRepository.save(Payment.builder()
@@ -124,7 +146,7 @@ public class OrderService {
 
 		return new CreateOrderResponse(order.getOrderNumber(), payment.getPaymentId(), payment.getPaymentStatus(),
 			attempt == null ? null : attempt.getAttemptId(), attempt == null ? null : attempt.getPgOrderId(),
-			order.getReservationExpiresAt());
+			order.getReservationExpiresAt(),com.kitschcatch.backend.domain.order.dto.PriceBreakdown.from(order.getPricing()));
 	}
 
 	private PaymentAttempt prepareInitialAttempt(Payment payment) {
