@@ -39,6 +39,11 @@ DO $$ BEGIN
  AND seller_fee_amount=floor(product_amount::numeric*500/10000)
  AND seller_payout_amount=amount-seller_fee_amount AND seller_payout_amount>0));
  END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='ck_order_pricing_presence' AND conrelid='orders'::regclass) THEN
+ ALTER TABLE orders ADD CONSTRAINT ck_order_pricing_presence CHECK(
+ pricing_policy IS NOT NULL OR (product_amount IS NULL AND shipping_amount IS NULL
+ AND buyer_fee_amount IS NULL AND seller_fee_amount IS NULL AND seller_payout_amount IS NULL));
+ END IF;
  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='ck_quote_pricing' AND conrelid='order_quotes'::regclass) THEN
  ALTER TABLE order_quotes ADD CONSTRAINT ck_quote_pricing CHECK(
  pricing_policy='V2_SELLER_500_BUYER_0' AND product_amount>0 AND shipping_amount>=0 AND buyer_fee_amount=0

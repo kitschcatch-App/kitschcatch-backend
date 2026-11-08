@@ -67,7 +67,9 @@ class OrderPricingHttpTest extends ShippingAddressHttpTest {
   assertThatThrownBy(()->OrderPricing.calculate(Long.MAX_VALUE,1)).isInstanceOf(RuntimeException.class);
   assertThatThrownBy(()->OrderPricing.calculate(1,-1)).isInstanceOf(IllegalArgumentException.class);
  }
- @Test void settlementUsesFrozenPayoutEvenWhenConfigChanges() throws Exception {
+ @org.junit.jupiter.params.ParameterizedTest
+ @org.junit.jupiter.params.provider.ValueSource(ints={900,-1})
+ void settlementUsesFrozenPayoutEvenWhenConfigChanges(int configuredFee) throws Exception {
   item(30000,3000);var q=quote();var made=order(q,33000);
   var o=orders.findByOrderNumber((String)made.data().get("orderId")).orElseThrow();
   var p=Payment.builder().order(o).paymentId("test").amount(33000L).paymentMethod(PaymentMethod.CARD).paymentStatus(PaymentStatus.READY).build();p.confirm("key");o.confirmPurchase();
@@ -75,7 +77,7 @@ class OrderPricingHttpTest extends ShippingAddressHttpTest {
   var repo=mock(PaymentRepository.class);when(repo.findByOrderIdForUpdate(o.getId())).thenReturn(Optional.of(p));
   var recipients=mock(SettlementRecipientRepository.class);
   when(recipients.findById(seller)).thenReturn(Optional.of(new SettlementRecipient(seller,"seller-id",owner)));
-  var service=new SettlementTransactionService(access,repo,new SettlementProperties(Set.of(owner),900),recipients);
+  var service=new SettlementTransactionService(access,repo,new SettlementProperties(Set.of(owner),configuredFee<0?null:configuredFee),recipients);
   var prepared=service.prepare(owner,o.getOrderNumber(),true);
   assertThat(prepared.command().amount()).isEqualTo(31500);
   assertThat(prepared.command().fee()).isEqualTo(1500);
@@ -104,8 +106,26 @@ class OrderPricingHttpTest extends ShippingAddressHttpTest {
     try(var rows=st.executeQuery("select amount,pricing_policy from orders where id=1")){rows.next();assertThat(rows.getLong(1)).isEqualTo(12000);assertThat(rows.getString(2)).isNull();}
     assertThatThrownBy(()->st.execute("insert into posts(id,shipping_amount) values(1,-1)")).isInstanceOf(java.sql.SQLException.class);
     assertThatThrownBy(()->st.execute("insert into orders(id,amount,pricing_policy,quote_id,product_amount,shipping_amount,buyer_fee_amount,seller_fee_amount,seller_payout_amount) values(2,33000,'V2_SELLER_500_BUYER_0','quote',30000,3000,0,1650,31350)")).isInstanceOf(java.sql.SQLException.class);
+    assertThatThrownBy(()->st.execute("insert into orders(id,amount,product_amount) values(3,12000,12000)")).isInstanceOf(java.sql.SQLException.class);
     st.execute("insert into orders(id,amount,pricing_policy,quote_id,product_amount,shipping_amount,buyer_fee_amount,seller_fee_amount,seller_payout_amount) values(2,33000,'V2_SELLER_500_BUYER_0','quote',30000,3000,0,1500,31500)");
    } finally {st.execute("set search_path to public");st.execute("drop schema "+schema+" cascade");}
   }
+ }
+
+ @Test void consumedQuoteStillReturnsCancelledOrderAfterSellerWithdrawal() throws Exception {
+  item(30000,3000);var q=quote();var made=order(q,33000);String number=(String)made.data().get("orderId");
+  assertThat(call(owner,"POST","/api/orders/"+number+"/cancel","{\"reason\":\"구매 취소\"}").status()).isEqualTo(200);
+  assertThat(call(seller,"DELETE","/api/users/me",null).status()).isEqualTo(200);
+  jdbc.update("update order_quotes set expires_at=CURRENT_TIMESTAMP-INTERVAL '1' HOUR where id=?",q.data().get("quoteId"));
+  var replay=order(q,33000);assertThat(replay.status()).isEqualTo(201);
+  assertThat(replay.data()).containsEntry("orderId",number).containsEntry("status","CANCELED");
+  assertThat(jdbc.queryForObject("select count(*) from orders where quote_id=?",Integer.class,q.data().get("quoteId"))).isEqualTo(1);
+  assertThat(posts.findById(product).orElseThrow().getActiveOrderNumber()).isNull();
+ }
+ @Test void unusedQuoteCannotCreateOrderForWithdrawnSeller() throws Exception {
+  item(30000,3000);var q=quote();
+  assertThat(call(seller,"DELETE","/api/users/me",null).status()).isEqualTo(200);
+  assertThat(order(q,33000).status()).isEqualTo(401);
+  assertThat(jdbc.queryForObject("select count(*) from orders where quote_id=?",Integer.class,q.data().get("quoteId"))).isZero();
  }
 }

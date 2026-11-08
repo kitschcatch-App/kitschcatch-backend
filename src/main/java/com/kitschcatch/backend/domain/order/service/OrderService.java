@@ -81,9 +81,16 @@ public class OrderService {
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 		// 두 거래 당사자 → 상품 순서로 잠가 신규 주문과 탈퇴를 직렬화한다.
 		User buyer = null;
+        boolean inactiveSeller = false;
 		for (Long id : java.util.stream.Stream.of(userId, sellerId).distinct().sorted().toList()) {
-			User participant = userRepository.findActiveByIdForUpdate(id)
-				.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
+			var participantResult = userRepository.findActiveByIdForUpdate(id);
+            // 이미 생성된 견적 주문은 판매자가 탈퇴해도 같은 결과를 반환한다.
+            if (participantResult.isEmpty() && !id.equals(userId) && request.quoteId() != null) {
+                participantResult = userRepository.findByIdForUpdate(id);
+                inactiveSeller = true;
+            }
+            User participant = participantResult
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
 			if (id.equals(userId)) buyer = participant;
 		}
 		var quote=request.quoteId()==null?null:quotes.findByIdAndUserId(request.quoteId(),userId).orElseThrow(()->new BusinessException(ErrorCode.QUOTE_INVALID));
@@ -97,6 +104,7 @@ public class OrderService {
                 return new CreateOrderResponse(existing.getOrderNumber(),payment.getPaymentId(),payment.getPaymentStatus(),attempt.getAttemptId(),attempt.getPgOrderId(),existing.getReservationExpiresAt(),com.kitschcatch.backend.domain.order.dto.PriceBreakdown.from(existing.getPricing()));
             }
         }
+        if (inactiveSeller) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
         Post post = postRepository.findByIdForUpdate(request.postId())
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 		if (!post.getUser().getId().equals(sellerId)) throw new BusinessException(ErrorCode.POST_NOT_FOUND);

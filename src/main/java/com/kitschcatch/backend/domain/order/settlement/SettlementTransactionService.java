@@ -25,7 +25,7 @@ public class SettlementTransactionService {
             throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
         var s=o.getSettlement();
         if(s.getStatus()==OrderSettlement.Status.COMPLETED) return null;
-        if(!providerConfigured || properties.feeBasisPoints()==null) throw new BusinessException(ErrorCode.SETTLEMENT_NOT_CONFIGURED);
+        if(!providerConfigured || (o.getPricing()==null && properties.feeBasisPoints()==null)) throw new BusinessException(ErrorCode.SETTLEMENT_NOT_CONFIGURED);
         boolean request=s.getStatus()==OrderSettlement.Status.WAITING;
         if(request) {
             long fee=s.getFee()!=null?s.getFee():o.getPricing()!=null?o.getPricing().getSellerFeeAmount():BigInteger.valueOf(o.getAmount()).multiply(BigInteger.valueOf(properties.feeBasisPoints()))
