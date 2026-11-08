@@ -17,6 +17,8 @@ kakao:
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 app:
+  addresses:
+    max-count: ${APP_ADDRESSES_MAX_COUNT:10}
   refunds:
     operator-user-ids: ${APP_REFUNDS_OPERATOR_USER_IDS:}
   settlement:
@@ -45,6 +47,7 @@ app:
     max-size-bytes: ${APP_PROFILE_IMAGE_MAX_SIZE_BYTES:5000000}
     upload-url-ttl: ${APP_PROFILE_IMAGE_UPLOAD_URL_TTL:10m}
   orders:
+    shipping-address-required: ${APP_ORDERS_SHIPPING_ADDRESS_REQUIRED:false}
     reservation-ttl: 15m
     expiration-scan-delay: 60s
     expiration-enabled: true

@@ -42,6 +42,7 @@ public class UserWithdrawalService {
             throw new BusinessException(ErrorCode.USER_WITHDRAWAL_BLOCKED);
         }
         user.withdraw(Instant.now());
+        jdbc.update("delete from user_shipping_addresses where user_id = ?", userId);
         refreshTokens.deleteAllByUserId(userId);
         posts.hideByUserId(userId, LocalDateTime.now());
         jdbc.update("delete from recent_searches where user_id = ?", userId);

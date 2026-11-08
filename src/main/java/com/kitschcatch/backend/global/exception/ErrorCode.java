@@ -4,6 +4,10 @@ package com.kitschcatch.backend.global.exception;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
+ ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND,"ADDRESS_001","배송지를 찾을 수 없습니다."),
+ ADDRESS_LIMIT_EXCEEDED(HttpStatus.CONFLICT,"ADDRESS_002","배송지 등록 한도를 초과했습니다."),
+ ADDRESS_DEFAULT_REQUIRED(HttpStatus.CONFLICT,"ADDRESS_003","다른 배송지를 기본으로 지정해 주세요."),
+
 
 	REPORT_TARGET_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_001", "신고 대상을 찾을 수 없습니다."),
     REPORT_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "REPORT_002", "본인 또는 본인 콘텐츠는 신고할 수 없습니다."),
