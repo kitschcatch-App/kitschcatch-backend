@@ -12,9 +12,12 @@ public record OrderDetailResponse(
     OrderParticipantResponse buyer, OrderParticipantResponse seller,
     @Schema(description = "결제가 없는 과거 주문은 null", nullable = true) OrderedPayment payment,
     LocalDateTime orderedAt, LocalDateTime reservationExpiresAt,
-    LocalDateTime confirmedAt, ShipmentResponse shipment, RefundResponse refund
+    LocalDateTime confirmedAt, ShipmentResponse shipment, RefundResponse refund, OrderShippingAddressResponse shippingAddress
 ) {
     public static OrderDetailResponse from(OrderHistoryRow row, String thumbnailUrl) {
+        return from(row,thumbnailUrl,false);
+    }
+    public static OrderDetailResponse from(OrderHistoryRow row,String thumbnailUrl,boolean includeAddress) {
         var order = row.order();
         return new OrderDetailResponse(order.getOrderNumber(), order.getOrderStatus(), order.getAmount(),
             new OrderedPost(order.getSnapshotPostId(), order.getPostTitle(), thumbnailUrl),
@@ -23,7 +26,8 @@ public record OrderDetailResponse(
             row.payment() == null ? null : OrderedPayment.from(row.payment()),
             order.getCreatedAt(), order.getReservationExpiresAt(), order.getConfirmedAt(),
             order.getShipment() == null ? null : ShipmentResponse.from(order),
-            order.getRefund() == null ? null : RefundResponse.from(order));
+            order.getRefund() == null ? null : RefundResponse.from(order),
+            includeAddress?OrderShippingAddressResponse.from(order.getShippingAddress()):null);
     }
 
     public record OrderedPost(Long id, String title,

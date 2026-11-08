@@ -44,6 +44,7 @@ jobs:
         run: |
           docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci27
           docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci53
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci93
       - name: Run tests and build
         env:
           CI_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci
@@ -63,6 +64,9 @@ jobs:
           export ISSUE53_TEST_DB_USER="$CI_TEST_DB_USER"
           export ISSUE53_TEST_DB_PASSWORD="$CI_TEST_DB_PASSWORD"
           export ISSUE54_TEST_DB_USER="$CI_TEST_DB_USER"
+          export ADDRESS_TEST_DB_URL=jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci93
+          export ADDRESS_TEST_DB_USER="$CI_TEST_DB_USER"
+          export ADDRESS_TEST_DB_PASSWORD="$CI_TEST_DB_PASSWORD"
           ./gradlew clean build --no-daemon --console=plain
       - name: Publish test reports on failure
         if: failure()

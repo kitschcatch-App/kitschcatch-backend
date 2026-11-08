@@ -67,7 +67,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 	"spring.jpa.hibernate.ddl-auto=create-drop"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({OrderService.class, OrderReservationService.class, OrderReservationScheduler.class,
+@Import({com.kitschcatch.backend.domain.address.service.ShippingAddressService.class, OrderService.class, OrderReservationService.class, OrderReservationScheduler.class,
 	PaymentTransactionService.class, PaymentService.class, PaymentRecoveryService.class, PostService.class, com.kitschcatch.backend.domain.post.service.PostCountQueryService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class OrderReservationIntegrationTest {

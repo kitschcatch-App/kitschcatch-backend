@@ -40,7 +40,9 @@ public class OrderHistoryService {
             throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
         }
         String key = order.getPostThumbnailKey();
-        return OrderDetailResponse.from(row, key == null ? null : images.imageUrl(key));
+        boolean includeAddress=order.getUser().getId().equals(userId)
+            || (row.payment()!=null && row.payment().getApprovedAt()!=null);
+        return OrderDetailResponse.from(row, key == null ? null : images.imageUrl(key), includeAddress);
     }
 
     public OrderHistoryPageResponse<PurchaseOrderSummaryResponse> purchases(long userId, OrderHistoryQuery query) {

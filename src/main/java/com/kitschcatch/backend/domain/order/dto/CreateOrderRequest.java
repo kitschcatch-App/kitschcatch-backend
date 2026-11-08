@@ -19,6 +19,9 @@ public record CreateOrderRequest(
 
 	@Schema(description = "결제 수단")
 	@NotNull(message = "결제 수단은 필수입니다.")
-	PaymentMethod paymentMethod
+	PaymentMethod paymentMethod,
+    @Schema(description="본인 배송지 ID. 앱 전환 후 app.orders.shipping-address-required 설정으로 필수화합니다.")
+    @Positive Long shippingAddressId
 ) {
+ public CreateOrderRequest(Long postId,Long amount,PaymentMethod paymentMethod) { this(postId,amount,paymentMethod,null); }
 }
