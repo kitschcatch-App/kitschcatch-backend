@@ -47,6 +47,13 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PurchaseOrder {
+    @jakarta.persistence.Embedded
+    private OrderShippingAddress shippingAddress;
+    public void captureShippingAddress(OrderShippingAddress address) {
+        if(shippingAddress!=null) throw new IllegalStateException("주문 배송지는 이미 저장되었습니다.");
+        shippingAddress=address;
+    }
+
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)

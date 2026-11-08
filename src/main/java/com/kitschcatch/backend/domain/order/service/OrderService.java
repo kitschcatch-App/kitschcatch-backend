@@ -34,7 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
 @EnableConfigurationProperties(OrderReservationProperties.class)
 public class OrderService {
 
-	private final PurchaseOrderRepository orderRepository;
+	private com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses;
+    @org.springframework.beans.factory.annotation.Value("${app.orders.shipping-address-required:false}")
+    private boolean shippingAddressRequired;
+    @Autowired
+    public void setAddresses(com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses) { this.addresses=addresses; }
+    private final PurchaseOrderRepository orderRepository;
 	private final PaymentRepository paymentRepository;
 	private final PostRepository postRepository;
 	private final UserRepository userRepository;
@@ -94,7 +99,9 @@ public class OrderService {
 			throw new BusinessException(ErrorCode.POST_TRANSACTION_IN_PROGRESS);
 		}
 
-		PurchaseOrder order = orderRepository.save(PurchaseOrder.builder()
+		if(shippingAddressRequired && request.shippingAddressId()==null) throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        var shippingAddress=request.shippingAddressId()==null?null:new com.kitschcatch.backend.domain.order.entity.OrderShippingAddress(addresses.forOrder(userId,request.shippingAddressId()));
+        PurchaseOrder order = PurchaseOrder.builder()
 			.orderNumber(generateId("ORD"))
 			.user(buyer)
 			.post(post)
@@ -102,8 +109,10 @@ public class OrderService {
 			.pgProvider(PgProvider.TOSS_PAYMENTS)
 			.orderStatus(OrderStatus.PENDING)
 			.reservationExpiresAt(LocalDateTime.now().plus(reservationProperties.reservationTtl()))
-			.build());
-		post.reserve(order.getOrderNumber());
+			.build();
+		order.captureShippingAddress(shippingAddress);
+        order = orderRepository.save(order);
+        post.reserve(order.getOrderNumber());
 		Payment payment = paymentRepository.save(Payment.builder()
 			.paymentId(generateId("PAY"))
 			.order(order)
