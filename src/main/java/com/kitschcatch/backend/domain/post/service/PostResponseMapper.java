@@ -16,6 +16,6 @@ public class PostResponseMapper {
             post.getTitle(), post.getDescription(), post.getPrice(), post.getProductCategory(),
             post.getProductCondition(), post.getProductStatus(), post.getImages().stream()
                 .map(image -> new PostImageResponse(image.getObjectKey(), images.imageUrl(image.getObjectKey()), image.getSortOrder()))
-                .toList(), post.getCreatedAt(), post.getUpdatedAt(), counts.favoriteCount(), counts.chatRoomCount());
+                .toList(), post.getCreatedAt(), post.getUpdatedAt(), counts.favoriteCount(), counts.chatRoomCount(),post.getShippingAmount());
     }
 }

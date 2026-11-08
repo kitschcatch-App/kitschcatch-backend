@@ -25,14 +25,15 @@ public class SettlementTransactionService {
             throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
         var s=o.getSettlement();
         if(s.getStatus()==OrderSettlement.Status.COMPLETED) return null;
-        if(!providerConfigured || properties.feeBasisPoints()==null) throw new BusinessException(ErrorCode.SETTLEMENT_NOT_CONFIGURED);
+        if(!providerConfigured || (o.getPricing()==null && properties.feeBasisPoints()==null)) throw new BusinessException(ErrorCode.SETTLEMENT_NOT_CONFIGURED);
         boolean request=s.getStatus()==OrderSettlement.Status.WAITING;
         if(request) {
-            long fee=s.getFee()!=null?s.getFee():BigInteger.valueOf(o.getAmount()).multiply(BigInteger.valueOf(properties.feeBasisPoints()))
+            long fee=s.getFee()!=null?s.getFee():o.getPricing()!=null?o.getPricing().getSellerFeeAmount():BigInteger.valueOf(o.getAmount()).multiply(BigInteger.valueOf(properties.feeBasisPoints()))
                 .divide(BigInteger.valueOf(10000)).longValueExact();
+            long payout=o.getPricing()==null?o.getAmount()-fee:o.getPricing().getSellerPayoutAmount();
             var recipient=recipients.findById(o.getSellerId()).orElseThrow(()->new BusinessException(ErrorCode.SETTLEMENT_RECIPIENT_NOT_FOUND));
-            if(o.getAmount()-fee<=0 || o.getAmount()-fee>=1_000_000_000L) throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
-            s.start(o.getAmount()-fee,fee,s.getDestination()==null?recipient.getProviderSellerId():s.getDestination());
+            if(payout<=0 || payout>=1_000_000_000L) throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
+            s.start(payout,fee,s.getDestination()==null?recipient.getProviderSellerId():s.getDestination());
         }
         return new Prepared(new SettlementGateway.Command(s.getSettlementId(),o.getSellerId(),s.getAmount(),s.getFee(),"KRW",s.getDestination(),s.getProviderReference()),request);
     }

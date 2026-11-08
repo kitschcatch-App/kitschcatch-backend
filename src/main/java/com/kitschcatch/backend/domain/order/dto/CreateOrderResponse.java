@@ -17,10 +17,12 @@ public record CreateOrderResponse(
 	PaymentStatus status,
 	String attemptId,
 	String pgOrderId,
-	LocalDateTime reservationExpiresAt
+	LocalDateTime reservationExpiresAt,
+    PriceBreakdown pricing
 ) {
 
-	public CreateOrderResponse(String orderId, String paymentId, PaymentStatus status) {
-		this(orderId, paymentId, status, null, null, null);
+	public CreateOrderResponse(String orderId,String paymentId,PaymentStatus status,String attemptId,String pgOrderId,LocalDateTime expiresAt) {this(orderId,paymentId,status,attemptId,pgOrderId,expiresAt,null);}
+ public CreateOrderResponse(String orderId, String paymentId, PaymentStatus status) {
+		this(orderId, paymentId, status, null, null, null,null);
 	}
 }

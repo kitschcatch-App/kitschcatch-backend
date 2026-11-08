@@ -33,6 +33,8 @@ public record UpdatePostRequest(
 
 	@Schema(description = "교체할 이미지 키 목록")
 	@Size(max = 10)
-	List<@Size(max = 512) String> imageKeys
+	List<@Size(max = 512) String> imageKeys,
+ @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(999999999) Long shippingAmount
 ) {
+ public UpdatePostRequest(String title,String description,Long price,ProductCategory productCategory,ProductCondition productCondition,ProductStatus productStatus,List<String> imageKeys) {this(title,description,price,productCategory,productCondition,productStatus,imageKeys,null);}
 }

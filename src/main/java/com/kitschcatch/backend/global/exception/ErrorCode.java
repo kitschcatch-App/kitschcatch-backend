@@ -4,6 +4,10 @@ package com.kitschcatch.backend.global.exception;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
+ QUOTE_INVALID(HttpStatus.CONFLICT,"ORDER_095_001","견적이 만료되었거나 조건이 변경되었습니다. 다시 확인해 주세요."),
+ SHIPPING_PRICE_REQUIRED(HttpStatus.CONFLICT,"ORDER_095_002","배송비 설정이 필요합니다."),
+ QUOTE_REQUIRED(HttpStatus.CONFLICT,"ORDER_095_003","견적을 지원하는 앱에서 주문해 주세요."),
+
  ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND,"ADDRESS_001","배송지를 찾을 수 없습니다."),
  ADDRESS_LIMIT_EXCEEDED(HttpStatus.CONFLICT,"ADDRESS_002","배송지 등록 한도를 초과했습니다."),
  ADDRESS_DEFAULT_REQUIRED(HttpStatus.CONFLICT,"ADDRESS_003","다른 배송지를 기본으로 지정해 주세요."),

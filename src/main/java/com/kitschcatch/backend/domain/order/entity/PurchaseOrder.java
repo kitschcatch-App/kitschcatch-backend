@@ -48,6 +48,15 @@ import org.hibernate.annotations.UpdateTimestamp;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PurchaseOrder {
     @jakarta.persistence.Embedded
+    private OrderPricing pricing;
+    @Column(name="quote_id",length=50,unique=true,updatable=false)
+    private String quoteId;
+    public void capturePricing(OrderPricing pricing,String quoteId) {
+        if(this.pricing!=null) throw new IllegalStateException("이미 고정된 주문 금액");
+        this.pricing=pricing;this.quoteId=quoteId;
+    }
+
+    @jakarta.persistence.Embedded
     private OrderShippingAddress shippingAddress;
     public void captureShippingAddress(OrderShippingAddress address) {
         if(shippingAddress!=null) throw new IllegalStateException("주문 배송지는 이미 저장되었습니다.");

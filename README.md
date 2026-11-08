@@ -28,6 +28,8 @@
 
 ## 개발 문서
 
+- [주문 견적과 결제 금액 정책](docs/order-pricing.md).
+
 - [배송지 주소록과 주문 배송지 API](docs/shipping-addresses.md).
 
 - [비공개 S3 상품·프로필 이미지 조회](docs/private-image-urls.md).
