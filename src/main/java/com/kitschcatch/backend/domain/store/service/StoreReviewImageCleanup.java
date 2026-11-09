@@ -31,8 +31,9 @@ public class StoreReviewImageCleanup {
             var review = image.getReview();
             boolean expired = (image.getState() == State.PENDING || image.getState() == State.READY)
                 && !image.getExpiresAt().isAfter(now);
-            boolean unpublished = image.getState() == State.ATTACHED && review.getHiddenAt() == null
-                && (review.getDeletedAt() != null || !image.getOwner().isActive());
+            boolean unpublished = image.getState() == State.ATTACHED && (
+                review.getEvidenceUntil() != null ? !review.getEvidenceUntil().isAfter(now)
+                    : review.getHiddenAt() == null && (review.getDeletedAt() != null || !image.getOwner().isActive()));
             if (expired || unpublished || image.getState() == State.DELETE_PENDING) {
                 storage.delete(image.getObjectKey());
                 image.deleted();

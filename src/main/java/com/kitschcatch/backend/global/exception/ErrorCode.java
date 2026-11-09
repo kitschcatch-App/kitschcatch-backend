@@ -58,6 +58,7 @@ public enum ErrorCode {
     STORE_REVIEW_IMAGE_EXPIRED(HttpStatus.CONFLICT, "STORE_REVIEW_IMAGE_004", "사진 준비 시간이 만료되었습니다. 다시 업로드해 주세요."),
     STORE_REVIEW_IMAGE_BUSY(HttpStatus.TOO_MANY_REQUESTS, "STORE_REVIEW_IMAGE_005", "잠시 후 사진 업로드를 다시 시도해 주세요."),
     STORE_REVIEW_IMAGE_STORAGE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "STORE_REVIEW_IMAGE_006", "사진 저장소에 일시적으로 접근할 수 없습니다."),
+    STORE_REVIEW_HIDDEN(HttpStatus.CONFLICT, "STORE_REVIEW_008", "숨김 처리된 리뷰는 수정할 수 없습니다."),
     STORE_REVIEW_IMAGE_HIDDEN(HttpStatus.CONFLICT, "STORE_REVIEW_IMAGE_007", "숨김 처리된 리뷰의 사진은 변경할 수 없습니다."),
 
 	USER_WITHDRAWAL_BLOCKED(HttpStatus.CONFLICT, "USER_057_001", "진행 중이거나 확인이 필요한 거래가 있어 탈퇴할 수 없습니다."),

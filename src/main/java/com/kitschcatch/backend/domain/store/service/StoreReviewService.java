@@ -1,6 +1,7 @@
 // 매장 리뷰의 작성 권한, 수정 충돌, 공개 조건과 평점 집계를 관리한다.
 package com.kitschcatch.backend.domain.store.service;
 
+import com.kitschcatch.backend.domain.report.ReportProperties;
 import com.kitschcatch.backend.domain.store.dto.CreateStoreReviewRequest;
 import com.kitschcatch.backend.domain.store.dto.StoreReviewResponse;
 import com.kitschcatch.backend.domain.store.dto.StoreReviewSummary;
@@ -40,6 +41,7 @@ public class StoreReviewService {
     private final UserRepository users;
     private final ProfileImageStorage profileImages;
     private final StoreReviewImageService reviewImages;
+    private final ReportProperties reportProperties;
 
     @Transactional
     public StoreReviewResponse create(long userId, long storeId, CreateStoreReviewRequest request) {
@@ -98,6 +100,9 @@ public class StoreReviewService {
         if (review.getVersion() != request.version()) {
             throw new BusinessException(ErrorCode.STORE_REVIEW_VERSION_CONFLICT);
         }
+        if (review.getHiddenAt() != null) {
+            throw new BusinessException(request.imageIds() == null ? ErrorCode.STORE_REVIEW_HIDDEN : ErrorCode.STORE_REVIEW_IMAGE_HIDDEN);
+        }
         reviewImages.replace(review, request.imageIds());
         int rating = request.rating() == null ? review.getRating() : request.rating().intValueExact();
         review.update(rating, content == null ? review.getContent() : content, now());
@@ -112,7 +117,8 @@ public class StoreReviewService {
         var review = ownedReview(userId, reviewId);
         if (review.getDeletedAt() == null) {
             reviewImages.retire(review);
-            review.delete(now());
+            Instant now = now();
+            review.delete(now, now.plus(reportProperties.retentionDays(), ChronoUnit.DAYS));
             flushReviewChange();
         }
     }
@@ -161,6 +167,7 @@ public class StoreReviewService {
     }
 
     private StoreReviewResponse response(StoreReview review, long userId) {
+        if (review.getHiddenAt() != null) return response(review, userId, List.of());
         return response(review, userId, reviewImages.responses(List.of(review.getId()))
             .getOrDefault(review.getId(), List.of()));
     }

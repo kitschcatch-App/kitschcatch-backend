@@ -29,6 +29,9 @@ store_csv_imports
 store_favorites
 store_images
 store_review_images
+store_review_moderation_history
+store_review_moderator_events
+store_review_moderators
 store_reviews
 stores
 transaction_reviews

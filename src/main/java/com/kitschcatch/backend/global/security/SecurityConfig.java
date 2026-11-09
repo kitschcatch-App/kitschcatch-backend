@@ -2,6 +2,7 @@ package com.kitschcatch.backend.global.security;
 
 import com.kitschcatch.backend.domain.auth.client.KakaoOAuthProperties;
 import com.kitschcatch.backend.domain.report.review.ReportReviewAccess;
+import com.kitschcatch.backend.domain.store.moderation.StoreReviewModeration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,19 +29,23 @@ public class SecurityConfig {
 		HttpSecurity http,
 		JwtAuthenticationFilter jwtAuthenticationFilter,
 		ApiAuthenticationExceptionHandler apiAuthenticationExceptionHandler,
-		ReportReviewAccess reportReviewAccess
+		ReportReviewAccess reportReviewAccess, StoreReviewModeration moderation
 	) throws Exception {
 		var reportReview = PathPatternRequestMatcher.withDefaults().matcher("/api/admin/reports/**");
+		var storeModeration = PathPatternRequestMatcher.withDefaults().matcher("/api/admin/store-reviews/**");
 		return http
 			.csrf(AbstractHttpConfigurer::disable)
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.exceptionHandling(exception -> exception
 				.authenticationEntryPoint(apiAuthenticationExceptionHandler)
 				.accessDeniedHandler((request, response, error) -> {
-					if (reportReview.matches(request)) apiAuthenticationExceptionHandler.denyReportReview(response);
+					if (reportReview.matches(request) || storeModeration.matches(request)) apiAuthenticationExceptionHandler.denyReportReview(response);
 					else apiAuthenticationExceptionHandler.handle(request, response, error);
 				}))
 			.authorizeHttpRequests(authorize -> authorize
+				.requestMatchers(storeModeration).access((authentication, context) -> new AuthorizationDecision(
+                    authentication.get().getPrincipal() instanceof AuthenticatedUser actor
+                        && moderation.allowed(actor.userId())))
 				.requestMatchers(reportReview).access((authentication, context) -> new AuthorizationDecision(
 					authentication.get().getPrincipal() instanceof AuthenticatedUser actor
 						&& reportReviewAccess.allowed(actor.userId())))
