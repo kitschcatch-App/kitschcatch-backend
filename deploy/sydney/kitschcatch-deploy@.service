@@ -1,0 +1,12 @@
+[Unit]
+Description=KitschCatch Sydney development deployment %i
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=15min
+TimeoutStopSec=5min
+ExecStart=/usr/bin/python3 /opt/kitschcatch/deploy/deploy.py run %i
+ExecStopPost=/usr/bin/python3 /opt/kitschcatch/deploy/deploy.py recover %i

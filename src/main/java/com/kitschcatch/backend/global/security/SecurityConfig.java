@@ -46,6 +46,7 @@ public class SecurityConfig {
 						&& reportReviewAccess.allowed(actor.userId())))
 				.requestMatchers(HttpMethod.GET, "/.well-known/apple-app-site-association").permitAll()
 				.requestMatchers(HttpMethod.HEAD, "/.well-known/apple-app-site-association").permitAll()
+				.requestMatchers(HttpMethod.GET, "/api/health/readiness").permitAll()
 				.requestMatchers(
 					"/api/auth/**",
 					"/api/payments/webhooks/toss",
