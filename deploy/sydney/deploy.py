@@ -23,6 +23,7 @@ OPENAPI = "/v3/api-docs"
 ACTIVE = {"QUEUED", "PREFLIGHT", "SWITCHING", "AWAITING_CONFIRMATION", "ROLLING_BACK"}
 SWITCHED = {"SWITCHING", "AWAITING_CONFIRMATION", "ROLLING_BACK"}
 
+TRADE_NOTIFICATION_FLAG = "APP_NOTIFICATIONS_TRADE_ENABLED"
 LEGACY_NOTIFICATION_TYPES = ("CHAT_MESSAGE", "PAYMENT_SUCCESS", "PAYMENT_CANCELED")
 TRADE_NOTIFICATION_TYPES = (
     "SHIPMENT_REGISTERED", "SHIPMENT_UPDATED", "REFUND_REQUESTED", "REFUND_APPROVED",
@@ -208,8 +209,7 @@ class Server:
         expanded = notification_type_check(LEGACY_NOTIFICATION_TYPES + TRADE_NOTIFICATION_TYPES)
         # #69의 정확한 CHECK 확장만 허용한다. 구버전이 읽지 못하는 행이 있으면 복구도 차단한다.
         if list(legacy) in lines and legacy not in actual and expanded in actual:
-            trade_enabled = read_env(self.root / "backend.env").get("APP_NOTIFICATIONS_TRADE_ENABLED", "false")
-            require(trade_enabled == "false", "이전 릴리스 복구 전 거래 알림 생성을 꺼야 합니다.")
+            self.require_trade_emission_disabled()
             allowed = ", ".join(f"'{kind}'" for kind in LEGACY_NOTIFICATION_TYPES)
             readable = query(f"SELECT NOT EXISTS (SELECT 1 FROM public.notifications "
                              f"WHERE type NOT IN ({allowed}));\n")
@@ -218,6 +218,23 @@ class Server:
         missing = ["/".join(str(value) for value in row[:3] if value is not None)
                    for row in lines if tuple(row) not in actual]
         require(not missing, "스키마 또는 권한 불일치: " + ", ".join(missing[:15]))
+
+    def require_trade_emission_disabled(self):
+        env = read_env(self.root / "backend.env")
+        require(env.get(TRADE_NOTIFICATION_FLAG, "false") == "false",
+                "이전 릴리스 복구 전 거래 알림 생성을 꺼야 합니다.")
+        # 환경 파일을 수정해도 기존 컨테이너의 환경은 재생성 전까지 그대로다.
+        app = self.compose_run(["ps", "--all", "--quiet", "app"], "앱 컨테이너 조회 실패")
+        if not app:
+            return
+        require(bool(re.fullmatch(r"[0-9a-f]{12,64}", app)), "앱 컨테이너가 하나여야 합니다.")
+        prefix = TRADE_NOTIFICATION_FLAG + "="
+        # 이 변수만 조회해 DB 비밀번호 등 다른 환경 값이 출력되지 않게 한다.
+        template = ('{{range .Config.Env}}{{if eq (printf "%.' + str(len(prefix))
+                    + 's" .) ' + json.dumps(prefix) + '}}{{println .}}{{end}}{{end}}')
+        flag = execute(["docker", "inspect", "--type", "container", "--format", template, app],
+                       "앱 컨테이너 거래 알림 설정 조회 실패")
+        require(flag in {"", prefix + "false"}, "앱 컨테이너에서 거래 알림 생성을 꺼야 합니다.")
 
     def running_app(self):
         app = self.compose_run(["ps", "-q", "app"], "앱 컨테이너 조회 실패")

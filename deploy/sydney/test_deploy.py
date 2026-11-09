@@ -118,6 +118,9 @@ class NotificationSchemaCompatibilityTests(unittest.TestCase):
         (root / "deploy/catalog.sql").write_text("catalog")
         (root / "backend.env").write_text("")
         self.server = Server(root)
+        compose = patch.object(self.server, "compose_run", return_value="")
+        self.compose = compose.start()
+        self.addCleanup(compose.stop)
         self.contract = root / "contract.jsonl"
         self.table = ("table", "notifications", None)
         self.legacy = notification_type_check(LEGACY_NOTIFICATION_TYPES)
@@ -146,6 +149,35 @@ class NotificationSchemaCompatibilityTests(unittest.TestCase):
             with self.assertRaisesRegex(DeploymentError, "거래 알림 생성을 꺼야"):
                 self.server.schema_check(self.contract)
         query.assert_called_once()
+
+    def test_old_reader_cannot_rollback_while_container_still_emits_after_file_change(self):
+        self.contract.write_text(self.snapshot(self.legacy))
+        (self.server.root / "backend.env").write_text("APP_NOTIFICATIONS_TRADE_ENABLED=false\n")
+        def observe(args, error, *, stdin=None):
+            if stdin == "catalog":
+                return self.snapshot(self.expanded)
+            if stdin and "FROM public.notifications" in stdin:
+                return "t"
+            if args[:2] == ["docker", "inspect"]:
+                return "APP_NOTIFICATIONS_TRADE_ENABLED=true"
+            self.fail(f"예상하지 않은 검사: {args[:2]}")
+
+        self.compose.return_value = "a" * 12
+        with patch("deploy.execute", side_effect=observe) as query:
+            with self.assertRaisesRegex(DeploymentError, "앱 컨테이너.*거래 알림"):
+                self.server.schema_check(self.contract)
+        self.assertEqual(query.call_count, 2)
+
+    def test_old_reader_can_rollback_after_container_is_recreated_with_emission_disabled(self):
+        self.contract.write_text(self.snapshot(self.legacy))
+        self.compose.return_value = "a" * 12
+        with patch("deploy.execute", side_effect=[
+            self.snapshot(self.expanded), "APP_NOTIFICATIONS_TRADE_ENABLED=false", "t",
+        ]) as query:
+            self.server.schema_check(self.contract)
+        self.compose.assert_called_once_with(["ps", "--all", "--quiet", "app"], "앱 컨테이너 조회 실패")
+        self.assertEqual(query.call_count, 3)
+        self.assertIn("FROM public.notifications", query.call_args.kwargs["stdin"])
 
     def test_new_reader_requires_migration_and_can_rollback_after_activation(self):
         self.contract.write_text(self.snapshot(self.expanded))
