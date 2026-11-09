@@ -5,7 +5,7 @@
 | 메서드 | 경로 | 응답 `data` |
 | --- | --- | --- |
 | GET | `/api/admin/store-reviews?storeId=1&hidden=true&page=0&size=20` | 리뷰 배열. 빈 결과는 `[]`. |
-| GET | `/api/admin/store-reviews/{id}` | `review`, `content`, `images`. |
+| GET | `/api/admin/store-reviews/{id}` | `review`, `content`, `images`, 만료 전 `relatedReports` 최대 20건. |
 | GET | `/api/admin/store-reviews/{id}/moderation-history?page=0&size=20` | 최신 조치부터 배열. |
 | PATCH | `/api/admin/store-reviews/{id}/moderation` | `review`, `history`, `replayed`. |
 

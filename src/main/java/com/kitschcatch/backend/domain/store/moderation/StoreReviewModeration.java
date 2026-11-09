@@ -25,7 +25,9 @@ public class StoreReviewModeration {
                           @NotNull @PositiveOrZero Long expectedVersion, @NotNull UUID requestId) {}
     public record Review(long id, long storeId, long authorId, int rating, long version, String moderationStatus,
                          boolean publiclyVisible, boolean deleted, boolean authorActive) {}
-    public record Detail(Review review, String content, List<StoreReviewResponse.Image> images) {}
+    public record ReportLink(long reportId, String status, OffsetDateTime expiresAt) {}
+    public record Detail(Review review, String content, List<StoreReviewResponse.Image> images,
+                         List<ReportLink> relatedReports) {}
     public record Entry(long id, long reviewId, long actorId, long reportId, long reporterId, Action action,
                         String reason, long version, OffsetDateTime createdAt) {}
     public record Result(Review review, Entry history, boolean replayed) {}
@@ -82,8 +84,14 @@ public class StoreReviewModeration {
             select case when deleted_at is null or evidence_until>now() then content end
             from store_reviews where id=?
             """, String.class, id);
+        var relatedReports = jdbc.query("""
+            select id,status,expires_at from reports where target_type='STORE_REVIEW' and target_id=?
+              and target_user_id=? and expires_at>now()
+            order by created_at desc,id desc limit 20
+            """, (rs, row) -> new ReportLink(rs.getLong(1), rs.getString(2),
+            rs.getObject(3, OffsetDateTime.class)), id, review.authorId());
         return new Detail(review, content, content == null ? List.of()
-            : images.responses(List.of(id)).getOrDefault(id, List.of()));
+            : images.responses(List.of(id)).getOrDefault(id, List.of()), relatedReports);
     }
 
     @Transactional(readOnly = true)

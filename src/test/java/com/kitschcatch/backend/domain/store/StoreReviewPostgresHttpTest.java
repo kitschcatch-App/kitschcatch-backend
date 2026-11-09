@@ -123,6 +123,8 @@ class StoreReviewPostgresHttpTest {
         jdbc.update("insert into report_reviewers(user_id,granted_at) values (?,now())", moderator.getId());
         assertThat(call("GET", path, moderator, null).status()).isEqualTo(403);
         jdbc.update("insert into store_review_moderators(user_id) values (?)", moderator.getId());
+        var reports = call("GET", path, moderator, null).data().get("relatedReports");
+        assertThat((List<?>) reports).hasSize(1);
         var command = Map.of("action", "HIDE", "reportId", report, "reason", "신고 확인",
             "requestId", UUID.randomUUID().toString(), "expectedVersion", created.data().get("version"));
         assertThat(call("PATCH", path + "/moderation", moderator, command).status()).isEqualTo(200);
