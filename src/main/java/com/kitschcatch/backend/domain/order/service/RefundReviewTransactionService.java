@@ -25,7 +25,7 @@ public class RefundReviewTransactionService {
         if(!approve) return null;
         var p=payments.findByOrderIdForUpdate(o.getId()).orElseThrow(()->new BusinessException(ErrorCode.ORDER_INVALID_STATE));
         long buyerId=o.getUser().getId();
-        return new RefundTransactionService.Prepared(buyerId,p.getPaymentId(),paymentTransactions.startRefund(buyerId,p.getPaymentId()));
+        return new RefundTransactionService.Prepared(buyerId,p.getPaymentId(),paymentTransactions.startRefund(buyerId,p.getPaymentId()),r.getReason());
     }
     @Transactional
     public void withdraw(long userId,String number,RefundWithdrawalRequest request) {

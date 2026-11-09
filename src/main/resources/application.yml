@@ -21,6 +21,9 @@ app:
     max-count: ${APP_ADDRESSES_MAX_COUNT:10}
   refunds:
     operator-user-ids: ${APP_REFUNDS_OPERATOR_USER_IDS:}
+  refund-images:
+    cleanup-enabled: ${APP_REFUND_IMAGES_CLEANUP_ENABLED:true}
+    cleanup-delay-ms: ${APP_REFUND_IMAGES_CLEANUP_DELAY_MS:60000}
   settlement:
     operator-user-ids: ${APP_SETTLEMENT_OPERATOR_USER_IDS:}
     fee-basis-points: ${APP_SETTLEMENT_FEE_BASIS_POINTS:500}
