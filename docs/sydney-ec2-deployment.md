@@ -2,7 +2,7 @@
 
 GitHub Actions의 **Deploy Sydney development EC2**에서 `develop`과 실행 모드를 선택한다. `commit_sha`를 비우면 실행을 시작할 때 확인한 `develop`의 최신 커밋을 사용한다. SHA를 지정하면 `develop`의 first-parent 이력에 있는 전체 SHA인지 확인한다. 배포 준비 API와 스키마 계약이 들어간 커밋부터 지원한다. `preflight`가 기본이며, `deploy`를 선택하면 검사 후 앱을 교체한다.
 
-빌드·테스트에서 생성한 JAR, 스키마 계약과 명세를 Actions 아티팩트로 전달한다. 배포 작업은 OIDC로 AWS에 접속해 이 파일을 버전 관리된 전용 S3 버킷에 올린다. 파일 경로에 소스 SHA, Actions 실행 ID, 시도 번호를 넣는다. EC2는 명세 해시와 JAR·계약의 해시를 대조하고, 명세에 기록한 JAR·계약의 S3 객체 버전을 읽는다. [배포 워크플로](../.github/workflows/deploy-sydney.yml)
+빌드·테스트에서 생성한 JAR, 스키마 계약과 명세를 빌드 시도별 Actions 아티팩트로 전달한다. 배포 작업은 OIDC로 AWS에 접속해 이 파일을 버전 관리된 전용 S3 버킷에 올린다. 파일 경로는 소스 SHA, Actions 실행 ID, 배포 시도 번호를 사용한다. 실패한 배포 작업만 재실행하면 기존 빌드 아티팩트를 읽고 새 S3 경로와 배포 ID를 사용한다. EC2는 명세 해시와 JAR·계약의 해시를 대조하고, 명세에 기록한 JAR·계약의 S3 객체 버전을 읽는다. [배포 워크플로](../.github/workflows/deploy-sydney.yml)
 
 ## AWS와 GitHub 설정
 
@@ -57,7 +57,7 @@ bash deploy/sydney/check-contract.sh
 | `ROLLED_BACK` | 새 버전 배포 실패 후 이전 JAR와 HTTPS를 검증했다. |
 | `ROLLBACK_FAILED` | 이전 버전 복구 또는 검증에서 실패했다. |
 
-앱·Nginx·HTTPS 검증에 실패하거나 150초 안에 확인이 도착하지 않으면 이전 실행 설정을 복원한다. 복구도 앱 재생성, Nginx 재로드, JAR 해시와 HTTPS 검증을 거친다. 기존 DB 스키마로 이전 앱이 동작하는지 배포 전에 확인하며, 실패 시 복구 범위는 앱 릴리스다.
+앱·Nginx·HTTPS 검증에 실패하거나 서버가 150초 안에 확인을 받지 못하면 롤백을 시작한다. 이전 버전의 JAR와 DB 계약을 다시 확인한 뒤 실행 설정을 복원하고 앱 재생성, Nginx 재로드, JAR 해시와 HTTPS 검증을 수행한다. 이전 버전이 현재 DB와 호환되지 않으면 `ROLLBACK_FAILED`로 기록한다. 복구 범위는 앱 릴리스다.
 
 실행 중 연결을 끊어도 systemd가 서버 배포 작업을 유지한다. 비정상 종료 시 서비스의 `ExecStopPost`, 재부팅 시 복구 서비스가 미완료 상태를 읽어 전환을 되돌린다. 장애가 나면 다음 기록으로 마지막 상태와 복구 기준을 확인한다.
 

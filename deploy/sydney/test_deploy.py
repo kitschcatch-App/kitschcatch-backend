@@ -22,8 +22,10 @@ class DeploymentTests(unittest.TestCase):
         self.previous_path = self.root / "releases" / BEFORE
         self.previous_path.mkdir(parents=True)
         (self.previous_path / "app.jar").write_bytes(b"old")
+        baseline_schema = self.root / "deploy/baseline-schema.jsonl"
+        baseline_schema.write_text(json.dumps(["table", "reports", None]))
         self.previous = {"commit": BEFORE, "jarSha256": sha256(self.previous_path / "app.jar"),
-                         "health": "legacy"}
+                         "schemaSha256": sha256(baseline_schema), "health": "legacy"}
         self.original_env = f"BACKEND_RELEASE_DIR={self.previous_path}\nKEEP_THIS=value\n"
         self.server.runtime.write_text(self.original_env)
         self.job = self.server.jobs / f"{NEXT}-12-1"
@@ -80,3 +82,25 @@ class DeploymentTests(unittest.TestCase):
         state = self.server.state(self.job)
         self.assertEqual(state["status"], "ROLLBACK_FAILED")
         self.assertIn("앱을 시작할 수 없습니다.", state["rollbackError"])
+
+    def test_schema_drift_after_preflight_blocks_incompatible_rollback(self):
+        self.recreate.side_effect = DeploymentError("HTTPS 실패")
+        self.schema_check.side_effect = [None, DeploymentError("column/reports/version")]
+        self.server.run(self.job)
+        state = self.server.state(self.job)
+        self.assertEqual((state["status"], state["rollbackError"]), ("ROLLBACK_FAILED", "column/reports/version"))
+        self.assertIn(str(self.server.releases / self.job.name), self.server.runtime.read_text())
+        self.recreate.assert_called_once_with(self.manifest)
+
+    def test_late_confirmation_does_not_create_receipt(self):
+        self.server.state(self.job, status="AWAITING_CONFIRMATION", confirmationDeadline=250)
+        with patch("deploy.time.monotonic", return_value=251):
+            with self.assertRaisesRegex(DeploymentError, "시간이 초과"):
+                self.server.confirm(self.job)
+        self.assertFalse((self.job / "confirmed").exists())
+
+    def test_confirmation_receipt_cannot_bypass_deadline(self):
+        write_json(self.job / "confirmed", {"receivedAt": 251})
+        with patch("deploy.time.monotonic", return_value=100):
+            with self.assertRaisesRegex(DeploymentError, "시간이 초과"):
+                self.server.wait_for_confirmation(self.job)

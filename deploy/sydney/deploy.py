@@ -211,10 +211,14 @@ class Server:
         expected = manifest["jarSha256"]
         require(sha256(path / "app.jar") == expected == self.running_digest(self.running_app()),
                 "이전 릴리스의 파일과 실행 JAR가 일치하지 않습니다.")
-        contract = path / "schema-contract.jsonl" if manifest_path.exists() else self.program / "baseline-schema.jsonl"
+        self.check_release_schema(path, manifest)
+        return manifest
+
+    def check_release_schema(self, path, manifest):
+        contract = (self.program / "baseline-schema.jsonl" if manifest["health"] == "legacy"
+                    else path / "schema-contract.jsonl")
         require(sha256(contract) == manifest["schemaSha256"], "이전 릴리스의 DB 명세 해시 불일치")
         self.schema_check(contract)
-        return manifest
 
     def external(self, path):
         return execute(["curl", "-fsS", "--noproxy", "*", "--max-time", "5",
@@ -275,6 +279,7 @@ class Server:
             path = Path(read_env(backup)["BACKEND_RELEASE_DIR"]).resolve()
             require(path.parent == self.releases.resolve()
                     and sha256(path / "app.jar") == previous["jarSha256"], "이전 JAR를 검증할 수 없습니다.")
+            self.check_release_schema(path, previous)
             write_atomic(self.runtime, backup.read_text())
             self.recreate(previous)
             self.state(job, status="ROLLED_BACK", restoredCommit=previous["commit"])
@@ -342,11 +347,7 @@ class Server:
                 require(count == 1, "Compose 릴리스 경로를 하나만 설정해야 합니다.")
                 write_atomic(self.runtime, updated)
                 self.recreate(manifest)
-                self.state(job, status="AWAITING_CONFIRMATION")
-                deadline = time.monotonic() + 150
-                while not (job / "confirmed").exists():
-                    require(time.monotonic() < deadline, "외부 검증 확인 시간이 초과되었습니다.")
-                    time.sleep(2)
+                self.wait_for_confirmation(job)
                 self.state(job, status="DEPLOYED")
             except Exception as error:
                 if self.state(job).get("status") in SWITCHED:
@@ -360,11 +361,26 @@ class Server:
                 if (job / "artifact").is_dir():
                     (job / "artifact").rmdir()
 
+    def wait_for_confirmation(self, job):
+        deadline = time.monotonic() + 150
+        self.state(job, status="AWAITING_CONFIRMATION", confirmationDeadline=deadline)
+        receipt = job / "confirmed"
+        timeout = "외부 검증 확인 시간이 초과되었습니다."
+        while not receipt.exists():
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, timeout)
+            time.sleep(min(2, remaining))
+        require(read_json(receipt)["receivedAt"] < deadline, timeout)
+
     def confirm(self, job):
-        status = self.state(job).get("status")
+        state = self.state(job)
+        status = state.get("status")
         require(status in {"AWAITING_CONFIRMATION", "DEPLOYED"}, "확인할 수 있는 배포 상태가 아닙니다.")
-        if status == "AWAITING_CONFIRMATION":
-            write_atomic(job / "confirmed", "confirmed\n")
+        receipt = job / "confirmed"
+        if status == "AWAITING_CONFIRMATION" and not receipt.exists():
+            received_at = time.monotonic()
+            require(received_at < state["confirmationDeadline"], "외부 검증 확인 시간이 초과되었습니다.")
+            write_json(receipt, {"receivedAt": received_at})
         return self.state(job)
 
     def recover(self, job=None):
