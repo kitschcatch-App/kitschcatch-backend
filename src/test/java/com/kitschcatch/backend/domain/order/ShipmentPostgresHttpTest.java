@@ -102,6 +102,29 @@ class ShipmentPostgresHttpTest extends ShipmentHttpContract {
         verify(provider, times(2)).lookup(anyString(), anyString());
     }
 
+    @Test
+    void retriesWebhookLookupAfterWorkerLeaseExpires() {
+        var order = order(buyer, seller, false);
+        approve(order);
+        assertThat(ship(order, sellerToken).status()).isEqualTo(200);
+        var moving = new TrackingProvider.Event(TrackingProvider.Status.IN_TRANSIT,
+            OffsetDateTime.parse("2026-11-09T05:00:00Z"));
+        var delivered = new TrackingProvider.Event(TrackingProvider.Status.DELIVERED, moving.occurredAt().plusHours(1));
+        when(provider.lookup("kr.cjlogistics", "123456789012"))
+            .thenReturn(new TrackingProvider.Snapshot(moving, List.of(moving)))
+            .thenReturn(new TrackingProvider.Snapshot(delivered, List.of(delivered)));
+        worker.run();
+        // 기존 작업자가 콜백을 꺼낸 뒤 결과를 쓰기 전에 종료된 상태를 재현한다.
+        jdbc.update("""
+            update shipment_tracking set pending=false, lease_token=?, lease_until=now()-interval '1 second',
+                next_check_at=now()-interval '1 minute'
+            """, UUID.randomUUID());
+        worker.run();
+        assertThat(get("/api/orders/" + order.orderId() + "/shipment/tracking", buyerToken).data())
+            .containsEntry("status", "DELIVERED");
+        verify(provider, times(2)).lookup(anyString(), anyString());
+    }
+
     @AfterAll
     static void dropIsolatedSchema() throws Exception {
         if (database != null) database.close();

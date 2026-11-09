@@ -85,7 +85,9 @@ public class ShipmentTracking {
         UUID lease = UUID.randomUUID();
         return jdbc.query("""
             with due as (
-                select t.order_id,t.revision,t.pending from shipment_tracking t
+                select t.order_id,t.revision,
+                    (t.pending or t.lease_token is not null) as query_required
+                from shipment_tracking t
                 join orders o on o.id=t.order_id and coalesce(o.shipment_revision,1)=t.revision
                 where t.next_check_at<=now() and (t.lease_until is null or t.lease_until<=now())
                   and t.created_at>now()-interval '30 days' and o.order_status in ('PAID','PURCHASE_CONFIRMED')
@@ -93,7 +95,7 @@ public class ShipmentTracking {
             )
             update shipment_tracking t set lease_token=?,lease_until=now()+interval '1 minute',pending=false
             from due where t.order_id=due.order_id and t.revision=due.revision
-            returning t.*, due.pending as query_required
+            returning t.*, due.query_required
             """, (rs, row) -> new Claim(rs.getLong("order_id"), rs.getLong("revision"), rs.getString("carrier_id"),
             rs.getString("tracking_number"), rs.getObject("callback_token", UUID.class), lease,
             rs.getObject("expires_at", OffsetDateTime.class), rs.getBoolean("query_required")
