@@ -19,6 +19,7 @@ public class SettlementTransactionService {
     private final PaymentRepository payments;
     private final SettlementProperties properties;
     private final com.kitschcatch.backend.domain.order.repository.SettlementRecipientRepository recipients;
+    public record Submitted(String settlementId) {}
     public record Prepared(SettlementGateway.Command command, boolean request) {}
     @Transactional
     public Prepared prepare(long userId,String number,boolean providerConfigured) {
@@ -38,24 +39,29 @@ public class SettlementTransactionService {
             var recipient=recipients.findById(o.getSellerId()).orElseThrow(()->new BusinessException(ErrorCode.SETTLEMENT_RECIPIENT_NOT_FOUND));
             if(payout<=0 || payout>=1_000_000_000L) throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
             s.start(payout,fee,s.getDestination()==null?recipient.getProviderSellerId():s.getDestination());
+            notifications.publishEvent(new Submitted(s.getSettlementId()));
         }
         return new Prepared(new SettlementGateway.Command(s.getSettlementId(),o.getSellerId(),s.getAmount(),s.getFee(),"KRW",s.getDestination(),s.getProviderReference()),request);
     }
     @Transactional
     public void finish(long userId,String number,SettlementGateway.Result result) {
         var o=access.operatorOrder(userId,number,properties.operatorUserIds(),true);
+        applyResult(o, result);
+    }
+
+    void applyResult(PurchaseOrder o, SettlementGateway.Result result) {
         var s=o.getSettlement();
         if(s==null || s.getStatus()==OrderSettlement.Status.WAITING) throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
         if(s.getStatus()==OrderSettlement.Status.COMPLETED) return;
+        boolean verifiedFailure=s.getStatus()==OrderSettlement.Status.FAILED && s.getProviderReference()!=null;
         if(result==null || !s.getSettlementId().equals(result.settlementId()) || !s.getAmount().equals(result.amount())
             || !"KRW".equals(result.currency()) || result.status()==null || s.getDestination()==null
             || !s.getDestination().equals(result.destination())
-            || (s.getProviderReference()!=null && !s.getProviderReference().equals(result.providerReference()))) { s.unknown(); return; }
-        if(result.providerReference()!=null && !result.providerReference().matches("[A-Za-z0-9_-]{1,35}")) { s.unknown(); return; }
-        boolean verifiedFailure=s.getStatus()==OrderSettlement.Status.FAILED && s.getProviderReference()!=null;
+            || (s.getProviderReference()!=null && !s.getProviderReference().equals(result.providerReference()))) { if (!verifiedFailure) s.unknown(); return; }
+        if(result.providerReference()!=null && !result.providerReference().matches("[A-Za-z0-9_-]{1,35}")) { if (!verifiedFailure) s.unknown(); return; }
         s.recordReference(result.providerReference());
         switch(result.status()) {
-            case PENDING -> s.pending();
+            case PENDING -> { if (!verifiedFailure) s.pending(); }
             case FAILED -> {
                 s.failed();
                 if (!verifiedFailure && result.providerReference()!=null) {
@@ -64,7 +70,7 @@ public class SettlementTransactionService {
             }
             case COMPLETED -> {
                 if(result.providerReference()==null || result.providerReference().isBlank() || result.providerReference().length()>200
-                    || result.settledAt()==null) { s.unknown(); return; }
+                    || result.settledAt()==null) { if (!verifiedFailure) s.unknown(); return; }
                 s.complete(result.providerReference(),result.settledAt());
                 notifications.publishEvent(new TradeChanged(o, NotificationType.SETTLEMENT_COMPLETED));
             }
@@ -78,7 +84,8 @@ public class SettlementTransactionService {
     @Transactional
     public void unknown(long userId,String number) {
         var o=access.operatorOrder(userId,number,properties.operatorUserIds(),true);
-        if(o.getSettlement()!=null && o.getSettlement().getStatus()!=OrderSettlement.Status.WAITING) o.getSettlement().unknown();
+        if(o.getSettlement()!=null && o.getSettlement().getStatus()!=OrderSettlement.Status.WAITING
+            && o.getSettlement().getStatus()!=OrderSettlement.Status.FAILED) o.getSettlement().unknown();
     }
     @Transactional(readOnly=true)
     public SettlementResponse get(long userId,String number) {

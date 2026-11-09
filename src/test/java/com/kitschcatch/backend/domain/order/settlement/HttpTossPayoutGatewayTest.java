@@ -32,6 +32,7 @@ class HttpTossPayoutGatewayTest {
             Reply r=replies.poll();if(r==null) r=new Reply(500,"unexpected",0);
             try { if(r.delay()>0) Thread.sleep(r.delay()); } catch(InterruptedException ex) {Thread.currentThread().interrupt();}
             byte[] body=r.body().getBytes(StandardCharsets.UTF_8);
+            if (r.status() == 429) e.getResponseHeaders().set("Retry-After", "240");
             e.sendResponseHeaders(r.status(),body.length);try(var out=e.getResponseBody()){out.write(body);}finally{e.close();}
         });server.start();gateway=client(5000,10,true);
     }
@@ -122,6 +123,21 @@ class HttpTossPayoutGatewayTest {
         preflight();replies.add(new Reply(400,encrypted("{\"error\":{\"message\":\"PRIVATE_BANK_DATA\"}}"),0));
         assertThatThrownBy(()->gateway.request(command(null))).isInstanceOf(BusinessException.class).hasMessageNotContaining("PRIVATE_BANK_DATA").hasMessageNotContaining(KEY);
         preflight();reply("not-a-jwe");assertThatThrownBy(()->gateway.request(command(null))).isInstanceOf(BusinessException.class);
+    }
+    @Test void lookupClassifiesRateLimitAndAuthorizationWithoutRetainingProviderData() {
+        replies.add(new Reply(429, "PRIVATE_PROVIDER_MESSAGE", 0));
+        assertThatThrownBy(() -> gateway.lookup(command("payout_123")))
+            .isInstanceOfSatisfying(SettlementLookupFailure.class, e -> {
+                assertThat(e.category()).isEqualTo("PROVIDER_RATE_LIMIT");
+                assertThat(e.retryAfterSeconds()).isEqualTo(240);
+                assertThat(e.getMessage()).doesNotContain("PRIVATE_PROVIDER_MESSAGE");
+            });
+        replies.add(new Reply(403, "PRIVATE_PROVIDER_MESSAGE", 0));
+        assertThatThrownBy(() -> gateway.lookup(command("payout_123")))
+            .isInstanceOfSatisfying(SettlementLookupFailure.class, e -> {
+                assertThat(e.category()).isEqualTo("PROVIDER_AUTHORIZATION");
+                assertThat(e.retryAfterSeconds()).isEqualTo(300);
+            });
     }
     @Test void disabledKeysAndTimeoutAreNotAcceptedAsEvidence() {
         assertThatThrownBy(()->client(5000,10,false).recipient("seller_123")).isInstanceOf(BusinessException.class);assertThat(captured).isEmpty();

@@ -22,6 +22,7 @@ report_reviewers
 reports
 search_daily_users
 settlement_recipients
+settlement_sync_jobs
 store_amenities
 store_business_hours
 store_content_imports
