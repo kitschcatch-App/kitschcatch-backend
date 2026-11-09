@@ -4,6 +4,7 @@ import com.kitschcatch.backend.domain.auth.client.KakaoOAuthProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -32,6 +33,8 @@ public class SecurityConfig {
 				.authenticationEntryPoint(apiAuthenticationExceptionHandler)
 				.accessDeniedHandler(apiAuthenticationExceptionHandler))
 			.authorizeHttpRequests(authorize -> authorize
+				.requestMatchers(HttpMethod.GET, "/.well-known/apple-app-site-association").permitAll()
+				.requestMatchers(HttpMethod.HEAD, "/.well-known/apple-app-site-association").permitAll()
 				.requestMatchers(
 					"/api/auth/**",
 					"/api/payments/webhooks/toss",

@@ -22,7 +22,8 @@ import org.springframework.web.client.RestClient;
 	"spring.datasource.password=", "spring.jpa.hibernate.ddl-auto=create-drop",
 	"kakao.oauth.native-app-key=naver-config-kakao",
 	"app.orders.expiration-enabled=false", "app.payments.recovery.enabled=false",
-	"social.oauth.naver.client-id=", "social.oauth.naver.client-secret=", "social.oauth.naver.redirect-uri="
+	"social.oauth.naver.client-id=", "social.oauth.naver.client-secret=", "social.oauth.naver.redirect-uri=",
+	"app.naver.ios-app-id="
 })
 @DirtiesContext
 class NaverLoginConfigurationHttpTest {
@@ -42,6 +43,17 @@ class NaverLoginConfigurationHttpTest {
 
 		assertThat(nonces.count()).isEqualTo(before);
 		assertThat(nonces.findById(existing.getId()).orElseThrow().isConsumed()).isFalse();
+	}
+
+	@Test
+	void unconfiguredAppleAssociationReturns404WithoutAuthentication() {
+		RestClient.create("http://127.0.0.1:" + port).get()
+			.uri("/.well-known/apple-app-site-association")
+			.exchange((request, response) -> {
+				assertThat(response.getStatusCode().value()).isEqualTo(404);
+				assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+				return null;
+			});
 	}
 
 	@Test
