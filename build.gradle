@@ -50,6 +50,17 @@ tasks.named('test') {
 	systemProperty 'spring.test.context.cache.maxSize', '3'
 }
 
+def releaseCommit = providers.gradleProperty('releaseSha').orElse('local').get()
+if (releaseCommit != 'local' && !(releaseCommit ==~ /[0-9a-f]{40}/)) {
+	throw new GradleException('releaseSha는 전체 Git 커밋 SHA여야 합니다.')
+}
+tasks.named('processResources') {
+	inputs.property('releaseSha', releaseCommit)
+	filesMatching('kitschcatch-release.properties') {
+		expand(commit: releaseCommit)
+	}
+}
+
 tasks.register('storeCsv', JavaExec) {
 	group = 'application'
 	description = '명시한 PostgreSQL 대상에서 검수 매장 CSV를 dry-run 또는 apply한다.'
