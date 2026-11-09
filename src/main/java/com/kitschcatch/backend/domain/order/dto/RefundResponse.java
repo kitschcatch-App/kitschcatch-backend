@@ -2,10 +2,12 @@
 package com.kitschcatch.backend.domain.order.dto;
 import com.kitschcatch.backend.domain.order.entity.*;
 import java.time.LocalDateTime;
+import java.util.List;
 public record RefundResponse(String refundId,String orderId,Long amount,OrderRefund.Status status,String reason,
-    LocalDateTime requestedAt,LocalDateTime completedAt,String reviewReason,LocalDateTime reviewedAt,Boolean returnReceived,LocalDateTime withdrawnAt) {
-    public static RefundResponse from(PurchaseOrder o) {
+    LocalDateTime requestedAt,LocalDateTime completedAt,String reviewReason,LocalDateTime reviewedAt,Boolean returnReceived,LocalDateTime withdrawnAt,
+    List<RefundImageDtos.Image> images) {
+    public static RefundResponse from(PurchaseOrder o, List<RefundImageDtos.Image> images) {
         var r=o.getRefund(); return new RefundResponse(r.getRefundId(),o.getOrderNumber(),r.getAmount(),r.getStatus(),
-            r.getReason(),r.getRequestedAt(),r.getCompletedAt(),r.getReviewReason(),r.getReviewedAt(),r.getReturnReceived(),r.getWithdrawnAt());
+            r.getReason(),r.getRequestedAt(),r.getCompletedAt(),r.getReviewReason(),r.getReviewedAt(),r.getReturnReceived(),r.getWithdrawnAt(),images);
     }
 }

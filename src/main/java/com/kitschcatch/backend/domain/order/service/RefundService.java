@@ -11,14 +11,13 @@ public class RefundService {
     private final RefundReviewTransactionService reviews;
     public RefundResponse request(long userId,String number,RefundRequest request) {
         var prepared=transactions.prepare(userId,number,request);
-        if(prepared!=null) payments.executeCancellation(userId,prepared.paymentId(),prepared.context(),request.reason().strip());
+        if(prepared!=null) payments.executeCancellation(userId,prepared.paymentId(),prepared.context(),prepared.reason());
         return transactions.get(userId,number);
     }
     public RefundResponse review(long userId,String number,RefundDecisionRequest request,boolean approve) {
         var prepared=reviews.review(userId,number,request,approve);
         if(prepared!=null) {
-            var refund=transactions.get(userId,number);
-            payments.executeCancellation(prepared.buyerId(),prepared.paymentId(),prepared.context(),refund.reason());
+            payments.executeCancellation(prepared.buyerId(),prepared.paymentId(),prepared.context(),prepared.reason());
         }
         return transactions.get(userId,number);
     }

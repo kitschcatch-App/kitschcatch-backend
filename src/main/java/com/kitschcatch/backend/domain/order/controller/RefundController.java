@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @SecurityRequirement(name="bearerAuth")
 public class RefundController {
     private final RefundService service;
-    @PostMapping @Operation(summary="전액 환불 요청",description="구매자만 요청할 수 있습니다. 배송 전에는 PG 취소로 연결합니다. 배송 후에는 REQUESTED로 접수하며 운영자가 반품 수령과 증빙을 확인해 승인합니다. 같은 요청은 기존 결과를 반환합니다.")
+    @PostMapping @Operation(summary="전액 환불 요청",description="구매자만 요청할 수 있습니다. 배송 전에는 PG 취소로 연결합니다. 배송 후에는 REQUESTED로 접수하며 운영자가 반품 수령과 증빙을 확인해 승인합니다. 검증된 사진 ID를 imageIds에 최대 5장 포함할 수 있습니다. 사유·금액·사진과 순서가 같은 재요청은 기존 결과를 반환합니다.")
     public ApiResponse<RefundResponse> request(@AuthenticationPrincipal AuthenticatedUser user,@PathVariable String orderId,
         @Valid @RequestBody RefundRequest request) { return ApiResponse.success(service.request(user.userId(),orderId,request)); }
     @PostMapping("/approve") @Operation(summary="반품 수령 확인 및 전액 환불 승인",description="운영자 전용입니다. returnReceived=true와 검수 사유가 필요하며 승인 후 PG 전액 취소를 실행합니다.")
@@ -33,7 +33,7 @@ public class RefundController {
     @PostMapping("/withdraw") @Operation(summary="반품 환불 철회",description="구매자만 REQUESTED 환불을 철회할 수 있습니다. 실물 반품 발송 전에 요청하세요.")
     public ApiResponse<RefundResponse> withdraw(@AuthenticationPrincipal AuthenticatedUser user,@PathVariable String orderId,
         @Valid @RequestBody RefundWithdrawalRequest request) { return ApiResponse.success(service.withdraw(user.userId(),orderId,request)); }
-    @GetMapping @Operation(summary="환불 상태 조회",description="거래 당사자 또는 반품 운영자가 저장된 환불 상태를 조회합니다. PG 취소 결과가 확인돼야 COMPLETED가 됩니다.")
+    @GetMapping @Operation(summary="환불 상태 조회",description="거래 당사자 또는 반품 운영자가 저장된 환불 상태를 조회합니다. PG 취소 결과가 확인돼야 COMPLETED가 됩니다. 첨부 사진은 5분 유효한 조회 URL을 반환합니다.")
     public ApiResponse<RefundResponse> get(@AuthenticationPrincipal AuthenticatedUser user,@PathVariable String orderId) {
         return ApiResponse.success(service.get(user.userId(),orderId));
     }

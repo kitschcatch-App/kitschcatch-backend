@@ -5,6 +5,7 @@ import com.kitschcatch.backend.domain.order.entity.*;
 import com.kitschcatch.backend.domain.order.repository.OrderHistoryRow;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record OrderDetailResponse(
     @Schema(description = "주문 생성 응답의 공개 주문 번호. 내부 숫자 PK가 아닙니다.") String orderId,
@@ -14,10 +15,8 @@ public record OrderDetailResponse(
     LocalDateTime orderedAt, LocalDateTime reservationExpiresAt,
     LocalDateTime confirmedAt, ShipmentResponse shipment, RefundResponse refund, OrderShippingAddressResponse shippingAddress, PriceBreakdown pricing
 ) {
-    public static OrderDetailResponse from(OrderHistoryRow row, String thumbnailUrl) {
-        return from(row,thumbnailUrl,false);
-    }
-    public static OrderDetailResponse from(OrderHistoryRow row,String thumbnailUrl,boolean includeAddress) {
+    public static OrderDetailResponse from(OrderHistoryRow row, String thumbnailUrl, boolean includeAddress,
+                                           List<RefundImageDtos.Image> refundImages) {
         var order = row.order();
         return new OrderDetailResponse(order.getOrderNumber(), order.getOrderStatus(), order.getAmount(),
             new OrderedPost(order.getSnapshotPostId(), order.getPostTitle(), thumbnailUrl),
@@ -26,7 +25,7 @@ public record OrderDetailResponse(
             row.payment() == null ? null : OrderedPayment.from(row.payment()),
             order.getCreatedAt(), order.getReservationExpiresAt(), order.getConfirmedAt(),
             order.getShipment() == null ? null : ShipmentResponse.from(order),
-            order.getRefund() == null ? null : RefundResponse.from(order),
+            order.getRefund() == null ? null : RefundResponse.from(order, refundImages),
             includeAddress?OrderShippingAddressResponse.from(order.getShippingAddress()):null, PriceBreakdown.from(order.getPricing()));
     }
 
