@@ -17,6 +17,8 @@ kakao:
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 app:
+  naver:
+    ios-app-id: ${NAVER_IOS_APP_ID:}
   addresses:
     max-count: ${APP_ADDRESSES_MAX_COUNT:10}
   refunds:
