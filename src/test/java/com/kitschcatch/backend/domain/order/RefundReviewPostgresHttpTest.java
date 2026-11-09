@@ -49,6 +49,8 @@ class RefundReviewPostgresHttpTest extends RefundReviewHttpContract {
         var refundId = decision(order).get("refundId");
         var path = "/api/admin/refunds";
         assertError(get(path, buyerToken), 403, "REFUND_004");
+        org.assertj.core.api.Assertions.assertThat(
+            get(path + "?status=REQUESTED,,PROCESSING", operatorToken).status()).isEqualTo(400);
         var result = get(path + "?orderId=" + order.orderId() + "&shipped=true&size=1", operatorToken);
         org.assertj.core.api.Assertions.assertThat(result.status()).isEqualTo(200);
         org.assertj.core.api.Assertions.assertThat(result.data()).containsEntry("totalElements", 1);

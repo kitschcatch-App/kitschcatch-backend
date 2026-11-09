@@ -37,6 +37,8 @@ public class AdminRefundService {
         requireOperator(actor);
         if (page < 0 || size < 1 || size > 100 || from != null && to != null && !from.isBefore(to))
             throw new BusinessException(ErrorCode.BAD_REQUEST);
+        if (statuses != null && statuses.stream().anyMatch(java.util.Objects::isNull))
+            throw new BusinessException(ErrorCode.BAD_REQUEST);
         var params = new MapSqlParameterSource("statuses",
             (statuses == null || statuses.isEmpty() ? List.of(Status.REQUESTED, Status.PROCESSING) : statuses)
                 .stream().map(Enum::name).distinct().toList());
