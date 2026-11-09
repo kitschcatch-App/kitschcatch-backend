@@ -5,7 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from deploy import DeploymentError, Server, sha256, write_json
+from deploy import (
+    DeploymentError, LEGACY_NOTIFICATION_TYPES, TRADE_NOTIFICATION_TYPES, Server,
+    notification_type_check, sha256, write_json,
+)
 
 BEFORE = "a" * 40
 NEXT = "b" * 40
@@ -104,3 +107,65 @@ class DeploymentTests(unittest.TestCase):
         with patch("deploy.time.monotonic", return_value=100):
             with self.assertRaisesRegex(DeploymentError, "시간이 초과"):
                 self.server.wait_for_confirmation(self.job)
+
+class NotificationSchemaCompatibilityTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        (root / "deploy").mkdir()
+        write_json(root / "deploy/config.json", {"postgresImage": "test-postgres"})
+        (root / "deploy/catalog.sql").write_text("catalog")
+        (root / "backend.env").write_text("")
+        self.server = Server(root)
+        self.contract = root / "contract.jsonl"
+        self.table = ("table", "notifications", None)
+        self.legacy = notification_type_check(LEGACY_NOTIFICATION_TYPES)
+        self.expanded = notification_type_check(LEGACY_NOTIFICATION_TYPES + TRADE_NOTIFICATION_TYPES)
+
+    def snapshot(self, *rows):
+        return "\n".join(json.dumps(row) for row in (self.table, *rows))
+
+    def test_old_reader_can_rollback_before_new_types_are_written(self):
+        self.contract.write_text(self.snapshot(self.legacy))
+        with patch("deploy.execute", side_effect=[self.snapshot(self.expanded), "t"]) as query:
+            self.server.schema_check(self.contract)
+        self.assertEqual(query.call_count, 2)
+        self.assertIn("FROM public.notifications", query.call_args.kwargs["stdin"])
+
+    def test_old_reader_cannot_rollback_after_new_types_are_written(self):
+        self.contract.write_text(self.snapshot(self.legacy))
+        with patch("deploy.execute", side_effect=[self.snapshot(self.expanded), "f"]):
+            with self.assertRaisesRegex(DeploymentError, "constraint/notifications/notifications_type_check"):
+                self.server.schema_check(self.contract)
+
+    def test_old_reader_is_not_accepted_when_emission_is_enabled(self):
+        self.contract.write_text(self.snapshot(self.legacy))
+        (self.server.root / "backend.env").write_text("APP_NOTIFICATIONS_TRADE_ENABLED=true\n")
+        with patch("deploy.execute", return_value=self.snapshot(self.expanded)) as query:
+            with self.assertRaisesRegex(DeploymentError, "거래 알림 생성을 꺼야"):
+                self.server.schema_check(self.contract)
+        query.assert_called_once()
+
+    def test_new_reader_requires_migration_and_can_rollback_after_activation(self):
+        self.contract.write_text(self.snapshot(self.expanded))
+        with patch("deploy.execute", return_value=self.snapshot(self.legacy)):
+            with self.assertRaises(DeploymentError):
+                self.server.schema_check(self.contract)
+        with patch("deploy.execute", return_value=self.snapshot(self.expanded)) as query:
+            self.server.schema_check(self.contract)
+        query.assert_called_once()
+
+    def test_unapproved_or_unvalidated_check_does_not_qualify(self):
+        self.contract.write_text(self.snapshot(self.legacy))
+        other = notification_type_check(LEGACY_NOTIFICATION_TYPES + TRADE_NOTIFICATION_TYPES + ("EXTRA",))
+        for row in (other, (*self.expanded[:-1], False)):
+            with self.subTest(row=row):
+                with patch("deploy.execute", return_value=self.snapshot(row)) as query:
+                    with self.assertRaises(DeploymentError):
+                        self.server.schema_check(self.contract)
+                query.assert_called_once()
+
+    def test_expanded_check_matches_packaged_contract(self):
+        contract = Path(__file__).with_name("schema-contract.jsonl")
+        self.assertIn(list(self.expanded), [json.loads(line) for line in contract.read_text().splitlines()])

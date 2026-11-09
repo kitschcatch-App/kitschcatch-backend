@@ -23,6 +23,19 @@ OPENAPI = "/v3/api-docs"
 ACTIVE = {"QUEUED", "PREFLIGHT", "SWITCHING", "AWAITING_CONFIRMATION", "ROLLING_BACK"}
 SWITCHED = {"SWITCHING", "AWAITING_CONFIRMATION", "ROLLING_BACK"}
 
+LEGACY_NOTIFICATION_TYPES = ("CHAT_MESSAGE", "PAYMENT_SUCCESS", "PAYMENT_CANCELED")
+TRADE_NOTIFICATION_TYPES = (
+    "SHIPMENT_REGISTERED", "SHIPMENT_UPDATED", "REFUND_REQUESTED", "REFUND_APPROVED",
+    "REFUND_REJECTED", "REFUND_WITHDRAWN", "REFUND_COMPLETED", "PURCHASE_CONFIRMED",
+    "SETTLEMENT_COMPLETED", "SETTLEMENT_FAILED",
+)
+
+
+def notification_type_check(types):
+    allowed = ", ".join(f"'{kind}'::character varying" for kind in types)
+    return ("constraint", "notifications", "notifications_type_check",
+            f"CHECK (((type)::text = ANY ((ARRAY[{allowed}])::text[])))", True)
+
 
 class DeploymentError(Exception):
     pass
@@ -183,11 +196,25 @@ class Server:
             export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=3000"
             exec psql -X -qAt -v ON_ERROR_STOP=1 -d "${DEV_DB_URL#jdbc:}" -v tables="$1"
         """
-        raw = execute(["docker", "run", "--pull", "never", "--rm", "-i", "--network", "host",
-                       "--env-file", str(self.root / "backend.env"), "--entrypoint", "/bin/sh",
-                       self.config["postgresImage"], "-ec", shell, "sh", ",".join(tables)],
-                      "개발 DB 스키마를 조회할 수 없습니다.", stdin=(self.program / "catalog.sql").read_text())
+        def query(sql):
+            return execute(["docker", "run", "--pull", "never", "--rm", "-i", "--network", "host",
+                            "--env-file", str(self.root / "backend.env"), "--entrypoint", "/bin/sh",
+                            self.config["postgresImage"], "-ec", shell, "sh", ",".join(tables)],
+                           "개발 DB 스키마를 조회할 수 없습니다.", stdin=sql)
+
+        raw = query((self.program / "catalog.sql").read_text())
         actual = {tuple(json.loads(line)) for line in raw.splitlines()}
+        legacy = notification_type_check(LEGACY_NOTIFICATION_TYPES)
+        expanded = notification_type_check(LEGACY_NOTIFICATION_TYPES + TRADE_NOTIFICATION_TYPES)
+        # #69의 정확한 CHECK 확장만 허용한다. 구버전이 읽지 못하는 행이 있으면 복구도 차단한다.
+        if list(legacy) in lines and legacy not in actual and expanded in actual:
+            trade_enabled = read_env(self.root / "backend.env").get("APP_NOTIFICATIONS_TRADE_ENABLED", "false")
+            require(trade_enabled == "false", "이전 릴리스 복구 전 거래 알림 생성을 꺼야 합니다.")
+            allowed = ", ".join(f"'{kind}'" for kind in LEGACY_NOTIFICATION_TYPES)
+            readable = query(f"SELECT NOT EXISTS (SELECT 1 FROM public.notifications "
+                             f"WHERE type NOT IN ({allowed}));\n")
+            if readable == "t":
+                actual.add(legacy)
         missing = ["/".join(str(value) for value in row[:3] if value is not None)
                    for row in lines if tuple(row) not in actual]
         require(not missing, "스키마 또는 권한 불일치: " + ", ".join(missing[:15]))
