@@ -18,7 +18,11 @@ public class NearbyStoreService {
     }
 
     public NearbyStorePageResponse nearby(long userId, NearbyStoreQuery query) {
-        var stores = repository.findNearby(query);
+        return nearby(userId, query, null);
+    }
+
+    NearbyStorePageResponse nearby(long userId, NearbyStoreQuery query, Long excludedStoreId) {
+        var stores = repository.findNearby(query, excludedStoreId);
         boolean hasNext = stores.size() > query.page().size();
         var page = stores.stream().limit(query.page().size()).toList();
         var ids = favorites.favoritedIds(userId, page.stream().map(store -> store.id()).toList());
