@@ -235,8 +235,27 @@ class StoreReviewImagePostgresHttpTest {
         assertThat(state(visible)).isEqualTo("ATTACHED");
         assertThat(state(withdrawnImage)).isEqualTo("DELETED");
         assertThat(state(deletedImage)).isEqualTo("DELETED");
-        assertThat(imageRepository.due(Instant.now(), org.springframework.data.domain.PageRequest.of(0, 1000)))
+        assertThat(imageRepository.due(Instant.now(), Instant.now().minus(java.time.Duration.ofDays(90)), org.springframework.data.domain.PageRequest.of(0, 1000)))
             .doesNotContain(hidden, visible);
+    }
+
+    @Test
+    void hiddenEvidenceOfWithdrawnAuthorExpires() {
+        long image = ready(author);
+        var review = createWith(author, image);
+        jdbc.update("update store_reviews set hidden_at=now() where id=?", review.id());
+        assertThat(call("DELETE", "/api/users/me", author, null).status()).isEqualTo(200);
+        expire(image);
+        cleanup.clean(image);
+        assertThat(state(image)).isEqualTo("ATTACHED");
+
+        jdbc.update("update users set withdrawn_at=now()-interval '91 days' where id=?", author.getId());
+        var now = Instant.now();
+        assertThat(imageRepository.due(now, now.minus(java.time.Duration.ofDays(90)),
+            org.springframework.data.domain.PageRequest.of(0, 1000))).contains(image);
+        cleanup.clean(image);
+        assertThat(state(image)).isEqualTo("DELETED");
+        assertThat(memory().objects).doesNotContainKey(objectKey(image));
     }
 
     @Test
@@ -250,7 +269,7 @@ class StoreReviewImagePostgresHttpTest {
         assertThat(state(ready)).isEqualTo("READY");
         assertThat(jdbc.queryForObject("SELECT cleanup_attempts FROM store_review_images WHERE id=?", Integer.class, ready))
             .isEqualTo(1);
-        assertThat(imageRepository.due(Instant.now(), org.springframework.data.domain.PageRequest.of(0, 1000)))
+        assertThat(imageRepository.due(Instant.now(), Instant.now().minus(java.time.Duration.ofDays(90)), org.springframework.data.domain.PageRequest.of(0, 1000)))
             .doesNotContain(ready);
         memory().failDelete = false;
         expire(ready);

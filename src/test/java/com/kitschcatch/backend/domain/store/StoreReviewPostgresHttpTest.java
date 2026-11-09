@@ -145,6 +145,22 @@ class StoreReviewPostgresHttpTest {
     }
 
     @Test
+    void moderatorCannotReadExpiredEvidenceOfWithdrawnAuthor() {
+        var moderator = user();
+        jdbc.update("insert into report_reviewers(user_id,granted_at) values (?,now())", moderator.getId());
+        jdbc.update("insert into store_review_moderators(user_id) values (?)", moderator.getId());
+        var created = call("POST", reviewsPath(), author, input(5));
+        jdbc.update("update store_reviews set hidden_at=now() where id=?", created.id());
+        assertThat(call("DELETE", "/api/users/me", author, null).status()).isEqualTo(200);
+        String path = "/api/admin/store-reviews/" + created.id();
+        assertThat(call("GET", path, moderator, null).data().get("content")).isNotNull();
+        jdbc.update("update users set withdrawn_at=now()-interval '91 days' where id=?", author.getId());
+        assertThat(call("GET", path, moderator, null).data().get("content")).isNull();
+        jdbc.update("update store_reviews set hidden_at=null where id=?", created.id());
+        assertThat(call("GET", path, moderator, null).data().get("content")).isNull();
+    }
+
+    @Test
     void createsReadsUpdatesDeletesAndAllowsRewriting() {
         var mine = call("GET", reviewsPath() + "/me", author, null);
         assertThat(mine.status()).isEqualTo(200);

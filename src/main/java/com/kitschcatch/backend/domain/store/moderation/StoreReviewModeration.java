@@ -1,13 +1,16 @@
 // 신고 근거와 별도 권한을 확인하고 리뷰 노출 조치를 기록한다.
 package com.kitschcatch.backend.domain.store.moderation;
 
+import com.kitschcatch.backend.domain.report.ReportProperties;
 import com.kitschcatch.backend.domain.report.review.ReportReviewAccess;
 import com.kitschcatch.backend.domain.store.dto.StoreReviewResponse;
 import com.kitschcatch.backend.domain.store.service.StoreReviewImageService;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import jakarta.validation.constraints.*;
+import java.time.temporal.ChronoUnit;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +52,7 @@ public class StoreReviewModeration {
         Action.valueOf(rs.getString("action")), rs.getString("reason"), rs.getLong("version"),
         rs.getObject("created_at", OffsetDateTime.class));
 
+    private final ReportProperties reports;
     private final JdbcTemplate jdbc;
     private final ReportReviewAccess reportAccess;
     private final StoreReviewImageService images;
@@ -81,9 +85,13 @@ public class StoreReviewModeration {
         var review = review(id, false);
         requireIndependent(actor, review);
         String content = jdbc.queryForObject("""
-            select case when deleted_at is null or evidence_until>now() then content end
-            from store_reviews where id=?
-            """, String.class, id);
+            select case
+                when r.deleted_at is not null then case when r.evidence_until>now() then r.content end
+                when u.withdrawn_at<=? then null
+                else r.content
+            end
+            from store_reviews r join users u on u.id=r.author_id where r.id=?
+            """, String.class, OffsetDateTime.now(ZoneOffset.UTC).minus(reports.retentionDays(), ChronoUnit.DAYS), id);
         var relatedReports = jdbc.query("""
             select id,status,expires_at from reports where target_type='STORE_REVIEW' and target_id=?
               and target_user_id=? and expires_at>now()
