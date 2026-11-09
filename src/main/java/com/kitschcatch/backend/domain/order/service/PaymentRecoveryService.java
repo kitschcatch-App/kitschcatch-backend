@@ -245,8 +245,9 @@ public class PaymentRecoveryService {
 	}
 
 	private void recoverConfirmation(Payment payment, PaymentAttempt attempt, TossPaymentResponse response) {
-		if ("WAITING_FOR_DEPOSIT".equals(response.status())
-			|| (TOSS_DONE.equals(response.status()) && !response.isSupportedCard())) {
+		String pgStatus = response.status();
+		boolean approved = TOSS_DONE.equals(pgStatus) || "PARTIAL_CANCELED".equals(pgStatus);
+		if ("WAITING_FOR_DEPOSIT".equals(pgStatus) || (approved && !response.isSupportedCard())) {
 			queueUnsupportedMethodCancellation(payment, attempt, response);
 			return;
 		}

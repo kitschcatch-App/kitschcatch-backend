@@ -209,6 +209,35 @@ class PaymentRecoveryWorkerPostgresTest {
         assertThat(events.findAll().getFirst().getProcessingStatus()).isEqualTo(PaymentWebhookProcessingStatus.PROCESSED);
     }
 
+    @ParameterizedTest
+    @CsvSource({"간편결제, true", "카드, false"})
+    void recoveryOfPartiallyCanceledPaymentOnlyCancelsRemainderForUnsupportedMethods(String method, boolean unsupported) {
+        start();
+        when(pg.getPayment("key")).thenReturn(new TossPaymentResponse("key", order.pgOrderId(), 12000L,
+            "PARTIAL_CANCELED", 2000L, null, null, null, method, new TossPaymentResponse.Card("신용")));
+
+        scheduler().recoverPayments();
+        var pending = payments.getPayment(buyerId, order.paymentId());
+        assertThat(pending.status()).isEqualTo(PaymentStatus.PROCESSING);
+        assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
+        verify(pg, never()).cancel(any());
+        if (unsupported) {
+            assertThat(pending.processingOperation()).isEqualTo(PaymentOperation.CANCEL);
+            when(pg.cancel(any())).thenReturn(result("CANCELED"));
+            scheduler().recoverPayments();
+            verify(pg).cancel(new TossPaymentCancelRequest("key", "지원하지 않는 결제 수단", "cancel-key"));
+            var canceled = payments.getPayment(buyerId, order.paymentId());
+            assertThat(canceled.status()).isEqualTo(PaymentStatus.CANCELED);
+            assertThat(canceled.failureCode()).isEqualTo(Payment.UNSUPPORTED_METHOD_CODE);
+            assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+        } else {
+            assertThat(pending.processingOperation()).isEqualTo(PaymentOperation.CONFIRM);
+            assertThat(pending.recoveryState()).isEqualTo(PaymentRecoveryState.REVIEW_REQUIRED);
+            assertThat(attempts.count()).isEqualTo(1);
+        }
+        verify(pg, never()).confirm(any());
+    }
+
     private void makeDue(String attemptId) {
         jdbc.update("UPDATE payment_attempts SET next_check_at=? WHERE attempt_id=?", LocalDateTime.now(), attemptId);
     }
