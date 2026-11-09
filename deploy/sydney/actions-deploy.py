@@ -39,7 +39,8 @@ class ActionsDeployment:
     def put(self, name):
         result = self.aws(["s3api", "put-object", "--bucket", self.bucket, "--expected-bucket-owner", self.account,
                            "--key", f"backend/{self.release}/{name}", "--body", str(self.stage / name),
-                           "--if-none-match", "*", "--output", "json"], f"S3 업로드 실패: {name}")
+                           "--if-none-match", "*", "--output", "json"], f"S3 업로드 실패: {name}",
+                          timeout=180)
         version = json.loads(result).get("VersionId")
         require(version and version != "null", "배포 버킷에 객체 버전이 없습니다.")
         return version
