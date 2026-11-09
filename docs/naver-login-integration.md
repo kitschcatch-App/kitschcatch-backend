@@ -54,10 +54,12 @@
 | --- | --- | --- |
 | Android App Links | `MainActivity`에 `android:autoVerify="true"`인 HTTPS 인텐트 필터를 추가한다. `VIEW`, `DEFAULT`, `BROWSABLE`과 개발 콜백의 호스트 및 정확한 경로(`/api/auth/naver/callback`)를 지정한다. | 설치 빌드의 패키지 `com.kitschcatch`와 SHA-256 서명 지문이 도메인의 `/.well-known/assetlinks.json`과 일치한다. `adb shell pm get-app-links com.kitschcatch`에서 `verified`를 확인한다. 개발 도메인에는 저장소 디버그 서명 지문이 등록되어 있다. |
 | iOS Universal Links | 앱 타깃과 프로비저닝에 Associated Domains를 활성화하고 `applinks:dev-kitschcatch.p-e.kr`를 추가한다. `AppDelegate`에서 Universal Link의 `continue userActivity` 이벤트를 React Native `RCTLinkingManager`에 전달한다. 서명된 앱의 `application-identifier`를 백엔드에 전달한다. | 서명한 빌드에서 네이버 인증 후 앱으로 돌아온다. |
-| 인증 대기 | 서버에서 받은 URL을 열기 전에 콜백 리스너를 등록한다. 인증 요청에 포함된 HTTPS 콜백의 호스트·경로와 현재 시도의 `state`가 모두 일치할 때 코드만 제출한다. 오류 콜백도 같은 주소와 `state`를 확인한다. | 다른 주소와 `state`의 콜백을 무시하고 같은 시도의 코드를 한 번만 제출한다. |
+| 인증 대기 | 서버에서 받은 URL을 열기 전에 콜백 리스너를 등록한다. HTTPS 콜백 주소와 현재 시도의 `state`가 모두 일치한 성공 응답을 받으면 `POST /api/auth/naver/mobile-login`에 콜백의 `code`를 `authorizationCode`로 담고 발급받은 `state`도 함께 보낸다. 오류 콜백도 같은 주소와 `state`를 확인한 뒤 인증 대기를 끝낸다. | 다른 주소와 `state`의 콜백을 무시하고 같은 시도의 로그인 요청을 한 번만 보낸다. |
 | 재시도 | 인증 중복 시작을 막고, 완료·취소·서버가 안내한 유효 시간 만료·브라우저 열기 실패·화면 종료 시 리스너와 타이머를 해제한다. 브라우저가 콜백 없이 닫힌 경우 앱에서 진행 중인 인증을 취소할 수 있게 한다. 앱 프로세스가 종료됐거나 인증에 실패하면 새 `state`로 다시 시작한다. | 인증 취소·만료 후 새로 시작할 수 있고, 종료된 시도의 콜백으로 로그인되지 않는다. |
 
 백엔드는 전달받은 `application-identifier`를 서버 환경 변수 `NAVER_IOS_APP_ID`에 설정한다. 배포 후 `/.well-known/apple-app-site-association`이 인증과 리다이렉트 없이 JSON 200을 반환하고, 해당 앱에 네이버 콜백 경로만 연결하는지 확인한다. 미설정 또는 형식 오류 시 404를 반환한다.
+
+테스터 인증을 시작하기 전에 배포 계층의 `/api/auth/naver/callback` 접근 로그 설정을 확인한다. Nginx 기본 형식처럼 전체 요청 줄(`$request`)을 기록하면 쿼리의 인증 코드와 `state`도 남는다. 해당 경로는 쿼리를 제외한 형식으로 기록하거나 접근 로그를 끈다. 가짜 `code`와 `state`로 콜백을 호출해 안내 응답은 200이고 값은 활성화된 프록시·로드밸런서·애플리케이션 로그에 남지 않는지 확인한다.
 
 개발 서버 주소와 다른 도메인으로 배포할 때는 네이버 앱의 등록 콜백, 서버 `NAVER_REDIRECT_URI`, 모바일 앱 링크 설정을 함께 맞춘다. 배포된 서버에서 발급한 URL로 등록 테스터가 실제 인증을 마친 뒤, 신규 회원은 프로필 등록, 기존 회원은 홈 진입 및 동일 회원 ID로의 재로그인까지 확인한다.
 
