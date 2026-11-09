@@ -1,5 +1,7 @@
 // 내부 정산 실행자의 요청을 직렬화하고 외부 지급 결과를 검증해 저장한다.
 package com.kitschcatch.backend.domain.order.settlement;
+import com.kitschcatch.backend.domain.notification.NotificationEvents.TradeChanged;
+import com.kitschcatch.backend.domain.notification.NotificationType;
 import com.kitschcatch.backend.domain.order.dto.SettlementResponse;
 import com.kitschcatch.backend.domain.order.entity.*;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
@@ -7,11 +9,13 @@ import com.kitschcatch.backend.domain.order.service.OrderAccessService;
 import com.kitschcatch.backend.global.exception.*;
 import java.math.BigInteger;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service @RequiredArgsConstructor
 public class SettlementTransactionService {
     private final OrderAccessService access;
+    private final ApplicationEventPublisher notifications;
     private final PaymentRepository payments;
     private final SettlementProperties properties;
     private final com.kitschcatch.backend.domain.order.repository.SettlementRecipientRepository recipients;
@@ -48,14 +52,21 @@ public class SettlementTransactionService {
             || !s.getDestination().equals(result.destination())
             || (s.getProviderReference()!=null && !s.getProviderReference().equals(result.providerReference()))) { s.unknown(); return; }
         if(result.providerReference()!=null && !result.providerReference().matches("[A-Za-z0-9_-]{1,35}")) { s.unknown(); return; }
+        boolean verifiedFailure=s.getStatus()==OrderSettlement.Status.FAILED && s.getProviderReference()!=null;
         s.recordReference(result.providerReference());
         switch(result.status()) {
             case PENDING -> s.pending();
-            case FAILED -> s.failed();
+            case FAILED -> {
+                s.failed();
+                if (!verifiedFailure && result.providerReference()!=null) {
+                    notifications.publishEvent(new TradeChanged(o, NotificationType.SETTLEMENT_FAILED));
+                }
+            }
             case COMPLETED -> {
                 if(result.providerReference()==null || result.providerReference().isBlank() || result.providerReference().length()>200
                     || result.settledAt()==null) { s.unknown(); return; }
                 s.complete(result.providerReference(),result.settledAt());
+                notifications.publishEvent(new TradeChanged(o, NotificationType.SETTLEMENT_COMPLETED));
             }
         }
     }

@@ -1,16 +1,20 @@
 // 환불 요청을 주문 잠금 안에서 저장하고 배송 전 PG 취소를 선점한다.
 package com.kitschcatch.backend.domain.order.service;
+import com.kitschcatch.backend.domain.notification.NotificationEvents.TradeChanged;
+import com.kitschcatch.backend.domain.notification.NotificationType;
 import com.kitschcatch.backend.domain.order.dto.*;
 import com.kitschcatch.backend.domain.order.entity.*;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
 import com.kitschcatch.backend.global.exception.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RefundTransactionService {
     private final OrderAccessService access;
+    private final ApplicationEventPublisher notifications;
     private final PaymentRepository payments;
     private final PaymentTransactionService paymentTransactions;
     private final RefundProperties properties;
@@ -31,9 +35,14 @@ public class RefundTransactionService {
         var refund=new OrderRefund(request.amount(),request.reason().strip()); o.requestRefund(refund);
         images.attach(o, imageIds);
         // 발송한 상품은 운영자가 실물 수령을 확인한 뒤 별도 승인한다.
-        if(o.getShipment()!=null) return null;
-        refund.start();
-        return new Prepared(userId,p.getPaymentId(),paymentTransactions.startRefund(userId,p.getPaymentId()),refund.getReason());
+        Prepared prepared = null;
+        if (o.getShipment()==null) {
+            refund.start();
+            prepared = new Prepared(userId,p.getPaymentId(),
+                paymentTransactions.startRefund(userId,p.getPaymentId()),refund.getReason());
+        }
+        notifications.publishEvent(new TradeChanged(o, NotificationType.REFUND_REQUESTED));
+        return prepared;
     }
     static void requireRefundable(PurchaseOrder order, Payment payment) {
         if (order.getOrderStatus() != OrderStatus.PAID || order.getCancelReason() != null || payment == null
