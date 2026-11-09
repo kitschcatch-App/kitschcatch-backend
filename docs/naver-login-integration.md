@@ -1,4 +1,4 @@
-# 네이버 로그인 실제 연동 (#73)
+# 네이버 로그인 연동과 사전 검수 (#73, #99)
 
 서버는 네이버 인증 코드를 교환하고 사용자 정보를 확인한 뒤 키치캐치 토큰을 발급한다. 관련 API는 이미 구현되어 있다. 모바일에서 네이버 SDK access token만 전달하는 방식은 현재 입력 계약과 다르다.
 
@@ -42,13 +42,34 @@
 
 실기기 완료 기준은 네이버 인증 → 앱 복귀 → 서비스 토큰 발급 → 내 정보 200, 신규 회원 프로필 등록, 기존 회원 동일 ID 로그인, 토큰 갱신 및 로그아웃이다. Android/iOS에서 앱 실행·종료 상태와 인증 취소·만료를 확인한다.
 
-## 적용 상태
+## #99 배포 점검과 앱 연결
+
+2026-11-09 사파리 AWS 콘솔에서 시드니 개발 EC2의 실행 상태를 확인했다. 개발 서버에서 state 발급과 HTTPS 콜백이 200, `/.well-known/assetlinks.json`이 200, `/.well-known/apple-app-site-association`이 401이었다. 실제 인증 URL의 `redirect_uri`는 문서의 개발용 콜백과 일치했다.
+
+모바일 `develop`의 `9c5afa0`에는 인증 코드 제출이 이미 연결되어 있었다. Android 앱이 HTTPS 콜백을 받을 인텐트 필터와 iOS Associated Domains 설정이 없었고, 앱의 콜백 리스너에는 주소 검증과 만료·취소 정리가 없었다.
+
+- Android는 `com.kitschcatch`로 서명된 설치 빌드의 SHA-256 인증서 지문을 개발 도메인의 `assetlinks.json`과 대조한다. 설치 후 `adb shell pm get-app-links com.kitschcatch`로 도메인이 `verified`인지 확인한다.
+- iOS는 Associated Domains가 포함된 프로비저닝으로 빌드하고, 서명된 앱의 `application-identifier`를 서버 환경 변수 `NAVER_IOS_APP_ID`에 넣는다. 서버는 `/.well-known/apple-app-site-association`에서 해당 앱에 네이버 콜백 경로만 연결한다. 설정이 없거나 형식이 잘못되면 404를 반환한다. 배포 후 실제 도메인에서 인증과 리다이렉트 없이 JSON 200을 받는지 확인한다.
+- 앱은 동일한 로그인 시도의 HTTPS 콜백과 state를 확인한다. 브라우저가 콜백 없이 닫히면 앱의 네이버 로그인 취소 버튼으로 종료하고 다시 시작한다. 앱 프로세스가 종료되거나 시간이 지나면 새 로그인 시도를 시작한다.
+- 개발 서버 주소와 다른 도메인으로 배포할 때는 네이버 앱의 등록 콜백, 서버 `NAVER_REDIRECT_URI`, 모바일 Android Manifest와 iOS entitlements를 함께 맞춘다.
+
+## 테스터와 사전 검수
+
+1. 네이버 개발자센터의 `내 애플리케이션`에서 배포 서버가 발급하는 인증 URL의 `client_id`와 동일한 앱을 찾는다. 검수 상태, 서비스 환경, 콜백 URL, 제공 정보를 확인한다. 같은 서비스에 기존 승인 앱이 있다면 Client ID 변경 전에 기존 회원의 네이버 식별자에 미칠 영향을 확인한다.
+2. `멤버관리`에서 신규 가입과 기존 회원 재로그인에 쓸 네이버 ID를 등록한다. 시스템 브라우저의 네이버 로그인 계정이 테스터와 같은지 확인한다. 등록 테스터가 동일한 제한 화면을 보면 먼저 애플리케이션과 로그인 계정을 다시 대조한다.
+3. 각 플랫폼에서 로그인 버튼 → 네이버 인증·동의 → 앱 복귀 → 프로필 등록 또는 홈 → 내 정보 조회를 확인한다. 앱 버전·서버·OS와 결과를 기록한다. 취소, 만료, 로그아웃, 기존 회원 ID 유지도 확인한다. 검수 전 미등록 계정의 개발 상태 제한을 별도로 기록한다.
+4. 검수에는 실제 로그인과 가입이 끝나는 화면까지의 캡처, 키치캐치 이름과 로고, 서비스 내용을 보여주는 화면을 준비한다. 네이버 가입에 별도의 키치캐치 비밀번호를 요구하지 않는다. 기본 식별자만 사용하고 추가 항목을 요청할 경우 실제 활용 화면을 준비한다. 신청 화면의 업종별 요구 자료도 확인한다.
+5. `네이버 로그인 검수 상태`에서 자료를 첨부해 요청한다. 승인 후 배포 대상 앱에서 미등록 계정이 가입과 재로그인까지 완료하는지 확인한다.
+
+참고: [테스터와 사전 검수 안내](https://developers.naver.com/docs/login/verify/verify.md).
+
+## 2026-11-03 적용 이력
 
 2026-11-03 네이버에 `키치캐치 개발`을 Mobile 웹 환경으로 등록했다. 서비스 URL은 시드니 개발 서버이며 별도 실서비스 검수는 신청하지 않았다. 동의 정보는 기본 이용자 식별자만 사용했다. 자격 증명을 시드니 서버 및 시드니 전용 보호 환경 파일에 반영하고 컨테이너를 재생성했다. 설정 작업의 임시 SSH 규칙은 제거했다. 서버 JAR은 기존 develop `bd9b904` 그대로다.
 
 실제 네이버 계정으로 발급된 코드를 교환해 서비스 로그인 200, 내 정보 200, 미등록 프로필 false를 확인했다. state 재사용 401, refresh 200, 이전 refresh 재사용 401, 로그아웃 200 및 폐기 후 refresh 401도 확인했다. 검증용 refresh 세션과 임시 토큰·자격 증명 파일은 정리했다. 개발 회원은 유지한다.
 
-현재 모바일 develop은 네이버 SDK access token을 제출하므로 인증 코드·state 계약으로 전환해야 한다. iOS 프로젝트에는 서명 팀 정보가 없어 실제 Universal Links 연결을 아직 확정할 수 없다. 모바일 수정과 도메인 연결·실기기 검증은 미완료다. 현재 배포 JAR에는 GET 콜백이 없어 500을 반환하며, 이 브랜치의 정적 콜백 구현은 별도 반영이 필요하다. 실제 네이버 코드 교환 검증은 브라우저 콜백의 code/state를 검사한 별도 검증 프로세스로 수행했으며 앱 화면 검증을 의미하지 않는다.
+당시 모바일 develop은 네이버 SDK access token을 제출했고 배포 JAR의 GET 콜백은 500을 반환했다. iOS 서명 팀 정보는 없었다. 실제 네이버 코드 교환 검증은 별도 브라우저 흐름으로 수행했다.
 
 
 공식 근거: [네이버 로그인 개발가이드](https://developers.naver.com/docs/login/devguide/devguide.md), [API 명세](https://developers.naver.com/docs/login/api/api.md), [Android App Links](https://developer.android.com/training/app-links/verify-applinks), [Apple Associated Domains](https://developer.apple.com/documentation/xcode/supporting-associated-domains).
