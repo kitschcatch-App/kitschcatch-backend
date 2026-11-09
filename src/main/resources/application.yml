@@ -27,6 +27,7 @@ app:
     cleanup-enabled: ${APP_REFUND_IMAGES_CLEANUP_ENABLED:true}
     cleanup-delay-ms: ${APP_REFUND_IMAGES_CLEANUP_DELAY_MS:60000}
   settlement:
+    sync-enabled: ${APP_SETTLEMENT_SYNC_ENABLED:false}
     operator-user-ids: ${APP_SETTLEMENT_OPERATOR_USER_IDS:}
     fee-basis-points: ${APP_SETTLEMENT_FEE_BASIS_POINTS:500}
     toss:
