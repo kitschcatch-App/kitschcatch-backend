@@ -1,6 +1,8 @@
 // PG 결과 복구 서비스의 승인·취소 상태 반영을 검증하는 테스트
 package com.kitschcatch.backend.domain.order.service;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -29,6 +31,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class PaymentRecoveryServiceTest {
 
@@ -79,16 +83,17 @@ class PaymentRecoveryServiceTest {
 			.build();
 	}
 
-	@Test
+	@ParameterizedTest
+	@CsvSource({"카드, 신용", "카드, 체크", "CARD, CREDIT", "CARD, CHECK"})
 	@DisplayName("승인 완료 조회는 결제·주문·상품을 성공 상태로 복구한다")
-	void recoversSuccessfulConfirmation() {
+	void recoversSuccessfulConfirmation(String method, String cardType) {
 		PaymentAttempt attempt = attempt(PaymentAttemptOperation.CONFIRM, PaymentAttemptStatus.UNKNOWN, "key-1");
 		stub(attempt);
 
 		PaymentResponse response = recoveryService.recover(
 			"ATT-1",
 			new TossPaymentResponse("key-1", "ORD-1", 12000L, "DONE", 0L,
-				"2026-09-16T10:15:30+09:00", null, "tx-1")
+				"2026-09-16T10:15:30+09:00", null, "tx-1", method, new TossPaymentResponse.Card(cardType))
 		);
 
 		assertThat(response.status()).isEqualTo(PaymentStatus.SUCCESS);
@@ -143,7 +148,7 @@ class PaymentRecoveryServiceTest {
 
 		PaymentResponse response = recoveryService.recover(
 			"ATT-1",
-			new TossPaymentResponse("different-key", "ORD-1", 9999L, "DONE")
+			cardApproval("different-key", "ORD-1", 9999L)
 		);
 
 		assertThat(response.status()).isEqualTo(PaymentStatus.PROCESSING);
@@ -161,7 +166,7 @@ class PaymentRecoveryServiceTest {
 
 		PaymentResponse response = recoveryService.recover(
 			"ATT-1",
-			new TossPaymentResponse("key-1", "ORD-1", 12000L, "DONE")
+			cardApproval("key-1", "ORD-1", 12000L)
 		);
 
 		assertThat(response.status()).isEqualTo(PaymentStatus.PROCESSING);

@@ -1,6 +1,8 @@
 // 격리 PostgreSQL의 실제 잠금과 부분 유일 인덱스로 복구 워커·재시도·웹훅 경합을 검증한다.
 package com.kitschcatch.backend.domain.order.service;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,6 +22,8 @@ import java.time.LocalDateTime;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -118,6 +122,97 @@ class PaymentRecoveryWorkerPostgresTest {
         assertThat(attempts.count()).isEqualTo(1);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+        "DONE,간편결제,신용", "DONE,계좌이체,", "DONE,카드,기프트",
+        "DONE,카드,미확인", "DONE,,", "DONE,카드,", "WAITING_FOR_DEPOSIT,가상계좌,"
+    })
+    void unsupportedMethodsAreCanceledWithoutMarkingOrderPaid(String status, String method, String type) {
+        when(pg.confirm(any())).thenReturn(new TossPaymentResponse("key", order.pgOrderId(), 12000L, status,
+            12000L, null, null, null, method, type == null ? null : new TossPaymentResponse.Card(type)));
+        when(pg.cancel(any())).thenAnswer(invocation -> {
+            assertThat(orderRepository.findById(localOrderId()).orElseThrow().getOrderStatus()).isEqualTo(OrderStatus.PENDING);
+            assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
+            return result("CANCELED");
+        });
+
+        var response = payments.confirmPayment(buyerId, order.paymentId(), request());
+        assertThat(response.status()).isEqualTo(PaymentStatus.CANCELED);
+        assertThat(response.failureCode()).isEqualTo(Payment.UNSUPPORTED_METHOD_CODE);
+        assertThat(response.approvedAt()).isNull();
+        assertThat(response.retryAllowed()).isFalse();
+        assertThat(orderRepository.findById(localOrderId()).orElseThrow().getOrderStatus()).isEqualTo(OrderStatus.CANCELED);
+        assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+        assertThat(payments.confirmPayment(buyerId, order.paymentId(), request()).status()).isEqualTo(PaymentStatus.CANCELED);
+        verify(pg, times(1)).confirm(any());
+        verify(pg, times(1)).cancel(new TossPaymentCancelRequest("key", "지원하지 않는 결제 수단", "cancel-key"));
+    }
+
+    @Test
+    void lostCancellationResponseKeepsReservationAndReplaysWithSameKey() {
+        var unsupported = new TossPaymentResponse("key", order.pgOrderId(), 12000L, "DONE",
+            12000L, null, null, null, "간편결제", null);
+        when(pg.confirm(any())).thenReturn(unsupported);
+        when(pg.cancel(any())).thenThrow(new TossPaymentException("TRANSPORT_ERROR", false))
+            .thenReturn(new TossPaymentResponse("key", order.pgOrderId(), 12000L, "CANCELED", 2000L, null, null, null));
+        var pending = payments.confirmPayment(buyerId, order.paymentId(), request());
+        assertThat(pending.status()).isEqualTo(PaymentStatus.PROCESSING);
+        assertThat(pending.processingOperation()).isEqualTo(PaymentOperation.CANCEL);
+        assertThat(pending.retryAllowed()).isFalse();
+        expireReservation();
+        assertThat(reservations.expireOrder(localOrderId())).isFalse();
+        recovery.recover(order.attemptId(), unsupported);
+        assertThat(payments.confirmPayment(buyerId, order.paymentId(), request()).failureCode())
+            .isEqualTo(Payment.UNSUPPORTED_METHOD_CODE);
+
+        when(pg.getPayment("key")).thenReturn(new TossPaymentResponse("other-key", order.pgOrderId(), 12000L, "DONE"))
+            .thenReturn(unsupported);
+        makeDue(pending.attemptId());
+        scheduler().recoverPayments();
+        verify(pg, times(1)).cancel(any());
+        assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
+
+        makeDue(pending.attemptId());
+        scheduler().recoverPayments();
+        verify(pg, times(2)).cancel(new TossPaymentCancelRequest("key", "지원하지 않는 결제 수단", "cancel-key"));
+        assertThat(payments.getPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.PROCESSING);
+        assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
+
+        when(pg.getPayment("key")).thenReturn(result("CANCELED"));
+        makeDue(pending.attemptId());
+        scheduler().recoverPayments();
+        verify(pg, times(2)).cancel(any());
+        verify(pg, times(1)).confirm(any());
+        var canceled = payments.getPayment(buyerId, order.paymentId());
+        assertThat(canceled.status()).isEqualTo(PaymentStatus.CANCELED);
+        assertThat(canceled.failureCode()).isEqualTo(Payment.UNSUPPORTED_METHOD_CODE);
+        assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.ON_SALE);
+        assertThat(attempts.count()).isEqualTo(2);
+    }
+
+    @Test
+    void webhookDiscoveryQueuesCancellationAndAnAlreadyCanceledLookupAvoidsAnotherPgCall() {
+        start();
+        receiveWebhook();
+        when(pg.getPayment("key")).thenReturn(new TossPaymentResponse("key", order.pgOrderId(), 12000L, "DONE",
+            12000L, null, null, null, "계좌이체", null)).thenReturn(result("CANCELED"));
+        webhookWorker().processWebhooks();
+        var pending = payments.getPayment(buyerId, order.paymentId());
+        assertThat(pending.processingOperation()).isEqualTo(PaymentOperation.CANCEL);
+        assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.RESERVED);
+        scheduler().recoverPayments();
+        verify(pg, never()).cancel(any());
+        verify(pg, never()).confirm(any());
+        assertThat(payments.getPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.CANCELED);
+        jdbc.update("UPDATE payment_webhook_events SET next_process_at=?", LocalDateTime.now());
+        webhookWorker().processWebhooks();
+        assertThat(events.findAll().getFirst().getProcessingStatus()).isEqualTo(PaymentWebhookProcessingStatus.PROCESSED);
+    }
+
+    private void makeDue(String attemptId) {
+        jdbc.update("UPDATE payment_attempts SET next_check_at=? WHERE attempt_id=?", LocalDateTime.now(), attemptId);
+    }
+
     @Test
     void expiredLeaseAndFormerOwnerCannotApplySuccessOrFailure() {
         start();
@@ -175,7 +270,7 @@ class PaymentRecoveryWorkerPostgresTest {
             assertThat(attempts.count()).isEqualTo(2);
             assertThatThrownBy(() -> payments.confirmPayment(buyerId, order.paymentId(),
                 new ConfirmPaymentRequest(order.paymentId(), "new-key"))).isInstanceOf(BusinessException.class);
-            doReturn(new TossPaymentResponse("new-key", issued.pgOrderId(), 12000L, "DONE")).when(pg).confirm(any());
+            doReturn(cardApproval("new-key", issued.pgOrderId(), 12000L)).when(pg).confirm(any());
             payments.confirmPayment(buyerId, order.paymentId(),
                 new ConfirmPaymentRequest(order.paymentId(), "new-key", issued.attemptId()));
             assertThat(payments.prepareRetry(buyerId, order.paymentId(),
@@ -268,8 +363,8 @@ class PaymentRecoveryWorkerPostgresTest {
             new ConfirmPaymentRequest(nextOrder.paymentId(), "key-2", nextOrder.attemptId()));
         jdbc.update("UPDATE payment_attempts SET next_check_at=? WHERE attempt_id=?",
             LocalDateTime.now().minusHours(1), order.attemptId());
-        when(pg.getPayment("key")).thenReturn(new TossPaymentResponse("mismatch", order.pgOrderId(), 12000L, "DONE"));
-        when(pg.getPayment("key-2")).thenReturn(new TossPaymentResponse("key-2", nextOrder.pgOrderId(), 12000L, "DONE"));
+        when(pg.getPayment("key")).thenReturn(cardApproval("mismatch", order.pgOrderId(), 12000L));
+        when(pg.getPayment("key-2")).thenReturn(cardApproval("key-2", nextOrder.pgOrderId(), 12000L));
         var worker = new PaymentRecoveryScheduler(attempts, pg, recovery, 1);
         worker.recoverPayments();
         assertThat(payments.getPayment(buyerId, order.paymentId()).recoveryState()).isEqualTo(PaymentRecoveryState.REVIEW_REQUIRED);
@@ -289,7 +384,8 @@ class PaymentRecoveryWorkerPostgresTest {
     }
     void start() { transactions.startConfirm(buyerId, order.paymentId(), request()); }
     ConfirmPaymentRequest request() { return new ConfirmPaymentRequest(order.paymentId(), "key", order.attemptId()); }
-    TossPaymentResponse result(String status) { return new TossPaymentResponse("key", order.pgOrderId(), 12000L, status); }
+    TossPaymentResponse result(String status) { return "DONE".equals(status) ? cardApproval("key", order.pgOrderId(), 12000L)
+            : new TossPaymentResponse("key", order.pgOrderId(), 12000L, status); }
     Long localOrderId() { return orderRepository.findIdByOrderNumberAndUserId(order.orderId(), buyerId).orElseThrow(); }
     void expireReservation() {
         jdbc.update("UPDATE orders SET reservation_expires_at=? WHERE order_number=?", LocalDateTime.now().minusMinutes(1), order.orderId());

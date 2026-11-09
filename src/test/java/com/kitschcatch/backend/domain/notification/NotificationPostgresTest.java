@@ -1,6 +1,8 @@
 // 전용 PostgreSQL에서 실제 HTTP·이벤트·SQL·잠금·재시도와 소유권을 검증한다.
 package com.kitschcatch.backend.domain.notification;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -373,15 +375,7 @@ class NotificationPostgresTest {
                 .nextCheckAt(LocalDateTime.now())
                 .build());
     var done =
-        new TossPaymentResponse(
-            "synthetic-key",
-            recovered.getOrder().getOrderNumber(),
-            1000L,
-            "DONE",
-            1000L,
-            null,
-            null,
-            null);
+        cardApproval("synthetic-key", recovered.getOrder().getOrderNumber(), 1000L);
     recovery.recover(attempt.getAttemptId(), done);
     recovery.recover(attempt.getAttemptId(), done);
     assertThat(

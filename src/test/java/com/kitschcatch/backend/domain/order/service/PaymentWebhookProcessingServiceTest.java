@@ -1,6 +1,8 @@
 // 저장된 결제 웹훅을 PG 재조회와 공통 복구 서비스로 넘기는지 검증하는 테스트
 package com.kitschcatch.backend.domain.order.service;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -14,7 +16,6 @@ import com.kitschcatch.backend.domain.order.entity.PaymentWebhookEvent;
 import com.kitschcatch.backend.domain.order.entity.PaymentWebhookProcessingStatus;
 import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
 import com.kitschcatch.backend.domain.order.repository.PaymentWebhookEventRepository;
-import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,7 +49,7 @@ class PaymentWebhookProcessingServiceTest {
 		when(attemptRepository.findFirstByPaymentKeyOrPgOrderIdOrderBySequenceNumberDesc("key-1", "ORD-1"))
 			.thenReturn(Optional.of(attempt));
 		when(tossPaymentsClient.getPayment("key-1"))
-			.thenReturn(new TossPaymentResponse("key-1", "ORD-1", 12000L, "DONE"));
+			.thenReturn(cardApproval("key-1", "ORD-1", 12000L));
 		when(recoveryService.claim(eq("ATT-1"), any(), any())).thenReturn(true);
 		when(recoveryService.recover(eq("ATT-1"), any(), any())).thenReturn(
 			new com.kitschcatch.backend.domain.order.dto.PaymentResponse("PAY-1", "ORD-1", 12000L,
@@ -57,7 +58,7 @@ class PaymentWebhookProcessingServiceTest {
 		worker.processWebhooks();
 
 		verify(tossPaymentsClient).getPayment("key-1");
-		verify(recoveryService).recover(eq("ATT-1"), eq(new TossPaymentResponse("key-1", "ORD-1", 12000L, "DONE")), any());
+		verify(recoveryService).recover(eq("ATT-1"), eq(cardApproval("key-1", "ORD-1", 12000L)), any());
 		org.mockito.Mockito.verify(eventRepository, org.mockito.Mockito.times(2)).findByIdForUpdate(1L);
 	}
 }

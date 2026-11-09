@@ -35,7 +35,8 @@ class PaymentRecoveryRestartPostgresTest {
         pg.createContext("/v1/payments/key", exchange -> {
             lookups.incrementAndGet();
             byte[] body = ("{\"paymentKey\":\"key\",\"orderId\":\"" + pgOrderId.get()
-                + "\",\"totalAmount\":12000,\"status\":\"DONE\"}").getBytes(StandardCharsets.UTF_8);
+                + "\",\"totalAmount\":12000,\"status\":\"DONE\",\"method\":\"카드\",\"card\":{\"cardType\":\"신용\"}}")
+                .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
             try (var output = exchange.getResponseBody()) { output.write(body); }
