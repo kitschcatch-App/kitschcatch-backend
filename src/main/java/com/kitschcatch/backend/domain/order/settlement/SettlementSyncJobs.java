@@ -83,7 +83,7 @@ public class SettlementSyncJobs {
     }
 
     @Transactional
-    public void finish(Claim claim, SettlementGateway.Result result, String error) {
+    public void finish(Claim claim, SettlementGateway.Result result, String error, long retryAfter) {
         var order = reservations.lockOrder(claim.orderId());
         var settlement = order.getSettlement();
         var attempts = jdbc.queryForList("""
@@ -98,11 +98,12 @@ public class SettlementSyncJobs {
         int attempt = attempts.getFirst() + 1;
         boolean done = !current || settlement.getStatus() == Status.WAITING
             || settlement.getStatus() == Status.COMPLETED || settlement.getStatus() == Status.FAILED && error == null;
-        String state = done ? "DONE" : attempt >= 16 ? "REVIEW_REQUIRED" : "QUEUED";
+        boolean requiresReview = attempt >= 16 || "PROVIDER_AUTHORIZATION".equals(error);
+        String state = done ? "DONE" : requiresReview ? "REVIEW_REQUIRED" : "QUEUED";
         String lastError = error != null ? error
             : !done && settlement.getStatus() == Status.UNKNOWN ? "UNVERIFIED_RESULT" : null;
         long delay = Math.min(3600, 60L << Math.min(attempt - 1, 6));
-        delay += java.util.concurrent.ThreadLocalRandom.current().nextLong(15);
+        delay = Math.max(delay, retryAfter) + java.util.concurrent.ThreadLocalRandom.current().nextLong(15);
         jdbc.update("""
             update settlement_sync_jobs set state=?, attempts=?, last_error=?, last_checked_at=now(),
                 next_check_at=now()+make_interval(secs => cast(? as double precision)),lease_token=null,lease_until=null

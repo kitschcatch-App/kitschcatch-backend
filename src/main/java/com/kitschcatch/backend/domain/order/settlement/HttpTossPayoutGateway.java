@@ -11,6 +11,7 @@ import java.util.*;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.*;
 
 public class HttpTossPayoutGateway implements SettlementGateway {
@@ -43,8 +44,36 @@ public class HttpTossPayoutGateway implements SettlementGateway {
     private JsonNode get(String path) {
         requireConfigured();
         try { return json.readTree(client.get().uri(path).header("Authorization",authorization()).retrieve().body(String.class)); }
+        catch (RestClientResponseException failure) {
+            int status = failure.getStatusCode().value();
+            if (status == 401 || status == 403)
+                throw new SettlementLookupFailure("PROVIDER_AUTHORIZATION", 300);
+            if (status == 429) {
+                var headers = failure.getResponseHeaders();
+                throw new SettlementLookupFailure("PROVIDER_RATE_LIMIT",
+                    retryAfter(headers == null ? null : headers.getFirst("Retry-After")));
+            }
+            throw unavailable();
+        }
         catch(RuntimeException failure) { throw unavailable(); }
     }
+
+    private long retryAfter(String value) {
+        if (value == null || value.isBlank()) return 60;
+        long seconds;
+        try {
+            seconds = Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            try {
+                var until = ZonedDateTime.parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME);
+                seconds = Duration.between(clock.instant(), until.toInstant()).getSeconds();
+            } catch (java.time.format.DateTimeParseException invalid) {
+                return 60;
+            }
+        }
+        return Math.clamp(seconds, 1, 86400);
+    }
+
     public Recipient recipient(String id) {
         if(id==null || !id.matches("[A-Za-z0-9_-]{1,35}")) throw unavailable();
         var body=body(get("/v2/sellers/"+id),"seller");
@@ -89,7 +118,10 @@ public class HttpTossPayoutGateway implements SettlementGateway {
         }
         String cursor=null;
         Set<String> visited=new HashSet<>();
+        long started = System.nanoTime();
         for(int page=0;page<properties.lookupMaxPages();page++) {
+            if (System.nanoTime() - started >= Duration.ofSeconds(30).toNanos())
+                throw new SettlementLookupFailure("PROVIDER_LOOKUP_TIMEOUT", 0);
             String path="/v2/payouts?limit=100"+(cursor==null?"":"&startingAfter="+cursor);
             var list=body(get(path),"payout-list"); var items=list.path("items");
             if(!items.isArray()) throw unavailable();
