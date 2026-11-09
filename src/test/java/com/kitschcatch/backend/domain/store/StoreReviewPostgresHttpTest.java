@@ -78,6 +78,11 @@ class StoreReviewPostgresHttpTest {
     static void applyManualSql() throws Exception {
         try (var connection = database.connect(); var statement = connection.createStatement()) {
             statement.execute("DROP TABLE store_review_images, store_reviews");
+            for (String file : List.of("091_reports.sql", "107_report_reviews.sql")) {
+                try (var input = StoreReviewPostgresHttpTest.class.getResourceAsStream("/db/manual/" + file)) {
+                    statement.execute(new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                }
+            }
             PostgresStoreTestDatabase.migrateReviews(connection);
             PostgresStoreTestDatabase.migrateReviewImages(connection);
             PostgresStoreTestDatabase.migrateReviews(connection);
@@ -101,6 +106,58 @@ class StoreReviewPostgresHttpTest {
             .latitude(37.5).longitude(127).build()).getId();
         author = user();
         reader = user();
+    }
+
+    @Test
+    void moderationRequiresBothGrantsAndRestoresOnlyExistingContent() {
+        var moderator = user();
+        var created = call("POST", reviewsPath(), author, input(5));
+        long id = created.id();
+        long report = jdbc.queryForObject("""
+            insert into reports(reporter_id,target_type,target_id,target_user_id,reason_code,description,
+                request_fingerprint,message_ids,target_snapshot,status,created_at,expires_at)
+            values (?,'STORE_REVIEW',?,?,'SPAM','검증','hash','[]','{}','IN_REVIEW',now(),now()+interval '1 day')
+            returning id
+            """, Long.class, reader.getId(), id, author.getId());
+        String path = "/api/admin/store-reviews/" + id;
+        jdbc.update("insert into report_reviewers(user_id,granted_at) values (?,now())", moderator.getId());
+        assertThat(call("GET", path, moderator, null).status()).isEqualTo(403);
+        jdbc.update("insert into store_review_moderators(user_id) values (?)", moderator.getId());
+        var reports = call("GET", path, moderator, null).data().get("relatedReports");
+        assertThat((List<?>) reports).hasSize(1);
+        var command = Map.of("action", "HIDE", "reportId", report, "reason", "신고 확인",
+            "requestId", UUID.randomUUID().toString(), "expectedVersion", created.data().get("version"));
+        assertThat(call("PATCH", path + "/moderation", moderator, command).status()).isEqualTo(200);
+        assertThat(call("PATCH", path + "/moderation", moderator, command).data()).containsEntry("replayed", true);
+        assertThat(call("GET", reviewPath(id), reader, null).status()).isEqualTo(404);
+        assertThat(call("GET", reviewsPath() + "/summary", reader, null).data()).containsEntry("reviewCount", 0);
+        assertThat(call("PATCH", reviewPath(id), author, Map.of("rating", 4, "version", 1)).status()).isEqualTo(409);
+        assertThat(call("DELETE", reviewPath(id), author, null).status()).isEqualTo(200);
+        jdbc.update("delete from reports where id=?", report);
+        var restore = Map.of("action", "RESTORE", "reason", "제재 해제", "requestId", UUID.randomUUID().toString(),
+            "expectedVersion", 2);
+        assertThat(call("PATCH", path + "/moderation", moderator, restore).status()).isEqualTo(200);
+        assertThat(call("GET", reviewPath(id), reader, null).status()).isEqualTo(404);
+        assertThat(jdbc.queryForObject("select count(*) from store_review_moderation_history where review_id=?", Long.class, id))
+            .isEqualTo(2);
+        jdbc.update("update store_review_moderators set revoked_at=now() where user_id=?", moderator.getId());
+        assertThat(call("GET", path, moderator, null).status()).isEqualTo(403);
+    }
+
+    @Test
+    void moderatorCannotReadExpiredEvidenceOfWithdrawnAuthor() {
+        var moderator = user();
+        jdbc.update("insert into report_reviewers(user_id,granted_at) values (?,now())", moderator.getId());
+        jdbc.update("insert into store_review_moderators(user_id) values (?)", moderator.getId());
+        var created = call("POST", reviewsPath(), author, input(5));
+        jdbc.update("update store_reviews set hidden_at=now() where id=?", created.id());
+        assertThat(call("DELETE", "/api/users/me", author, null).status()).isEqualTo(200);
+        String path = "/api/admin/store-reviews/" + created.id();
+        assertThat(call("GET", path, moderator, null).data().get("content")).isNotNull();
+        jdbc.update("update users set withdrawn_at=now()-interval '91 days' where id=?", author.getId());
+        assertThat(call("GET", path, moderator, null).data().get("content")).isNull();
+        jdbc.update("update store_reviews set hidden_at=null where id=?", created.id());
+        assertThat(call("GET", path, moderator, null).data().get("content")).isNull();
     }
 
     @Test

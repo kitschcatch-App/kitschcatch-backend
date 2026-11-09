@@ -39,6 +39,7 @@ public class StoreReview {
 
     private Instant deletedAt;
     private Instant hiddenAt;
+    private Instant evidenceUntil;
 
     @Version
     @Column(nullable = false)
@@ -57,7 +58,8 @@ public class StoreReview {
         this.updatedAt = now;
     }
 
-    public void delete(Instant now) {
+    public void delete(Instant now, Instant evidenceUntil) {
+        this.evidenceUntil = hiddenAt == null ? null : evidenceUntil;
         this.deletedAt = now;
     }
 }

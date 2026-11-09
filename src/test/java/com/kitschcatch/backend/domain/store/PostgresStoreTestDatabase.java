@@ -47,6 +47,7 @@ final class PostgresStoreTestDatabase implements AutoCloseable {
 
     static void migrateReviews(Connection connection) throws SQLException, IOException {
         migrate(connection, "085_store_reviews.sql");
+        migrate(connection, "114_store_review_moderation.sql");
     }
 
     static void migrateReviewImages(Connection connection) throws SQLException, IOException {

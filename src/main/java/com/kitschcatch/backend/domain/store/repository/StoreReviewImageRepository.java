@@ -39,8 +39,11 @@ public interface StoreReviewImageRepository extends JpaRepository<StoreReviewIma
         select i.id from StoreReviewImage i left join i.review r join i.owner a
         where i.state <> 'DELETED' and i.cleanupAt <= :now
           and (i.state <> 'ATTACHED' or i.temporaryCleaned = false
-               or ((r.deletedAt is not null or a.withdrawnAt is not null) and r.hiddenAt is null))
+               or (r.evidenceUntil is not null and r.evidenceUntil <= :now)
+               or (r.evidenceUntil is null and (r.deletedAt is not null or a.withdrawnAt is not null)
+                   and r.hiddenAt is null)
+               or (r.evidenceUntil is null and r.hiddenAt is not null and a.withdrawnAt <= :withdrawnCutoff))
         order by i.cleanupAt, i.id
         """)
-    List<Long> due(Instant now, Pageable pageable);
+    List<Long> due(Instant now, Instant withdrawnCutoff, Pageable pageable);
 }
