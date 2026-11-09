@@ -37,7 +37,30 @@ class RefundReviewPostgresHttpTest extends RefundReviewHttpContract {
     static void applyManualSqlInsteadOfGeneratedHistorySchema() throws Exception {
         try (var connection = database.connect(); var statement = connection.createStatement()) {
             PostgresOrderLifecycleTestDatabase.replaceGeneratedColumns(connection);
+            try (var in = RefundReviewPostgresHttpTest.class.getResourceAsStream("/db/manual/115_admin_refunds.sql")) {
+                statement.execute(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            }
         }
+    }
+
+    @org.junit.jupiter.api.Test
+    void operatorCanFindARefundAndReuseExistingDecision() {
+        var order = requested();
+        var refundId = decision(order).get("refundId");
+        var path = "/api/admin/refunds";
+        assertError(get(path, buyerToken), 403, "REFUND_004");
+        org.assertj.core.api.Assertions.assertThat(
+            get(path + "?status=REQUESTED,,PROCESSING", operatorToken).status()).isEqualTo(400);
+        var result = get(path + "?orderId=" + order.orderId() + "&shipped=true&size=1", operatorToken);
+        org.assertj.core.api.Assertions.assertThat(result.status()).isEqualTo(200);
+        org.assertj.core.api.Assertions.assertThat(result.data()).containsEntry("totalElements", 1);
+        var detail = get(path + "/" + refundId, operatorToken);
+        org.assertj.core.api.Assertions.assertThat(detail.data()).containsEntry("refundId", refundId);
+        org.assertj.core.api.Assertions.assertThat(review(order, "reject", operatorToken, decision(order)).status())
+            .isEqualTo(200);
+        org.assertj.core.api.Assertions.assertThat(get(path, operatorToken).data()).containsEntry("totalElements", 0);
+        org.assertj.core.api.Assertions.assertThat(get(path + "?status=REJECTED", operatorToken).data())
+            .containsEntry("totalElements", 1);
     }
 
     @AfterAll
