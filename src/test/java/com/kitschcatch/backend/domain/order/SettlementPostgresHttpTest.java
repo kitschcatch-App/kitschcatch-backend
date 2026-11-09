@@ -70,6 +70,27 @@ class SettlementPostgresHttpTest extends SettlementHttpContract {
         org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(1)).lookup(org.mockito.ArgumentMatchers.any());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"QUEUED", "REVIEW_REQUIRED"})
+    void manualRefreshPreservesProviderRateLimit(String state) {
+        var order = confirmedOrder();
+        String id = (String) get("/api/orders/" + order.orderId() + "/settlement", sellerToken).data().get("settlementId");
+        org.mockito.Mockito.when(gateway.request(org.mockito.ArgumentMatchers.any()))
+            .thenThrow(new IllegalStateException("network"));
+        assertError(execute(order, operatorToken), 502, "SETTLEMENT_006");
+        jdbc.update("""
+            update settlement_sync_jobs set next_check_at=now()+interval '10 minutes',
+                attempts=3,last_error='PROVIDER_RATE_LIMIT',state=? where settlement_id=?
+            """, state, id);
+        String path = "/api/admin/settlements/" + id;
+        var before = get(path, operatorToken).data();
+        var refresh = request("POST", path + "/refresh", operatorToken, null);
+        org.assertj.core.api.Assertions.assertThat(refresh.status()).isEqualTo(202);
+        org.assertj.core.api.Assertions.assertThat(refresh.data()).isEqualTo(before);
+        worker.synchronize();
+        org.mockito.Mockito.verify(gateway, org.mockito.Mockito.never()).lookup(org.mockito.ArgumentMatchers.any());
+    }
+
     @AfterAll
     static void dropIsolatedSchema() throws Exception {
         if (database != null) database.close();
