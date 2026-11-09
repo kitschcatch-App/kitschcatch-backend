@@ -20,6 +20,10 @@ public enum ErrorCode {
     REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_005", "신고를 찾을 수 없습니다."),
     REPORT_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "REPORT_006", "신고 접수 횟수를 초과했습니다."),
     REPORT_MESSAGE_INVALID(HttpStatus.BAD_REQUEST, "REPORT_007", "신고 메시지 연결 정보가 올바르지 않습니다."),
+    REPORT_REVIEW_FORBIDDEN(HttpStatus.FORBIDDEN, "REPORT_008", "이 신고를 심사할 권한이 없습니다."),
+    REPORT_REVIEW_CONFLICT(HttpStatus.CONFLICT, "REPORT_009", "신고 상태 또는 요청이 변경되었습니다. 다시 확인해 주세요."),
+    REPORT_EVIDENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_010", "조회할 수 있는 신고 증거가 없습니다."),
+    REPORT_EVIDENCE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "REPORT_011", "신고 이미지 저장소를 조회할 수 없습니다."),
 
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "COMMON_001", "입력값이 올바르지 않습니다."),
 	BAD_REQUEST(HttpStatus.BAD_REQUEST, "COMMON_002", "잘못된 요청입니다."),

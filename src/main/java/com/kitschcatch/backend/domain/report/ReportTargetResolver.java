@@ -1,6 +1,7 @@
 // 신고 대상의 접근 권한을 확인하고 서버에 저장된 내용만 기록한다.
 package com.kitschcatch.backend.domain.report;
 import static com.kitschcatch.backend.global.exception.ErrorCode.*;
+import com.kitschcatch.backend.domain.report.review.ReportEvidenceImages;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ReportTargetResolver {
     private final JdbcTemplate jdbc;
+    private final ReportEvidenceImages evidenceImages;
     public long owner(long actor, ReportType type, long id) {
         List<Long> owners = switch (type) {
             case USER -> jdbc.queryForList("select id from users where id=? and withdrawn_at is null", Long.class, id);
@@ -46,11 +48,8 @@ public class ReportTargetResolver {
                 // 만료 서명 URL과 임의 외부 주소를 증거에 복사하지 않는다.
                 Object raw = message.remove("image_url");
                 if (raw instanceof String url) {
-                    try {
-                        var uri = java.net.URI.create(url);
-                        if (uri.getPath() != null && uri.getPath().contains("/chats/"))
-                            message.put("imageReferencePath", uri.getPath());
-                    } catch (IllegalArgumentException ignored) { }
+                    evidenceImages.capturePath(url, r.targetId(), ((Number) message.get("sender_id")).longValue())
+                        .ifPresent(path -> message.put("imageReferencePath", path));
                 }
                 messages.add(message);
             }
