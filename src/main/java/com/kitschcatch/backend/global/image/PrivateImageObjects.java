@@ -81,11 +81,23 @@ public class PrivateImageObjects {
             }
             return bytes;
         } catch (S3Exception error) {
-            if (error.statusCode() == 404) {
+            if (error.statusCode() == 404 || (error.statusCode() == 403 && isMissing(key))) {
                 throw new BusinessException(errors.notUploaded());
             }
             throw new BusinessException(errors.unavailable());
         } catch (IOException | SdkException error) {
+            throw new BusinessException(errors.unavailable());
+        }
+    }
+
+    private boolean isMissing(String key) {
+        // ListBucket이 없는 역할은 존재하지 않는 객체에도 GetObject 403을 받는다.
+        // 정리에 사용하는 ListBucketVersions로 정확한 키의 첫 항목만 확인한다.
+        try {
+            var result = client.listObjectVersions(ListObjectVersionsRequest.builder()
+                .bucket(properties.bucket()).prefix(key).maxKeys(1).overrideConfiguration(TIMEOUT).build());
+            return result.versions().stream().noneMatch(version -> key.equals(version.key()));
+        } catch (SdkException error) {
             throw new BusinessException(errors.unavailable());
         }
     }
@@ -116,11 +128,16 @@ public class PrivateImageObjects {
     }
 
     public Download signDownload(String key, Duration ttl) {
+        return signDownload(key, ttl, null);
+    }
+
+    protected Download signDownload(String key, Duration ttl, String cacheControl) {
         validate(key, finalKeys);
         try {
             var signed = presigner.presignGetObject(GetObjectPresignRequest.builder()
                 .signatureDuration(ttl)
-                .getObjectRequest(GetObjectRequest.builder().bucket(properties.bucket()).key(key).build())
+                .getObjectRequest(GetObjectRequest.builder().bucket(properties.bucket()).key(key)
+                    .responseCacheControl(cacheControl).build())
                 .build());
             return new Download(signed.url().toString(), signed.expiration());
         } catch (SdkException error) {

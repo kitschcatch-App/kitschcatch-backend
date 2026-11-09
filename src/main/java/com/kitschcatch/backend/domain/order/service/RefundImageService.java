@@ -16,12 +16,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RefundImageService {
     private static final int DAILY_LIMIT = 100;
     private static final Duration DOWNLOAD_TTL = Duration.ofMinutes(5);
@@ -63,11 +65,13 @@ public class RefundImageService {
         if (image.expired(Instant.now())) throw new BusinessException(REFUND_IMAGE_EXPIRED);
         if (image.getState() == State.READY) return completed(image);
 
-        var bytes = storage.read(image.getTemporaryKey(), image.getContentType(), image.getExpectedSize());
-        var clean = normalizer.normalize(bytes, image.getContentType());
-        var digest = storage.publishPng(image.getObjectKey(), clean.png());
-        image.ready(clean.width(), clean.height(), digest);
-        return completed(image);
+        return normalizer.process(
+            () -> storage.read(image.getTemporaryKey(), image.getContentType(), image.getExpectedSize()),
+            image.getContentType(), clean -> {
+                var digest = storage.publishPng(image.getObjectKey(), clean.png());
+                image.ready(clean.width(), clean.height(), digest);
+                return completed(image);
+            });
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -91,10 +95,20 @@ public class RefundImageService {
     }
 
     List<Image> responseImages(PurchaseOrder order) {
-        return attached(order).stream().map(image -> {
-            var signed = storage.signDownload(image.getObjectKey(), DOWNLOAD_TTL);
-            return new Image(image.getId(), signed.url(), signed.expiresAt(), image.getSortOrder());
-        }).toList();
+        var evidence = attached(order);
+        try {
+            return evidence.stream().map(image -> {
+                var signed = storage.signDownload(image.getObjectKey(), DOWNLOAD_TTL);
+                return new Image(image.getId(), signed.url(), signed.expiresAt(), image.getSortOrder());
+            }).toList();
+        } catch (BusinessException error) {
+            if (error.getErrorCode() != REFUND_IMAGE_STORAGE_UNAVAILABLE
+                    && error.getErrorCode() != S3_BUCKET_NOT_CONFIGURED) {
+                throw error;
+            }
+            log.warn("반품 사진 조회 URL 발급 실패: orderId={}, code={}", order.getOrderNumber(), error.getErrorCode());
+            return evidence.stream().map(image -> new Image(image.getId(), null, null, image.getSortOrder())).toList();
+        }
     }
 
     private List<RefundImage> attached(PurchaseOrder order) {

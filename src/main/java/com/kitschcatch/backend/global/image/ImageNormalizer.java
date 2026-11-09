@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import javax.imageio.stream.MemoryCacheImageInputStream;
 
@@ -34,11 +36,24 @@ public class ImageNormalizer {
     public record Normalized(byte[] png, int width, int height) {}
 
     public Normalized normalize(byte[] source, String contentType) {
-        if (source.length == 0 || source.length > MAX_BYTES) {
-            throw new BusinessException(invalid);
-        }
+        return process(() -> source, contentType, Function.identity());
+    }
+
+    public <T> T process(Supplier<byte[]> download, String contentType, Function<Normalized, T> publish) {
+        // S3 읽기부터 최종 저장까지 동시에 보관하는 원본과 PNG 버퍼 수를 제한한다.
         if (!SLOTS.tryAcquire()) {
             throw new BusinessException(busy);
+        }
+        try {
+            return publish.apply(normalizeBytes(download.get(), contentType));
+        } finally {
+            SLOTS.release();
+        }
+    }
+
+    private Normalized normalizeBytes(byte[] source, String contentType) {
+        if (source.length == 0 || source.length > MAX_BYTES) {
+            throw new BusinessException(invalid);
         }
         try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(source))) {
             var readers = ImageIO.getImageReaders(input);
@@ -87,8 +102,6 @@ public class ImageNormalizer {
             }
         } catch (IOException | IllegalArgumentException error) {
             throw new BusinessException(invalid);
-        } finally {
-            SLOTS.release();
         }
     }
 

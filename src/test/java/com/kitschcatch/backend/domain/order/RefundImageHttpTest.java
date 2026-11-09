@@ -18,6 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,7 +90,9 @@ abstract class RefundImageHttpContract extends OrderLifecycleHttpFixture {
             assertThat(photo).containsEntry("imageId", second).containsEntry("sortOrder", 0);
             assertThat(Instant.parse((String) photo.get("expiresAt"))).isAfter(Instant.now());
             String finalKey = jdbc.queryForObject("SELECT object_key FROM refund_images WHERE id = ?", String.class, second);
-            S3GetUrlAssertions.assertGetUrl((String) photo.get("imageUrl"), BUCKET, finalKey, 300, "photo-access", "photo-secret");
+            String imageUrl = (String) photo.get("imageUrl");
+            S3GetUrlAssertions.assertGetUrl(imageUrl, BUCKET, finalKey, 300, "photo-access", "photo-secret");
+            assertThat(java.net.URI.create(imageUrl).getQuery()).contains("response-cache-control=private, no-store");
         }
         assertThat(ids(child(get(path(order), sellerToken).data(), "refund"))).containsExactly(second, first);
         assertError(get(path(order) + "/refunds", strangerToken), 403, "ORDER_004");
@@ -142,6 +145,75 @@ abstract class RefundImageHttpContract extends OrderLifecycleHttpFixture {
     }
 
     @Test
+    void rejectsCoercedPhotoIdsAndSizes() {
+        var order = paidAndShipped();
+        int id = ready(order);
+        for (Object invalid : List.of(id + 0.75, Integer.toString(id))) {
+            var submitted = request("POST", path(order) + "/refunds", buyerToken,
+                Map.of("amount", 12000, "reason", "파손 증빙", "imageIds", List.of(invalid)));
+            assertThat(submitted.status()).isEqualTo(400);
+        }
+        for (Object invalid : List.of(PNG.length + 0.75, Integer.toString(PNG.length))) {
+            var upload = upload(order, buyerToken,
+                Map.of("fileName", "damage.png", "contentType", "image/png", "fileSize", invalid));
+            assertThat(upload.status()).isEqualTo(400);
+        }
+        assertError(get(path(order) + "/refunds", buyerToken), 404, "REFUND_003");
+        assertThat(refund(order, List.of(id)).status()).isEqualTo(200);
+    }
+
+    @Test
+    void distinguishesMissingUploadFromS3ReadPermissionFailure() {
+        var order = paidAndShipped();
+        int id = issue(order);
+        String temporaryKey = jdbc.queryForObject("SELECT temporary_key FROM refund_images WHERE id = ?", String.class, id);
+        doThrow(S3Exception.builder().statusCode(403).build()).when(s3).getObject(any(GetObjectRequest.class));
+        assertError(complete(order, id, buyerToken), 409, "REFUND_IMAGE_003");
+
+        when(s3.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(ListObjectVersionsResponse.builder()
+            .versions(ObjectVersion.builder().key(temporaryKey).isLatest(true).build()).build());
+        assertError(complete(order, id, buyerToken), 503, "REFUND_IMAGE_006");
+
+        when(s3.listObjectVersions(any(ListObjectVersionsRequest.class)))
+            .thenThrow(S3Exception.builder().statusCode(403).build());
+        assertError(complete(order, id, buyerToken), 503, "REFUND_IMAGE_006");
+        verify(s3, times(3)).listObjectVersions(argThat((ListObjectVersionsRequest query) ->
+            query.prefix().equals(temporaryKey) && query.maxKeys() == 1));
+    }
+
+    @Test
+    void limitsConcurrentCompletionBeforeDownloadingOriginals() throws Exception {
+        var order = paidAndShipped();
+        int first = issue(order);
+        int second = issue(order);
+        int third = issue(order);
+        var reading = new CountDownLatch(2);
+        var release = new CountDownLatch(1);
+        var calls = new AtomicInteger();
+        when(s3.getObject(any(GetObjectRequest.class))).thenAnswer(call -> {
+            if (calls.incrementAndGet() <= 2) {
+                reading.countDown();
+                assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
+            }
+            return uploaded("image/png", PNG);
+        });
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var a = pool.submit(() -> complete(order, first, buyerToken));
+            var b = pool.submit(() -> complete(order, second, buyerToken));
+            try {
+                assertThat(reading.await(10, TimeUnit.SECONDS)).isTrue();
+                assertError(complete(order, third, buyerToken), 429, "REFUND_IMAGE_005");
+                assertThat(calls.get()).isEqualTo(2);
+            } finally {
+                release.countDown();
+            }
+            assertThat(a.get(10, TimeUnit.SECONDS).status()).isEqualTo(200);
+            assertThat(b.get(10, TimeUnit.SECONDS).status()).isEqualTo(200);
+        }
+        assertThat(complete(order, third, buyerToken).status()).isEqualTo(200);
+    }
+
+    @Test
     void preservesLegacyRequestAndRejectsNewUploadAfterRefund() {
         var order = paidAndShipped();
         var result = request("POST", path(order) + "/refunds", buyerToken,
@@ -175,7 +247,7 @@ abstract class RefundImageHttpContract extends OrderLifecycleHttpFixture {
     }
 
     @Test
-    void photoSigningFailureDoesNotStopAnApprovedPgCancellation() {
+    void photoSigningFailurePreservesApprovalAndOrderResponses() {
         var order = paidAndShipped();
         int id = ready(order);
         var requested = refund(order, List.of(id));
@@ -184,8 +256,14 @@ abstract class RefundImageHttpContract extends OrderLifecycleHttpFixture {
 
         signingUnavailable.set(true);
         try {
-            assertError(request("POST", path(order) + "/refunds/approve", operatorToken, decision),
-                503, "REFUND_IMAGE_006");
+            var approved = request("POST", path(order) + "/refunds/approve", operatorToken, decision);
+            assertThat(approved.status()).isEqualTo(200);
+            assertThat(approved.data()).containsEntry("status", "COMPLETED");
+            assertThat(photos(approved.data()).getFirst()).containsEntry("imageId", id)
+                .containsEntry("imageUrl", null).containsEntry("expiresAt", null);
+            var detail = get(path(order), sellerToken);
+            assertThat(detail.status()).isEqualTo(200);
+            assertThat(ids(child(detail.data(), "refund"))).containsExactly(id);
         } finally {
             signingUnavailable.set(false);
         }
@@ -194,6 +272,7 @@ abstract class RefundImageHttpContract extends OrderLifecycleHttpFixture {
         assertThat(result.status()).isEqualTo(200);
         assertThat(result.data()).containsEntry("status", "COMPLETED");
         assertThat(ids(result.data())).containsExactly(id);
+        assertThat(photos(result.data()).getFirst().get("imageUrl")).isNotNull();
         verify(toss, times(1)).cancel(any());
     }
 

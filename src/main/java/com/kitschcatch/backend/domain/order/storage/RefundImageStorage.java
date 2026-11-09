@@ -4,6 +4,7 @@ package com.kitschcatch.backend.domain.order.storage;
 import com.kitschcatch.backend.domain.post.storage.S3Properties;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import com.kitschcatch.backend.global.image.PrivateImageObjects;
+import java.time.Duration;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -17,5 +18,10 @@ public class RefundImageStorage extends PrivateImageObjects {
             Pattern.compile("refund-images/[1-9][0-9]*/[0-9a-f-]{36}[.]png"),
             new Errors(ErrorCode.REFUND_IMAGE_INVALID, ErrorCode.REFUND_IMAGE_NOT_UPLOADED,
                 ErrorCode.REFUND_IMAGE_STORAGE_UNAVAILABLE));
+    }
+
+    @Override
+    public Download signDownload(String key, Duration ttl) {
+        return signDownload(key, ttl, "private, no-store");
     }
 }

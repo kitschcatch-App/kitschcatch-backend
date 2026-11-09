@@ -73,10 +73,13 @@ public class StoreReviewImageService {
         if (image.getState() != State.PENDING || !image.getExpiresAt().isAfter(Instant.now())) {
             throw new BusinessException(ErrorCode.STORE_REVIEW_IMAGE_EXPIRED);
         }
-        var clean = codec.normalize(storage.read(image.getTemporaryKey(), image.getContentType(), image.getExpectedSize()),
-            image.getContentType());
-        // DB 롤백 뒤에도 동일 키와 바이트로 재시도할 수 있도록 조건부 최종 저장을 사용한다.
-        storage.publish(image.getObjectKey(), clean.png());
+        var clean = codec.process(
+            () -> storage.read(image.getTemporaryKey(), image.getContentType(), image.getExpectedSize()),
+            image.getContentType(), normalized -> {
+                // DB 롤백 뒤에도 동일 키와 바이트로 재시도할 수 있도록 조건부 최종 저장을 사용한다.
+                storage.publish(image.getObjectKey(), normalized.png());
+                return normalized;
+            });
         image.ready(clean.width(), clean.height());
         images.flush();
         return completed(image);
