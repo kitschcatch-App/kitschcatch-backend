@@ -16,8 +16,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.http.AbortableInputStream;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @Component
@@ -63,24 +65,36 @@ public class ReportEvidenceImages {
         var request = GetObjectRequest.builder().bucket(properties.bucket()).key(objectKey)
             .overrideConfiguration(config -> config.apiCallTimeout(Duration.ofSeconds(8))
                 .apiCallAttemptTimeout(Duration.ofSeconds(4))).build();
-        try (var stream = s3.getObject(request)) {
-            var response = stream.response();
-            if (!MEDIA_TYPES.contains(response.contentType() == null ? "" : response.contentType())
-                || (response.contentLength() != null && response.contentLength() > MAX_BYTES)) {
-                stream.abort();
-                throw new BusinessException(REPORT_EVIDENCE_NOT_FOUND);
-            }
-            byte[] bytes = stream.readNBytes(MAX_BYTES + 1);
-            if (bytes.length == 0 || bytes.length > MAX_BYTES) {
-                stream.abort();
-                throw new BusinessException(REPORT_EVIDENCE_NOT_FOUND);
-            }
-            return new Image(bytes, MediaType.parseMediaType(response.contentType()));
+        try {
+            // SDK 호출이 끝나기 전에 본문을 읽어 응답 전체에 제한 시간을 적용한다.
+            return s3.getObject(request, this::readImage)
+                .orElseThrow(() -> new BusinessException(REPORT_EVIDENCE_NOT_FOUND));
         } catch (S3Exception error) {
             throw new BusinessException(error.statusCode() == 404 ? REPORT_EVIDENCE_NOT_FOUND : REPORT_EVIDENCE_UNAVAILABLE);
-        } catch (SdkException | IOException error) {
+        } catch (SdkException error) {
             throw new BusinessException(REPORT_EVIDENCE_UNAVAILABLE);
         }
+    }
+
+    private Optional<Image> readImage(GetObjectResponse response, AbortableInputStream stream) throws IOException {
+        String contentType = response.contentType();
+        if (contentType == null || !MEDIA_TYPES.contains(contentType)
+            || (response.contentLength() != null && response.contentLength() > MAX_BYTES)) {
+            stream.abort();
+            return Optional.empty();
+        }
+        byte[] bytes;
+        try {
+            bytes = stream.readNBytes(MAX_BYTES + 1);
+        } catch (IOException error) {
+            stream.abort();
+            throw error;
+        }
+        if (bytes.length == 0 || bytes.length > MAX_BYTES) {
+            stream.abort();
+            return Optional.empty();
+        }
+        return Optional.of(new Image(bytes, MediaType.parseMediaType(contentType)));
     }
 
     record Image(byte[] bytes, MediaType contentType) {}

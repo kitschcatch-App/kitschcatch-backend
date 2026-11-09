@@ -34,7 +34,8 @@ import org.springframework.test.context.*;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestClient;
 import org.springframework.http.MediaType;
-import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.ResponseTransformer;
+import software.amazon.awssdk.http.AbortableInputStream;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -380,7 +381,12 @@ class ReportPostgresTest {
 
         byte[] png = {1, 2, 3};
         var expected = GetObjectResponse.builder().contentType("image/png").contentLength(3L).build();
-        when(s3.getObject(any(GetObjectRequest.class))).thenReturn(new ResponseInputStream<>(expected, new ByteArrayInputStream(png)))
+        when(s3.getObject(any(GetObjectRequest.class), any(ResponseTransformer.class))).thenAnswer(invocation -> {
+            ResponseTransformer<GetObjectResponse, ?> transformer = invocation.getArgument(1);
+            try (var stream = AbortableInputStream.create(new ByteArrayInputStream(png))) {
+                return transformer.transform(expected, stream);
+            }
+        })
             .thenThrow(S3Exception.builder().statusCode(404).build());
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + evidence + "/" + image + "/image"))
             .header("Authorization", "Bearer " + jwt.createAccessToken(c.getId())).GET().build();
@@ -388,7 +394,8 @@ class ReportPostgresTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).containsExactly(png);
         assertThat(response.headers().firstValue("Cache-Control").orElseThrow()).contains("no-store");
-        verify(s3).getObject(argThat((GetObjectRequest value) -> value.bucket().equals("report-test") && value.key().equals(key)));
+        verify(s3).getObject(argThat((GetObjectRequest value) -> value.bucket().equals("report-test") && value.key().equals(key)),
+            any(ResponseTransformer.class));
         assertThat(call("GET", evidence + "/" + image + "/image", c, null).status).isEqualTo(404);
         assertThat(jdbc.queryForObject("select count(*) from report_review_access_log where access_type='IMAGE' and message_id=?",
             Long.class, image)).isEqualTo(2);
