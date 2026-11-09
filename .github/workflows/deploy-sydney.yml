@@ -1,0 +1,131 @@
+name: Deploy Sydney development EC2
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Full develop commit SHA (empty uses the current develop head)"
+        type: string
+      mode:
+        description: "Check the release or deploy it"
+        type: choice
+        options: [preflight, deploy]
+        default: preflight
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-sydney-ec2
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_DB: kitschcatch_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kitschcatch_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve the develop commit
+        id: release
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        run: |
+          sha="${REQUESTED_SHA:-$(git rev-parse refs/remotes/origin/develop)}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Enter a full Git commit SHA'; exit 1; }
+          git rev-list --first-parent refs/remotes/origin/develop | grep -Fx "$sha" >/dev/null
+          git switch --detach "$sha"
+          test -f deploy/sydney/schema-contract.jsonl || { echo 'Commit predates managed Sydney deployment'; exit 1; }
+          echo "release_id=$sha-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Verify the schema contract and build
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          CI_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci
+          CI_TEST_DB_USER: postgres
+          CI_TEST_DB_PASSWORD: postgres
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          bash deploy/sydney/check-contract.sh
+          for suffix in 27 53 93; do
+            docker exec "$POSTGRES_CONTAINER" createdb -U postgres "kitschcatch_ci$suffix"
+          done
+          bash .github/scripts/build.sh "-PreleaseSha=$RELEASE_SHA"
+      - name: Prepare the tested release
+        env:
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+        run: |
+          mkdir release-package
+          cp build/libs/kitschcatch-backend-0.0.1-SNAPSHOT.jar release-package/app.jar
+          cp deploy/sydney/schema-contract.jsonl release-package/
+          python3 deploy/sydney/package-release.py "$RELEASE_ID" release-package
+      - uses: actions/upload-artifact@v6
+        with:
+          name: sydney-release
+          path: release-package
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    environment: development-sydney
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_ACCOUNT: ${{ vars.SYDNEY_AWS_ACCOUNT }}
+      ARTIFACT_BUCKET: ${{ vars.SYDNEY_ARTIFACT_BUCKET }}
+      INSTANCE_ID: ${{ vars.SYDNEY_INSTANCE_ID }}
+      SSM_DOCUMENT: ${{ vars.SYDNEY_SSM_DOCUMENT }}
+      TARGET_GROUP_ARN: ${{ vars.SYDNEY_TARGET_GROUP_ARN }}
+      HTTPS_ORIGIN: ${{ vars.SYDNEY_HTTPS_ORIGIN }}
+      RELEASE_ID: ${{ needs.build.outputs.release_id }}
+      MODE: ${{ inputs.mode }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: sydney-release
+          path: release-package
+      - name: Check OIDC configuration
+        env:
+          ROLE_ARN: ${{ vars.SYDNEY_DEPLOY_ROLE_ARN }}
+        run: |
+          test -n "$ROLE_ARN" || { echo 'SYDNEY_DEPLOY_ROLE_ARN is not configured'; exit 1; }
+      - name: Assume the Sydney development role
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.SYDNEY_DEPLOY_ROLE_ARN }}
+          aws-region: ap-southeast-2
+          allowed-account-ids: ${{ vars.SYDNEY_AWS_ACCOUNT }}
+      - name: Upload, deploy and verify
+        run: python3 deploy/sydney/actions-deploy.py release-package
