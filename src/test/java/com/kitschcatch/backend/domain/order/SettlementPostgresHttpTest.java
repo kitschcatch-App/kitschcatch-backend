@@ -86,7 +86,13 @@ class SettlementPostgresHttpTest extends SettlementHttpContract {
         var before = get(path, operatorToken).data();
         var refresh = request("POST", path + "/refresh", operatorToken, null);
         org.assertj.core.api.Assertions.assertThat(refresh.status()).isEqualTo(202);
-        org.assertj.core.api.Assertions.assertThat(refresh.data()).isEqualTo(before);
+        org.assertj.core.api.Assertions.assertThat(refresh.data())
+            .containsEntry("syncState", "QUEUED")
+            .containsEntry("nextCheckAt", before.get("nextCheckAt"))
+            .containsEntry("lastError", "PROVIDER_RATE_LIMIT");
+        if (state.equals("QUEUED")) {
+            org.assertj.core.api.Assertions.assertThat(refresh.data()).isEqualTo(before);
+        }
         worker.synchronize();
         org.mockito.Mockito.verify(gateway, org.mockito.Mockito.never()).lookup(org.mockito.ArgumentMatchers.any());
     }

@@ -138,13 +138,16 @@ public class SettlementSyncJobs {
             throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
         jdbc.update("""
             insert into settlement_sync_jobs(settlement_id,next_check_at) values (?,now())
-            on conflict(settlement_id) do update set state='QUEUED', next_check_at=now(),
-              attempts=0, last_error=null, lease_token=null, lease_until=null
-            where (settlement_sync_jobs.last_error is distinct from 'PROVIDER_RATE_LIMIT'
-                   or settlement_sync_jobs.next_check_at<=now())
-              and (settlement_sync_jobs.state<>'QUEUED'
-                   or (coalesce(settlement_sync_jobs.lease_until,now())<=now()
-                       and settlement_sync_jobs.next_check_at>now()))
+            on conflict(settlement_id) do update set state='QUEUED',
+              next_check_at=case when settlement_sync_jobs.last_error='PROVIDER_RATE_LIMIT'
+                  then greatest(now(),settlement_sync_jobs.next_check_at) else now() end,
+              last_error=case when settlement_sync_jobs.last_error='PROVIDER_RATE_LIMIT'
+                  and settlement_sync_jobs.next_check_at>now() then settlement_sync_jobs.last_error end,
+              attempts=0, lease_token=null, lease_until=null
+            where settlement_sync_jobs.state<>'QUEUED'
+                or (coalesce(settlement_sync_jobs.lease_until,now())<=now()
+                    and settlement_sync_jobs.next_check_at>now()
+                    and settlement_sync_jobs.last_error is distinct from 'PROVIDER_RATE_LIMIT')
             """, id);
         return find(id);
     }
