@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 40
     outputs:
       release_id: ${{ steps.release.outputs.release_id }}
+      artifact_name: ${{ steps.release.outputs.artifact_name }}
     services:
       postgres:
         image: postgres:14-alpine
@@ -56,6 +57,7 @@ jobs:
           git switch --detach "$sha"
           test -f deploy/sydney/schema-contract.jsonl || { echo 'Commit predates managed Sydney deployment'; exit 1; }
           echo "release_id=$sha-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=sydney-release-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v6
         with:
@@ -85,7 +87,7 @@ jobs:
           python3 deploy/sydney/package-release.py "$RELEASE_ID" release-package
       - uses: actions/upload-artifact@v6
         with:
-          name: sydney-release
+          name: ${{ steps.release.outputs.artifact_name }}
           path: release-package
           if-no-files-found: error
           retention-days: 7
@@ -106,7 +108,7 @@ jobs:
       SSM_DOCUMENT: ${{ vars.SYDNEY_SSM_DOCUMENT }}
       TARGET_GROUP_ARN: ${{ vars.SYDNEY_TARGET_GROUP_ARN }}
       HTTPS_ORIGIN: ${{ vars.SYDNEY_HTTPS_ORIGIN }}
-      RELEASE_ID: ${{ needs.build.outputs.release_id }}
+      BUILD_RELEASE_ID: ${{ needs.build.outputs.release_id }}
       MODE: ${{ inputs.mode }}
     steps:
       - uses: actions/checkout@v7
@@ -114,7 +116,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v7
         with:
-          name: sydney-release
+          name: ${{ needs.build.outputs.artifact_name }}
           path: release-package
       - name: Check OIDC configuration
         env:

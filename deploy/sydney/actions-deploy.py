@@ -15,7 +15,11 @@ from deploy import DeploymentError, OPENAPI, READINESS, RELEASE_ID, execute, rea
 class ActionsDeployment:
     def __init__(self, stage):
         self.stage = stage
-        self.release = os.environ["RELEASE_ID"]
+        self.build_release = os.environ["BUILD_RELEASE_ID"]
+        build = RELEASE_ID.fullmatch(self.build_release)
+        run_id = os.environ["GITHUB_RUN_ID"]
+        require(build and self.build_release.split("-")[1] == run_id, "빌드 배포 ID가 현재 실행과 다릅니다.")
+        self.release = f"{build.group(1)}-{run_id}-{os.environ['GITHUB_RUN_ATTEMPT']}"
         self.mode = os.environ["MODE"]
         self.account = os.environ["AWS_ACCOUNT"]
         self.bucket = os.environ["ARTIFACT_BUCKET"]
@@ -30,7 +34,7 @@ class ActionsDeployment:
         require(re.fullmatch(r"[0-9]{12}", self.account) and self.bucket and self.instance
                 and self.document and self.target_group, "시드니 배포 설정 누락")
         self.manifest = read_json(stage / "release.json")
-        require(self.manifest["releaseId"] == self.release
+        require(self.manifest["releaseId"] == self.build_release
                 and self.manifest["commit"] == self.release.split("-")[0], "업로드할 배포 ID 또는 SHA 불일치")
 
     def aws(self, args, error, timeout=45):
@@ -54,6 +58,8 @@ class ActionsDeployment:
             require(sha256(self.stage / name) == self.manifest[field], f"업로드 파일 해시 불일치: {name}")
             versions[name] = self.put(name)
         self.manifest["artifactVersions"] = versions
+        self.manifest["buildReleaseId"] = self.build_release
+        self.manifest["releaseId"] = self.release
         write_json(self.stage / "release.json", self.manifest)
         self.put("release.json")
 
