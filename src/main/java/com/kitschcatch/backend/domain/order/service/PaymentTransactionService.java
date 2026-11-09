@@ -294,11 +294,12 @@ public class PaymentTransactionService {
 		validatePaymentStatus(payment, PaymentStatus.PROCESSING);
 		validateOrderStatus(payment.getOrder(), OrderStatus.PAID);
 		validateReservation(payment.getOrder(), ProductStatus.SOLD_OUT);
+		OrderStatus previousOrderStatus = payment.getOrder().getOrderStatus();
 		payment.cancel();
 		if (payment.getOrder().getShipment() == null) payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
 		if (notificationPublisher != null) {
 		    notificationPublisher.publishEvent(
-		        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+		        new NotificationEvents.PaymentCanceled(payment, previousOrderStatus));
 		}
 		return toResponse(payment);
 	}

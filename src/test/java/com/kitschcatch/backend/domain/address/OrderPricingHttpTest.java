@@ -79,7 +79,7 @@ class OrderPricingHttpTest extends ShippingAddressHttpTest {
   var repo=mock(PaymentRepository.class);when(repo.findByOrderIdForUpdate(o.getId())).thenReturn(Optional.of(p));
   var recipients=mock(SettlementRecipientRepository.class);
   when(recipients.findById(seller)).thenReturn(Optional.of(new SettlementRecipient(seller,"seller-id",owner)));
-  var service=new SettlementTransactionService(access,repo,new SettlementProperties(Set.of(owner),configuredFee<0?null:configuredFee),recipients);
+  var service=new SettlementTransactionService(access,event -> {},repo,new SettlementProperties(Set.of(owner),configuredFee<0?null:configuredFee),recipients);
   var prepared=service.prepare(owner,o.getOrderNumber(),true);
   assertThat(prepared.command().amount()).isEqualTo(31500);
   assertThat(prepared.command().fee()).isEqualTo(1500);

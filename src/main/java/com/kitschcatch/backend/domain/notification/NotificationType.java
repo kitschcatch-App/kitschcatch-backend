@@ -1,8 +1,18 @@
-// 현재 연결된 채팅과 결제 알림 종류를 정의한다.
+// 채팅·결제·거래 상태 알림 종류를 정의한다.
 package com.kitschcatch.backend.domain.notification;
 
 public enum NotificationType {
   CHAT_MESSAGE,
   PAYMENT_SUCCESS,
-  PAYMENT_CANCELED
+  PAYMENT_CANCELED,
+  SHIPMENT_REGISTERED,
+  SHIPMENT_UPDATED,
+  REFUND_REQUESTED,
+  REFUND_APPROVED,
+  REFUND_REJECTED,
+  REFUND_WITHDRAWN,
+  REFUND_COMPLETED,
+  PURCHASE_CONFIRMED,
+  SETTLEMENT_COMPLETED,
+  SETTLEMENT_FAILED
 }

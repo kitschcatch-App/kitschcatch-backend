@@ -124,11 +124,12 @@ public class PaymentRecoveryService {
 			}
 			if (TOSS_CANCELED.equals(tossResponse.status())) {
 				if (isFullyCanceled(tossResponse)) {
+					OrderStatus previousOrderStatus = payment.getOrder().getOrderStatus();
 					payment.cancel();
 					releaseUnshippedPost(payment);
 					if (notificationPublisher != null) {
 					    notificationPublisher.publishEvent(
-					        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+					        new NotificationEvents.PaymentCanceled(payment, previousOrderStatus));
 					}
 				} else {
 					markReview(payment, lockedAttempt, "부분 취소 또는 잔액이 남은 PG 결과입니다.");
@@ -269,11 +270,12 @@ public class PaymentRecoveryService {
 		}
 		if (TOSS_CANCELED.equals(response.status()) && isFullyCanceled(response)) {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
+			OrderStatus previousOrderStatus = payment.getOrder().getOrderStatus();
 			payment.cancel();
 			releaseUnshippedPost(payment);
 			if (notificationPublisher != null) {
 			    notificationPublisher.publishEvent(
-			        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+			        new NotificationEvents.PaymentCanceled(payment, previousOrderStatus));
 			}
 			return;
 		}
@@ -320,12 +322,13 @@ public class PaymentRecoveryService {
 	private void recoverCancellation(Payment payment, PaymentAttempt attempt, TossPaymentResponse response) {
 		if (TOSS_CANCELED.equals(response.status()) && isFullyCanceled(response)) {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
+			OrderStatus previousOrderStatus = payment.getOrder().getOrderStatus();
 			if (attempt.isUnsupportedMethodCancellation()) payment.cancelUnsupportedMethod();
 			else payment.cancel();
 			releaseUnshippedPost(payment);
 			if (notificationPublisher != null) {
 			    notificationPublisher.publishEvent(
-			        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+			        new NotificationEvents.PaymentCanceled(payment, previousOrderStatus));
 			}
 			return;
 		}

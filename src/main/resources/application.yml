@@ -37,6 +37,7 @@ app:
       timeout-millis: ${APP_SETTLEMENT_TOSS_TIMEOUT_MILLIS:5000}
       lookup-max-pages: ${APP_SETTLEMENT_TOSS_LOOKUP_MAX_PAGES:10}
   notifications:
+    trade-enabled: ${APP_NOTIFICATIONS_TRADE_ENABLED:false}
     push:
       enabled: ${APP_NOTIFICATIONS_PUSH_ENABLED:false}
       project-id: ${APP_FCM_PROJECT_ID:}

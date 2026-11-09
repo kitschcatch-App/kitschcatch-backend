@@ -55,6 +55,16 @@ public class Notification {
           case CHAT_MESSAGE -> "새 채팅 메시지가 도착했습니다.";
           case PAYMENT_SUCCESS -> "결제가 완료되었습니다.";
           case PAYMENT_CANCELED -> "결제가 취소되었습니다.";
+          case SHIPMENT_REGISTERED -> "배송 정보가 등록되었습니다.";
+          case SHIPMENT_UPDATED -> "배송 정보가 변경되었습니다.";
+          case REFUND_REQUESTED -> "환불 요청이 접수되었습니다.";
+          case REFUND_APPROVED -> "반품이 승인되어 환불을 처리하고 있습니다.";
+          case REFUND_REJECTED -> "반품 요청이 거절되었습니다.";
+          case REFUND_WITHDRAWN -> "반품 요청이 철회되었습니다.";
+          case REFUND_COMPLETED -> "환불 처리가 완료되었습니다.";
+          case PURCHASE_CONFIRMED -> "구매가 확정되어 정산을 준비합니다.";
+          case SETTLEMENT_COMPLETED -> "판매 대금 정산이 완료되었습니다.";
+          case SETTLEMENT_FAILED -> "판매 대금 정산에 실패했습니다. 주문 상세에서 확인해 주세요.";
         };
     this.createdAt = LocalDateTime.now();
   }
