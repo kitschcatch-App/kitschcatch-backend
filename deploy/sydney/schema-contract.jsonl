@@ -579,6 +579,7 @@
 ["index","orders","idx_orders_reservation_expiry","CREATE INDEX idx_orders_reservation_expiry ON public.orders USING btree (order_status, reservation_expires_at)"]
 ["index","orders","ix_orders_buyer_created_id","CREATE INDEX ix_orders_buyer_created_id ON public.orders USING btree (user_id, created_at DESC, id DESC)"]
 ["index","orders","ix_orders_buyer_status_created_id","CREATE INDEX ix_orders_buyer_status_created_id ON public.orders USING btree (user_id, order_status, created_at DESC, id DESC)"]
+["index","orders","ix_orders_refund_queue","CREATE INDEX ix_orders_refund_queue ON public.orders USING btree (refund_status, refund_requested_at, id) WHERE (refund_id IS NOT NULL)"]
 ["index","orders","ix_orders_seller_created_id","CREATE INDEX ix_orders_seller_created_id ON public.orders USING btree (seller_id, created_at DESC, id DESC)"]
 ["index","orders","ix_orders_seller_status_created_id","CREATE INDEX ix_orders_seller_status_created_id ON public.orders USING btree (seller_id, order_status, created_at DESC, id DESC)"]
 ["index","orders","orders_pkey","CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)"]
