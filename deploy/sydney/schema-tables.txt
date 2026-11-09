@@ -22,8 +22,6 @@ report_reviewers
 reports
 search_daily_users
 settlement_recipients
-shipment_tracking
-shipment_tracking_events
 store_amenities
 store_business_hours
 store_content_imports
@@ -38,3 +36,5 @@ user_blocks
 user_follows
 user_shipping_addresses
 users
+shipment_tracking
+shipment_tracking_events
