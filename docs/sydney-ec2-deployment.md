@@ -33,6 +33,8 @@ GitHub 환경 `development-sydney`는 `develop` 브랜치만 허용한다.
 
 `schema-contract.jsonl`에는 대상 PostgreSQL의 테이블·컬럼·제약·인덱스·실행 권한을 기록한다. 초기 계약은 개발 DB PostgreSQL 17의 애플리케이션 테이블 38개에서 확인했다. `catalog.sql`을 읽기 전용으로 실행하며 검사 결과에 누락되거나 정의가 다른 객체의 종류와 이름이 표시된다. 예를 들어 `column/reports/version`은 `107_report_reviews.sql`의 적용 상태를 확인한다.
 
+거래 알림 스키마를 확장하는 릴리스는 [이슈 #69 적용 순서](issue-69-trade-notifications.md#개발운영-적용-순서)에 따라 새 알림 생성을 끈 상태에서 호환 릴리스를 먼저 확보한다.
+
 수동 SQL을 추가하거나 수정할 때 관련 스키마 정의를 계약에 반영하고, SQL 목록과 해시도 함께 갱신한다. 새 환경에서는 검토한 마이그레이션을 먼저 적용하고 동일한 PostgreSQL 버전의 카탈로그와 계약을 대조한다. 카탈로그 문자열 형식은 PostgreSQL 주요 버전에 따라 달라질 수 있다.
 
 ```sh
