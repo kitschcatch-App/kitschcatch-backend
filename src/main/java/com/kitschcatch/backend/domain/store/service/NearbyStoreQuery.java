@@ -11,8 +11,14 @@ public record NearbyStoreQuery(double latitude, double longitude, int radiusKm, 
 
     public NearbyStoreQuery {
         if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90
-            || !Double.isFinite(longitude) || longitude < -180 || longitude > 180
-            || (radiusKm != 1 && radiusKm != 3 && radiusKm != 5)) {
+            || !Double.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            throw new BusinessException(ErrorCode.STORE_QUERY_INVALID);
+        }
+        validateRadius(radiusKm);
+    }
+
+    static void validateRadius(int radiusKm) {
+        if (radiusKm != 1 && radiusKm != 3 && radiusKm != 5) {
             throw new BusinessException(ErrorCode.STORE_QUERY_INVALID);
         }
     }
