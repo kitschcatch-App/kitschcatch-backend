@@ -41,3 +41,11 @@
 - [지급대행 가이드](https://docs.tosspayments.com/guides/v2/payouts)
 - [부가 API](https://docs.tosspayments.com/reference/additional)
 - [v2 응답 구조](https://docs.tosspayments.com/reference/using-api/req-res)
+
+## 후속 실제 연동 검증 상태
+
+2026-11-09 개발 HTTPS OpenAPI 응답을 확인했다. 이 확인으로 토스 결제·취소·지급의 실행 결과를 판단할 수 없다. 테스트 계정 주문을 환불용과 구매 확정·지급용으로 분리하여 주문 청구액, PG 승인액, PG 취소 결과, 최종 지급 금액을 대조한다. 신용·체크카드를 같은 `CARD` 계약으로 처리한다.
+
+현행 승인된 지급 대상 조건은 `APPROVED`다. 토스 테스트 환경에서는 테스트 KYC를 수행할 수 없으므로 실제 승인 대상 지급 확인에는 유효한 지급대행 계약·키와 승인된 테스트 대상이 필요하다. 모의 테스트는 PG 대역을 사용하고 실제 지급 결과와 별도로 기록한다. [토스 지급대행 가이드](https://docs.tosspayments.com/guides/v2/payouts)
+
+개발 OpenAPI에서 결제 수단 `CARD`와 환불·정산 경로를 확인했다. Java 21 및 PostgreSQL 14 회귀 실행에서는 결제·환불·정산 관련 98개가 통과했다. 필터에 포함된 거래 후기 검증 2개는 별도 ISSUE56 DB 설정이 필요한 테스트로 건너뛰었다. 실제 PG 승인·취소·입금과 개발 수취인 검증은 별도 기록 대상이다.
