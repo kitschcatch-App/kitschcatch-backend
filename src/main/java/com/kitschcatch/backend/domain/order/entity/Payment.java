@@ -33,6 +33,8 @@ import org.hibernate.annotations.CreationTimestamp;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Payment {
 
+	public static final String UNSUPPORTED_METHOD_CODE = "PG_UNSUPPORTED_PAYMENT_METHOD";
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -134,6 +136,12 @@ public class Payment {
 		this.recoveryState = PaymentRecoveryState.PENDING;
 	}
 
+	public void startUnsupportedMethodCancellation(String attemptId) {
+		startProcessing(PaymentOperation.CANCEL);
+		bindAttempt(attemptId, PaymentOperation.CANCEL);
+		this.lastFailureCode = UNSUPPORTED_METHOD_CODE;
+	}
+
 	public void prepareRetry(String attemptId) {
 		this.currentAttemptId = attemptId;
 		this.paymentStatus = PaymentStatus.READY;
@@ -178,5 +186,10 @@ public class Payment {
 		this.recoveryState = PaymentRecoveryState.NONE;
 		this.canceledAt = LocalDateTime.now();
 		this.order.cancel();
+	}
+
+	public void cancelUnsupportedMethod() {
+		cancel();
+		this.lastFailureCode = UNSUPPORTED_METHOD_CODE;
 	}
 }

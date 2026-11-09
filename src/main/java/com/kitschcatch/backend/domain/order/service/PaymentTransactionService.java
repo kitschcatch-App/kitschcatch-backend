@@ -108,6 +108,9 @@ public class PaymentTransactionService {
 			|| payment.getPaymentStatus() == PaymentStatus.SUCCESS
 			|| payment.getPaymentStatus() == PaymentStatus.CANCELED) {
 			PaymentAttempt current = currentAttempt(payment);
+			if (current != null && current.isUnsupportedMethodCancellation()) {
+				current = current.getApprovalAttempt();
+			}
 			if (current == null || current.getOperation() != PaymentAttemptOperation.CONFIRM
 				|| !request.paymentKey().equals(current.getPaymentKey())
 				|| !matchesAttempt(request, current)) {

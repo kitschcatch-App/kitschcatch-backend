@@ -61,6 +61,11 @@ public class PaymentRecoveryScheduler {
 				TossPaymentResponse response = attempt.getPaymentKey() == null
 					? tossPaymentsClient.getPaymentByOrderId(attempt.getPgOrderId())
 					: tossPaymentsClient.getPayment(attempt.getPaymentKey());
+				if (attempt.isUnsupportedMethodCancellation() && PaymentRecoveryService.samePayment(attempt, response)
+					&& ("DONE".equals(response.status()) || "WAITING_FOR_DEPOSIT".equals(response.status())
+						|| "PARTIAL_CANCELED".equals(response.status()))) {
+					response = tossPaymentsClient.cancel(PaymentRecoveryService.unsupportedMethodCancelRequest(attempt));
+				}
 				paymentRecoveryService.recover(attempt.getAttemptId(), response, leaseToken);
 			} catch (RuntimeException exception) {
 				log.warn("결제 결과 복구 조회 실패. attemptId={}", attempt.getAttemptId(), exception);

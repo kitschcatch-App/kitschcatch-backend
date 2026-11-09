@@ -18,7 +18,7 @@ public record CreatePaymentRequest(
 	@Positive(message = "결제 금액은 0보다 커야 합니다.")
 	Long amount,
 
-	@Schema(description = "결제 수단")
+	@Schema(description = "결제 수단. 신용카드·체크카드만 지원합니다.", example = "CARD")
 	@NotNull(message = "결제 수단은 필수입니다.")
 	PaymentMethod paymentMethod
 ) {

@@ -16,17 +16,22 @@ import com.kitschcatch.backend.domain.post.entity.ProductStatus;
 import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
+import com.kitschcatch.backend.domain.order.toss.TossPaymentCancelRequest;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentRecoveryService {
+
+	static final String UNSUPPORTED_METHOD_CANCEL_REASON = "지원하지 않는 결제 수단";
 
 	@org.springframework.beans.factory.annotation.Autowired
 	private ApplicationEventPublisher notificationPublisher;
@@ -76,6 +81,15 @@ public class PaymentRecoveryService {
 			return toResponse(payment);
 		}
 		if (payment.getCurrentAttemptId() != null && !attemptId.equals(payment.getCurrentAttemptId())) {
+			if (lockedAttempt.getAttemptStatus() == PaymentAttemptStatus.SUCCEEDED
+				&& paymentAttemptRepository.findByAttemptId(payment.getCurrentAttemptId())
+					.filter(PaymentAttempt::isUnsupportedMethodCancellation)
+					.map(PaymentAttempt::getApprovalAttempt)
+					.map(PaymentAttempt::getAttemptId)
+					.filter(attemptId::equals).isPresent()) {
+				lockedAttempt.releaseLease();
+				return toResponse(payment);
+			}
 			if (!TOSS_ABORTED.equals(tossResponse.status()) && !TOSS_EXPIRED.equals(tossResponse.status())) {
 				lockedAttempt.recordReviewReason("오래된 결제 시도의 응답입니다.");
 				payment.markReviewRequired("STALE_ATTEMPT_RESULT");
@@ -146,6 +160,18 @@ public class PaymentRecoveryService {
 			recoverCancellation(payment, lockedAttempt, tossResponse);
 		}
 		return toResponse(payment);
+	}
+
+	@Transactional(readOnly = true)
+	public Optional<TossPaymentCancelRequest> findUnsupportedMethodCancellation(String attemptId) {
+		return paymentAttemptRepository.findByAttemptId(attemptId)
+			.filter(PaymentAttempt::isUnsupportedMethodCancellation)
+			.filter(PaymentAttempt::isActive)
+			.map(PaymentRecoveryService::unsupportedMethodCancelRequest);
+	}
+
+	static TossPaymentCancelRequest unsupportedMethodCancelRequest(PaymentAttempt attempt) {
+		return new TossPaymentCancelRequest(attempt.getPaymentKey(), attempt.getCancelReason(), attempt.getPgIdempotencyKey());
 	}
 
 	@Transactional
@@ -219,6 +245,11 @@ public class PaymentRecoveryService {
 	}
 
 	private void recoverConfirmation(Payment payment, PaymentAttempt attempt, TossPaymentResponse response) {
+		if ("WAITING_FOR_DEPOSIT".equals(response.status())
+			|| (TOSS_DONE.equals(response.status()) && !response.isSupportedCard())) {
+			queueUnsupportedMethodCancellation(payment, attempt, response);
+			return;
+		}
 		if (TOSS_DONE.equals(response.status())) {
 			if (payment.getOrder().getOrderStatus() != OrderStatus.PENDING
 				|| !payment.getOrder().getPost().isOwnedByOrder(payment.getOrder().getOrderNumber())
@@ -258,10 +289,38 @@ public class PaymentRecoveryService {
 		markUnknown(payment, attempt, response.status());
 	}
 
+	private void queueUnsupportedMethodCancellation(Payment payment, PaymentAttempt attempt, TossPaymentResponse response) {
+		int sequence = paymentAttemptRepository.findTopByPaymentIdOrderBySequenceNumberDesc(payment.getId())
+			.map(previous -> previous.getSequenceNumber() + 1).orElse(attempt.getSequenceNumber() + 1);
+		LocalDateTime now = LocalDateTime.now();
+		String cancelAttemptId = "ATT-" + UUID.randomUUID().toString().replace("-", "");
+		attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), null);
+		// 부분 유일 인덱스가 결제당 활성 시도를 한 건으로 제한한다.
+		paymentAttemptRepository.flush();
+		paymentAttemptRepository.save(PaymentAttempt.builder()
+			.attemptId(cancelAttemptId)
+			.payment(payment)
+			.sequenceNumber(sequence)
+			.operation(PaymentAttemptOperation.CANCEL)
+			.attemptStatus(PaymentAttemptStatus.PROCESSING)
+			.approvalAttempt(attempt)
+			.pgOrderId(attempt.getPgOrderId())
+			.paymentKey(response.paymentKey())
+			.amount(attempt.getAmount())
+			.cancelReason(UNSUPPORTED_METHOD_CANCEL_REASON)
+			.pgErrorCode(Payment.UNSUPPORTED_METHOD_CODE)
+			.pgIdempotencyKey("cancel-" + response.paymentKey())
+			.requestedAt(now)
+			.nextCheckAt(now)
+			.build());
+		payment.startUnsupportedMethodCancellation(cancelAttemptId);
+	}
+
 	private void recoverCancellation(Payment payment, PaymentAttempt attempt, TossPaymentResponse response) {
 		if (TOSS_CANCELED.equals(response.status()) && isFullyCanceled(response)) {
 			attempt.markSucceeded(response.status(), parseTime(response.approvedAt()), parseTime(response.canceledAt()));
-			payment.cancel();
+			if (attempt.isUnsupportedMethodCancellation()) payment.cancelUnsupportedMethod();
+			else payment.cancel();
 			releaseUnshippedPost(payment);
 			if (notificationPublisher != null) {
 			    notificationPublisher.publishEvent(
@@ -302,7 +361,7 @@ public class PaymentRecoveryService {
 			|| "WAITING_FOR_DEPOSIT".equals(pgStatus) || TOSS_DONE.equals(pgStatus);
 	}
 
-	private boolean samePayment(PaymentAttempt attempt, TossPaymentResponse response) {
+	static boolean samePayment(PaymentAttempt attempt, TossPaymentResponse response) {
 		if (response == null || !attempt.getPgOrderId().equals(response.orderId())
 			|| !attempt.getAmount().equals(response.totalAmount())) {
 			return false;
