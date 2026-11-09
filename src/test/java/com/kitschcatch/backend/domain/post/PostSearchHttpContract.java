@@ -1,4 +1,4 @@
-// 상품 검색의 JWT·필터 결합·정렬·페이지·삭제·SQL 부작용과 쿼리 수를 실제 HTTP로 검증한다.
+// 상품 검색과 최근 본 상품 추천의 인증·정렬·응답 계약을 실제 HTTP로 검증한다.
 package com.kitschcatch.backend.domain.post;
 
 import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
@@ -91,6 +91,7 @@ abstract class PostSearchHttpContract {
 
     @BeforeEach
     void fixture() {
+        jdbc.update("DELETE FROM user_blocks");
         jdbc.update("DELETE FROM post_images");
         jdbc.update("DELETE FROM posts");
         jdbc.update("DELETE FROM users");
@@ -289,6 +290,162 @@ abstract class PostSearchHttpContract {
         @SuppressWarnings("unchecked") var operation = (Map<String, Object>) path.get("get");
         @SuppressWarnings("unchecked") var parameters = (List<Map<String, Object>>) operation.get("parameters");
         assertThat(parameters.stream().map(p -> p.get("name"))).containsExactlyInAnyOrder("status", "keyword", "category", "condition", "minPrice", "maxPrice", "sort", "page", "size");
+        assertThat(paths.get("/api/posts/recommendations/recently-viewed").toString())
+            .contains("post=", "bearerAuth", "requestBody", "PostRecommendationRequest", "PostRecommendationResponse");
+    }
+
+    @Test
+    void recommendationsRankByViewingOrderThenPriceThenLatestAndId() {
+        var buyer = recommendationViewer();
+        long oldGoods = recommendedPost(seller, "예전에 본 굿즈", 10_000, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long game = recommendedPost(seller, "두 번째 게임", 50_000, ProductCategory.GAME, ProductStatus.RESERVED);
+        long goods = recommendedPost(seller, "최근에 본 품절 굿즈", 30_000, ProductCategory.GOODS, ProductStatus.SOLD_OUT);
+        long farther = recommendedPost(seller, "가격 차이가 큰 상품", 10_000, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long earlier = recommendedPost(seller, "가격 동률 중 오래된 상품", 29_000, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long firstTie = recommendedPost(seller, "가격과 시각 동률 1", 31_000, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long secondTie = recommendedPost(seller, "가격과 시각 동률 2", 29_000, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long gameCandidate = recommendedPost(seller, "가격이 같은 게임", 50_000, ProductCategory.GAME, ProductStatus.ON_SALE);
+        recommendedPost(seller, "다른 카테고리", 30_000, ProductCategory.BOOK, ProductStatus.ON_SALE);
+        jdbc.update("UPDATE posts SET created_at = TIMESTAMP '2026-01-02 00:00:00'");
+        jdbc.update("UPDATE posts SET created_at = TIMESTAMP '2026-01-01 00:00:00' WHERE id = ?", earlier);
+
+        String ids = "[%d,%d,%d,%d]".formatted(goods, game, goods, oldGoods);
+        var response = recommend("{\"recentPostIds\":" + ids + "}", buyer);
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.data()).containsOnlyKeys("limit", "posts").containsEntry("limit", 10);
+        assertThat(recommendedIds(response)).containsExactly(secondTie, firstTie, earlier, farther, gameCandidate);
+        assertThat(recommendedIds(recommend("{\"recentPostIds\":" + ids + ",\"limit\":2}", buyer)))
+            .containsExactly(secondTie, firstTie);
+        assertThat(recommendedIds(recommend("{\"recentPostIds\":[%d,%d],\"limit\":1}".formatted(game, goods), buyer)))
+            .containsExactly(gameCandidate);
+    }
+
+    @Test
+    void recommendationsFilterIneligibleSeedsAndCandidatesBeforeLimit() {
+        var viewer = newUser();
+        var blocked = newUser();
+        var blocker = newUser();
+        var withdrawn = newUser();
+        long deleted = recommendedPost(seller, "삭제 상품", 30, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        jdbc.update("UPDATE posts SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", deleted);
+        long own = recommendedPost(viewer, "내 상품", 30, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long blockedPost = recommendedPost(blocked, "내가 차단한 판매자 상품", 30, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long blockerPost = recommendedPost(blocker, "나를 차단한 판매자 상품", 30, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long withdrawnPost = recommendedPost(withdrawn, "탈퇴 판매자 상품", 30, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        jdbc.update("UPDATE users SET withdrawn_at = CURRENT_TIMESTAMP WHERE id = ?", withdrawn.getId());
+        jdbc.update("INSERT INTO user_blocks(blocker_id, blocked_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            viewer.getId(), blocked.getId());
+        jdbc.update("INSERT INTO user_blocks(blocker_id, blocked_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            blocker.getId(), viewer.getId());
+        recommendedPost(seller, "예약 상품", 30, ProductCategory.GOODS, ProductStatus.RESERVED);
+        recommendedPost(seller, "판매 완료 상품", 30, ProductCategory.GOODS, ProductStatus.SOLD_OUT);
+        long source = recommendedPost(seller, "정상 기준", 30, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        long candidate = recommendedPost(seller, "추천 후보", 90, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        String jwt = tokens.createAccessToken(viewer.getId());
+
+        var result = recommend("{\"recentPostIds\":[%d],\"limit\":1}".formatted(source), jwt);
+        assertThat(recommendedIds(result)).containsExactly(candidate);
+
+        String ignoredIds = "%d,%d,%d,%d,%d,%d".formatted(deleted, own, blockedPost, blockerPost, withdrawnPost, Long.MAX_VALUE);
+        assertThat(recommendedIds(recommend("{\"recentPostIds\":[" + ignoredIds + "]}", jwt))).isEmpty();
+        assertThat(recommendedIds(recommend("{\"recentPostIds\":[" + ignoredIds + "," + source + "]}", jwt)))
+            .containsExactly(candidate);
+    }
+
+    @Test
+    void recommendationsReturnEmptySuccessWithoutHistoryOrCandidates() {
+        String jwt = recommendationViewer();
+        var empty = recommend("{\"recentPostIds\":[]}", jwt);
+        assertThat(empty.status()).isEqualTo(200);
+        assertThat(empty.data()).containsEntry("limit", 10);
+        assertThat(recommendedIds(empty)).isEmpty();
+        long source = recommendedPost(seller, "유일한 상품", 10, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        assertThat(recommendedIds(recommend("{\"recentPostIds\":[%d]}".formatted(source), jwt))).isEmpty();
+    }
+
+    @Test
+    void recommendationsRequireAnActiveAccessToken() {
+        var withdrawn = newUser();
+        jdbc.update("UPDATE users SET withdrawn_at = CURRENT_TIMESTAMP WHERE id = ?", withdrawn.getId());
+        for (String invalid : new String[]{null, "invalid", tokens.createRefreshToken(seller.getId()),
+            tokens.createAccessToken(Long.MAX_VALUE), tokens.createAccessToken(withdrawn.getId())}) {
+            error(recommend("{\"recentPostIds\":[]}", invalid), 401, "AUTH_004");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"recentPostIds\":null}", "{\"recentPostIds\":[null]}",
+        "{\"recentPostIds\":[0]}", "{\"recentPostIds\":[-1]}", "{\"recentPostIds\":[],\"limit\":0}",
+        "{\"recentPostIds\":[],\"limit\":21}",
+        "{\"recentPostIds\":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}"})
+    void recommendationsRejectInvalidInputValues(String body) {
+        error(recommend(body, token), 400, "COMMON_001");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{", "[]", "{\"recentPostIds\":1}", "{\"recentPostIds\":[\"1\"]}",
+        "{\"recentPostIds\":[1.5]}", "{\"recentPostIds\":[9223372036854775808]}",
+        "{\"recentPostIds\":[],\"limit\":null}", "{\"recentPostIds\":[],\"limit\":\"10\"}",
+        "{\"recentPostIds\":[],\"limit\":1.5}"})
+    void recommendationsRejectMalformedBodies(String body) {
+        error(recommend(body, token), 400, "COMMON_002");
+    }
+
+    @Test
+    void recommendationsBatchExistingProductResponseWithoutWritesOrExternalCalls() {
+        String jwt = recommendationViewer();
+        long source = recommendedPost(seller, "추천 기준", 0, ProductCategory.GOODS, ProductStatus.ON_SALE);
+        for (int i = 0; i < 21; i++) {
+            post("추천 상품 " + i, "설명", Long.MAX_VALUE - i, ProductCategory.GOODS, ProductCondition.NEW, ProductStatus.ON_SALE);
+        }
+        var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+
+        String recentIds = java.util.stream.LongStream.range(1, 20).mapToObj(i -> Long.toString(Long.MAX_VALUE - i))
+            .collect(Collectors.joining(",", "[" + source + ",", "]"));
+        var response = recommend("{\"recentPostIds\":" + recentIds + ",\"limit\":20}", jwt);
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(recommendedIds(response)).hasSize(20);
+        @SuppressWarnings("unchecked") var rows = (List<Map<String, Object>>) response.data().get("posts");
+        var row = rows.getFirst();
+        assertThat(row).containsEntry("productCategory", "굿즈").containsEntry("productStatus", "ON_SALE")
+            .containsEntry("favoriteCount", 0).containsEntry("chatRoomCount", 0).containsEntry("shippingAmount", null);
+        assertThat(row.get("price")).isEqualTo(Long.MAX_VALUE - 20);
+        @SuppressWarnings("unchecked") var images = (List<Map<String, Object>>) row.get("images");
+        assertThat(images).extracting(image -> image.get("sortOrder")).containsExactly(0, 1);
+        var image = images.getFirst();
+        assertGetUrl(image.get("imageUrl").toString(), "test-bucket", image.get("imageKey").toString(),
+            900, "test-access", "test-secret");
+        assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(8);
+        assertThat(statistics.getEntityInsertCount() + statistics.getEntityUpdateCount() + statistics.getEntityDeleteCount()).isZero();
+        verifyNoInteractions(s3, toss);
+    }
+
+    private User newUser() {
+        String id = UUID.randomUUID().toString();
+        return users.save(User.builder().nickname("추천 검증 사용자").email(id + "@example.test")
+            .authProvider(AuthProvider.KAKAO).providerUserId(id).build());
+    }
+
+    private String recommendationViewer() {
+        return tokens.createAccessToken(newUser().getId());
+    }
+
+    private long recommendedPost(User author, String title, long price, ProductCategory category, ProductStatus status) {
+        return posts.save(Post.builder().user(author).title(title).description("설명").price(price)
+            .productCategory(category).productCondition(ProductCondition.NEW).productStatus(status).build()).getId();
+    }
+
+    private Response recommend(String body, String accessToken) {
+        var request = RestClient.create().post().uri("http://127.0.0.1:" + port + "/api/posts/recommendations/recently-viewed")
+            .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(body);
+        if (accessToken != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+        return request.exchange((req, response) -> new Response(response.getStatusCode().value(), response.bodyTo(Map.class)));
+    }
+
+    private List<Long> recommendedIds(Response response) {
+        @SuppressWarnings("unchecked") var rows = (List<Map<String, Object>>) response.data().get("posts");
+        return rows.stream().map(row -> ((Number) row.get("id")).longValue()).toList();
     }
 
     long post(String title, String description, long price, ProductCategory category, ProductCondition condition, ProductStatus status) {
