@@ -95,7 +95,8 @@ abstract class TransactionReviewHttpContract {
     }
     void pgResult(OrderFixture order, String status) {
         pgBody = """
-            {"paymentKey":"pg-%s","orderId":"%s","totalAmount":12000,"status":"%s","balanceAmount":%d}
+            {"paymentKey":"pg-%s","orderId":"%s","totalAmount":12000,"status":"%s","balanceAmount":%d,
+             "method":"카드","card":{"cardType":"신용"}}
             """.formatted(order.paymentId(), order.orderId(), status, "CANCELED".equals(status) ? 0 : 12000);
     }
     void approve(OrderFixture order) {

@@ -1,6 +1,8 @@
 // 실제 HTTP와 인증 필터를 거쳐 상품 등록부터 주문 승인 및 취소까지 검증한다.
 package com.kitschcatch.backend.domain.order;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -74,7 +76,7 @@ class OrderReservationHttpTest {
 		assertThatThrownBy(() -> sellerClient.get().uri("/api/payments/" + paymentId).retrieve().toBodilessEntity())
 			.isInstanceOf(HttpClientErrorException.NotFound.class);
 
-		when(tossPaymentsClient.confirm(any())).thenReturn(new TossPaymentResponse("pg-key", orderId, 12000L, "DONE"));
+		when(tossPaymentsClient.confirm(any())).thenReturn(cardApproval("pg-key", orderId, 12000L));
 		Map<?, ?> approved = data(buyerClient.post().uri("/api/payments/" + paymentId + "/confirm")
 			.body(Map.of("paymentId", paymentId, "paymentKey", "pg-key")).retrieve().body(Map.class));
 		assertThat(approved.get("status")).isEqualTo("SUCCESS");

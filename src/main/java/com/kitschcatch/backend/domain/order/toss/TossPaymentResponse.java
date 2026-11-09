@@ -9,10 +9,26 @@ public record TossPaymentResponse(
 	Long balanceAmount,
 	String approvedAt,
 	String canceledAt,
-	String lastTransactionKey
+	String lastTransactionKey,
+	String method,
+	Card card
 ) {
 
 	public TossPaymentResponse(String paymentKey, String orderId, Long totalAmount, String status) {
 		this(paymentKey, orderId, totalAmount, status, "CANCELED".equals(status) ? 0L : null, null, null, null);
+	}
+
+	public TossPaymentResponse(String paymentKey, String orderId, Long totalAmount, String status,
+		Long balanceAmount, String approvedAt, String canceledAt, String lastTransactionKey) {
+		this(paymentKey, orderId, totalAmount, status, balanceAmount, approvedAt, canceledAt, lastTransactionKey, null, null);
+	}
+
+	public boolean isSupportedCard() {
+		if (!"카드".equals(method) && !"CARD".equals(method)) return false;
+		String type = card == null ? null : card.cardType();
+		return "신용".equals(type) || "체크".equals(type) || "CREDIT".equals(type) || "CHECK".equals(type);
+	}
+
+	public record Card(String cardType) {
 	}
 }

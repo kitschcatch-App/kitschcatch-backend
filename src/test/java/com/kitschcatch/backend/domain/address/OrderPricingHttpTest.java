@@ -1,5 +1,7 @@
 // 실제 인증·견적·결제·환불·정산 금액과 PostgreSQL 불변식을 검증한다.
 package com.kitschcatch.backend.domain.address;
+
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import com.kitschcatch.backend.domain.post.entity.*;
@@ -87,7 +89,7 @@ class OrderPricingHttpTest extends ShippingAddressHttpTest {
 
  @Test void approvalAndFullRefundUseTheSameTotal() throws Exception {
   item(30000,3000);var made=order(quote(),33000);String number=(String)made.data().get("orderId"),payment=(String)made.data().get("paymentId");
-  when(pg.confirm(any())).thenAnswer(i->{var r=(com.kitschcatch.backend.domain.order.toss.TossPaymentConfirmRequest)i.getArgument(0);assertThat(r.amount()).isEqualTo(33000);return new com.kitschcatch.backend.domain.order.toss.TossPaymentResponse(r.paymentKey(),r.orderId(),r.amount(),"DONE",33000L,"2026-11-09T00:00:00+09:00",null,null);});
+  when(pg.confirm(any())).thenAnswer(i->{var r=(com.kitschcatch.backend.domain.order.toss.TossPaymentConfirmRequest)i.getArgument(0);assertThat(r.amount()).isEqualTo(33000);return cardApproval(r.paymentKey(),r.orderId(),r.amount());});
   var approved=call(owner,"POST","/api/payments/"+payment+"/confirm","{\"paymentId\":\""+payment+"\",\"paymentKey\":\"pricing-key\"}");assertThat(approved.status()).isEqualTo(200);
   when(pg.cancel(any())).thenReturn(new com.kitschcatch.backend.domain.order.toss.TossPaymentResponse("pricing-key",(String)made.data().get("pgOrderId"),33000L,"CANCELED",0L,"2026-11-09T00:00:00+09:00","2026-11-09T00:00:01+09:00","cancel"));
   assertThat(call(owner,"POST","/api/orders/"+number+"/refunds","{\"reason\":\"취소\",\"amount\":30000}").status()).isEqualTo(400);

@@ -190,6 +190,10 @@ public class PaymentAttempt {
 			|| attemptStatus == PaymentAttemptStatus.UNKNOWN;
 	}
 
+	public boolean isUnsupportedMethodCancellation() {
+		return operation == PaymentAttemptOperation.CANCEL && Payment.UNSUPPORTED_METHOD_CODE.equals(pgErrorCode);
+	}
+
 	public void markProcessing() {
 		this.attemptStatus = PaymentAttemptStatus.PROCESSING;
 	}

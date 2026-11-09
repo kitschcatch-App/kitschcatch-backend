@@ -1,6 +1,8 @@
 // 탈퇴 HTTP 계약과 거래 보존·인증 차단·동시성 불변식을 실제 서버에서 검증한다.
 package com.kitschcatch.backend.domain.order;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
 import org.springframework.test.context.bean.override.convention.TestBean;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -22,7 +24,6 @@ import com.kitschcatch.backend.domain.chat.repository.ChatMessageRepository;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderRequest;
 import com.kitschcatch.backend.domain.order.entity.PaymentMethod;
 import com.kitschcatch.backend.domain.order.service.OrderService;
-import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
 import com.kitschcatch.backend.domain.post.entity.*;
 import com.kitschcatch.backend.domain.post.repository.PostFavoriteRepository;
 import com.kitschcatch.backend.domain.post.service.PostFavoriteService;
@@ -328,7 +329,7 @@ abstract class UserWithdrawalHttpContract extends OrderLifecycleHttpFixture {
         var o=order(buyer,seller,false); var entered=new CountDownLatch(1); var finish=new CountDownLatch(1);
         when(toss.confirm(any())).thenAnswer(call -> {
             entered.countDown(); assertThat(finish.await(10,TimeUnit.SECONDS)).isTrue();
-            return new TossPaymentResponse("key",o.orderId(),12000L,"DONE");
+            return cardApproval("key",o.orderId(),12000L);
         });
         try(var pool=Executors.newSingleThreadExecutor()) {
             var payment=pool.submit(() -> request("POST","/api/payments/"+o.paymentId()+"/confirm",buyerToken,
