@@ -30,7 +30,7 @@ public class ApiAuthenticationExceptionHandler implements AuthenticationEntryPoi
 		HttpServletResponse response,
 		AuthenticationException authException
 	) throws IOException, ServletException {
-		writeInvalidAuthTokenResponse(response);
+		writeError(response, ErrorCode.INVALID_AUTH_TOKEN);
 	}
 
 	@Override
@@ -39,11 +39,14 @@ public class ApiAuthenticationExceptionHandler implements AuthenticationEntryPoi
 		HttpServletResponse response,
 		AccessDeniedException accessDeniedException
 	) throws IOException, ServletException {
-		writeInvalidAuthTokenResponse(response);
+		writeError(response, ErrorCode.INVALID_AUTH_TOKEN);
 	}
 
-	private void writeInvalidAuthTokenResponse(HttpServletResponse response) throws IOException {
-		ErrorCode errorCode = ErrorCode.INVALID_AUTH_TOKEN;
+	void denyReportReview(HttpServletResponse response) throws IOException {
+		writeError(response, ErrorCode.REPORT_REVIEW_FORBIDDEN);
+	}
+
+	private void writeError(HttpServletResponse response, ErrorCode errorCode) throws IOException {
 		response.setStatus(errorCode.getHttpStatus().value());
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
