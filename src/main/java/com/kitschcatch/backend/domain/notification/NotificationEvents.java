@@ -80,6 +80,9 @@ public class NotificationEvents {
       case SHIPMENT_UPDATED ->
           record(order, type, orderKey + ":shipment:updated:" + order.getShipment().getRevision(),
               Audience.BUYER);
+      case SHIPMENT_OUT_FOR_DELIVERY, SHIPMENT_DELIVERED ->
+          record(order, type, orderKey + ":shipment:" + type + ":"
+              + java.util.Objects.requireNonNullElse(order.getShipment().getRevision(), 1L), Audience.BUYER);
       case REFUND_REQUESTED, REFUND_WITHDRAWN ->
           record(order, type, "refund:" + order.getRefund().getRefundId() + ":" + type,
               Audience.SELLER);

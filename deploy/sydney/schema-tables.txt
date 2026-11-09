@@ -37,3 +37,5 @@ user_blocks
 user_follows
 user_shipping_addresses
 users
+shipment_tracking
+shipment_tracking_events

@@ -65,6 +65,8 @@ class TradeNotificationPostgresHttpTest extends TradeNotificationHttpContract {
                 """);
             sql.execute(migration("069_trade_notifications.sql"));
             sql.execute(migration("069_trade_notifications.sql"));
+            sql.execute(migration("117_shipment_tracking.sql"));
+            sql.execute(migration("117_shipment_tracking.sql"));
             try (var row=sql.executeQuery("SELECT title,read_at FROM notifications WHERE event_key='legacy-event'")) {
                 assertThat(row.next()).isTrue();
                 assertThat(row.getString("title")).isEqualTo("기존 결제 취소");

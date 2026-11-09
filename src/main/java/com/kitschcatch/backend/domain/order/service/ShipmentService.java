@@ -5,6 +5,7 @@ import com.kitschcatch.backend.domain.notification.NotificationType;
 import com.kitschcatch.backend.domain.order.dto.*;
 import com.kitschcatch.backend.domain.order.entity.*;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
+import com.kitschcatch.backend.domain.order.tracking.ShipmentTracking.Registered;
 import com.kitschcatch.backend.global.exception.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -28,10 +29,12 @@ public class ShipmentService {
             if (o.getShipment()==null) throw new BusinessException(ErrorCode.SHIPMENT_NOT_FOUND);
             if (o.getShipment().update(request.carrierCode(),request.trackingNumber())) {
                 notifications.publishEvent(new TradeChanged(o, NotificationType.SHIPMENT_UPDATED));
+                notifications.publishEvent(new Registered(o));
             }
         } else if (o.getShipment()==null) {
             o.registerShipment(new Shipment(request.carrierCode(),request.trackingNumber()));
             notifications.publishEvent(new TradeChanged(o, NotificationType.SHIPMENT_REGISTERED));
+            notifications.publishEvent(new Registered(o));
         } else if (!o.getShipment().matches(request.carrierCode(),request.trackingNumber())) {
             throw new BusinessException(ErrorCode.ORDER_REQUEST_CONFLICT);
         }

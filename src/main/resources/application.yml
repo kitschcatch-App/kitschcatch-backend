@@ -26,6 +26,13 @@ app:
   refund-images:
     cleanup-enabled: ${APP_REFUND_IMAGES_CLEANUP_ENABLED:true}
     cleanup-delay-ms: ${APP_REFUND_IMAGES_CLEANUP_DELAY_MS:60000}
+  shipment:
+    tracking:
+      enabled: ${APP_SHIPMENT_TRACKING_ENABLED:false}
+      notify-enabled: ${APP_SHIPMENT_TRACKING_NOTIFY_ENABLED:false}
+      client-id: ${APP_SHIPMENT_TRACKING_CLIENT_ID:}
+      client-secret: ${APP_SHIPMENT_TRACKING_CLIENT_SECRET:}
+      callback-base: ${APP_SHIPMENT_TRACKING_CALLBACK_BASE:}
   settlement:
     sync-enabled: ${APP_SETTLEMENT_SYNC_ENABLED:false}
     operator-user-ids: ${APP_SETTLEMENT_OPERATOR_USER_IDS:}

@@ -200,4 +200,20 @@ class NotificationSchemaCompatibilityTests(unittest.TestCase):
 
     def test_expanded_check_matches_packaged_contract(self):
         contract = Path(__file__).with_name("schema-contract.jsonl")
-        self.assertIn(list(self.expanded), [json.loads(line) for line in contract.read_text().splitlines()])
+        delivery = notification_type_check(LEGACY_NOTIFICATION_TYPES + TRADE_NOTIFICATION_TYPES
+                                           + ("SHIPMENT_OUT_FOR_DELIVERY", "SHIPMENT_DELIVERED"))
+        self.assertIn(list(delivery), [json.loads(line) for line in contract.read_text().splitlines()])
+
+    def test_trade_reader_rollback_requires_delivery_emission_disabled_and_readable_rows(self):
+        self.contract.write_text(self.snapshot(self.expanded))
+        delivery = notification_type_check(LEGACY_NOTIFICATION_TYPES + TRADE_NOTIFICATION_TYPES
+                                           + ("SHIPMENT_OUT_FOR_DELIVERY", "SHIPMENT_DELIVERED"))
+        with patch("deploy.execute", side_effect=[self.snapshot(delivery), "t"]):
+            self.server.schema_check(self.contract)
+        with patch("deploy.execute", side_effect=[self.snapshot(delivery), "f"]):
+            with self.assertRaisesRegex(DeploymentError, "constraint/notifications/notifications_type_check"):
+                self.server.schema_check(self.contract)
+        (self.server.root / "backend.env").write_text("APP_SHIPMENT_TRACKING_NOTIFY_ENABLED=true\n")
+        with patch("deploy.execute", return_value=self.snapshot(delivery)):
+            with self.assertRaisesRegex(DeploymentError, "배송 추적 알림 생성을 꺼야"):
+                self.server.schema_check(self.contract)
