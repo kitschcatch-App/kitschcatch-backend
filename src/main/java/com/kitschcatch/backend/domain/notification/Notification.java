@@ -56,6 +56,8 @@ public class Notification {
           case PAYMENT_SUCCESS -> "결제가 완료되었습니다.";
           case PAYMENT_CANCELED -> "결제가 취소되었습니다.";
           case SHIPMENT_REGISTERED -> "배송 정보가 등록되었습니다.";
+          case SHIPMENT_OUT_FOR_DELIVERY -> "상품 배송이 출발했습니다.";
+          case SHIPMENT_DELIVERED -> "상품 배송이 완료되었습니다.";
           case SHIPMENT_UPDATED -> "배송 정보가 변경되었습니다.";
           case REFUND_REQUESTED -> "환불 요청이 접수되었습니다.";
           case REFUND_APPROVED -> "반품이 승인되어 환불을 처리하고 있습니다.";
