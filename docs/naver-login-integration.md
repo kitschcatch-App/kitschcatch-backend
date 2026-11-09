@@ -89,3 +89,11 @@
 - 격리 PostgreSQL 14의 CI 동일 환경에서 `./gradlew clean build --no-daemon --console=plain` 성공. 전체 1,280개, 실패·오류·건너뜀 0개다. 미설정 API HTTP 테스트는 명시적으로 별도 H2 DB를 사용한다. 검증 DB와 임시 파일은 종료·제거했다.
 - 이후 정적 콜백을 추가하고 `./gradlew test --tests '*NaverLoginConfigurationHttpTest' bootJar --no-daemon --console=plain` 성공. 미설정 API와 콜백 HTTP 2개 테스트가 통과했다. 콜백은 인증 없이 200 HTML, no-store/no-referrer/CSP와 인증 파라미터 비반사를 확인했다.
 - 이 결과는 실제 네이버 등록·모바일 기기·개발 서버 배포 결과가 아니다. 네이버 등록 및 서버 설정·실제 인증 결과는 위 적용 상태를 따른다. 새 코드의 정적 콜백과 앱 화면 검증은 구분한다.
+
+## 후속 공개 개발 환경 점검
+
+2026-11-09 개발 HTTPS에서 네이버 state 발급이 성공했다. 응답의 인증 호스트는 `nid.naver.com`, 유효 시간은 300초이며 콜백은 개발 도메인의 `/api/auth/naver/callback`이었다. GET 콜백과 Android 연결 파일은 HTTP 200, iOS 연결 파일은 HTTP 404였다. 서명된 iOS 빌드의 application identifier와 서버 설정을 맞춘 뒤 iOS 연결 파일과 앱 복귀를 재검증한다.
+
+이번 확인 범위는 서버 발급과 공개 파일 응답이다. 등록 테스터의 동의·앱 복귀·신규 가입·기존 사용자 ID 유지, 검수 신청과 승인은 별도 상태로 기록한다. 사전 검수 자료는 본 문서의 모바일 적용 사항과 네이버 공식 기준을 따른다. [네이버 사전 검수 가이드](https://developers.naver.com/docs/login/verify/verify.md)
+
+Java 21에서 네이버 로그인 관련 자동 테스트 15개를 통과했다. 실제 테스터 기기 결과와 구분한다.
