@@ -409,7 +409,7 @@ abstract class PostSearchHttpContract {
         @SuppressWarnings("unchecked") var rows = (List<Map<String, Object>>) response.data().get("posts");
         var row = rows.getFirst();
         assertThat(row).containsEntry("productCategory", "굿즈").containsEntry("productStatus", "ON_SALE")
-            .containsEntry("favoriteCount", 0).containsEntry("chatRoomCount", 0).containsEntry("shippingAmount", null);
+            .containsEntry("favoriteCount", 0).containsEntry("chatRoomCount", 0).containsEntry("shippingAmount", 3000);
         assertThat(row.get("price")).isEqualTo(Long.MAX_VALUE - 20);
         @SuppressWarnings("unchecked") var images = (List<Map<String, Object>>) row.get("images");
         assertThat(images).extracting(image -> image.get("sortOrder")).containsExactly(0, 1);

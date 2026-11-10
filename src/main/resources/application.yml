@@ -61,7 +61,7 @@ app:
     max-size-bytes: ${APP_PROFILE_IMAGE_MAX_SIZE_BYTES:5000000}
     upload-url-ttl: ${APP_PROFILE_IMAGE_UPLOAD_URL_TTL:10m}
   orders:
-    quote-required: ${APP_ORDERS_QUOTE_REQUIRED:false}
+    quote-required: ${APP_ORDERS_QUOTE_REQUIRED:true}
     shipping-address-required: ${APP_ORDERS_SHIPPING_ADDRESS_REQUIRED:false}
     reservation-ttl: 15m
     expiration-scan-delay: 60s

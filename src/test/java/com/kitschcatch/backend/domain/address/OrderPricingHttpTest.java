@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.util.*;
 import java.nio.file.*;
 import java.util.concurrent.*;
+@org.springframework.test.context.TestPropertySource(properties="app.orders.quote-required=true")
 class OrderPricingHttpTest extends ShippingAddressHttpTest {
  @org.springframework.test.context.bean.override.mockito.MockitoBean com.kitschcatch.backend.domain.order.toss.TossPaymentsClient pg;
  @Autowired PurchaseOrderRepository orders;
@@ -41,18 +42,38 @@ class OrderPricingHttpTest extends ShippingAddressHttpTest {
  }
  @Test void changedPriceAddressShippingAndExpiryRequireNewQuote() throws Exception {
   item(10000,3000);var q=quote();
-  call(seller,"PATCH","/api/posts/"+product+"/shipping","{\"shippingAmount\":3500}");
-  assertThat(order(q,13000).status()).isEqualTo(409);
-  q=quote();call(owner,"PATCH",root()+"/"+address,"{\"addressLine2\":\"변경\"}");assertThat(order(q,13500).status()).isEqualTo(409);
-  q=quote();jdbc.update("update order_quotes set expires_at=CURRENT_TIMESTAMP-INTERVAL '1' HOUR where id=?",q.data().get("quoteId"));assertThat(order(q,13500).status()).isEqualTo(409);
+  assertThat(call(seller,"PATCH","/api/posts/"+product+"/shipping","{\"shippingAmount\":3500}").status()).isEqualTo(400);
+  // 이전 정책으로 만든 미사용 견적은 배송비가 다르면 주문에 사용할 수 없다.
+  jdbc.update("update order_quotes set shipping_amount=3500,seller_payout_amount=13000 where id=?",q.data().get("quoteId"));
+  assertThat(order(q,13500).status()).isEqualTo(409);
+  q=quote();call(owner,"PATCH",root()+"/"+address,"{\"addressLine2\":\"변경\"}");assertThat(order(q,13000).status()).isEqualTo(409);
+  q=quote();jdbc.update("update order_quotes set expires_at=CURRENT_TIMESTAMP-INTERVAL '1' HOUR where id=?",q.data().get("quoteId"));assertThat(order(q,13000).status()).isEqualTo(409);
+  q=quote();jdbc.update("update posts set price=11000 where id=?",product);assertThat(order(q,13000).status()).isEqualTo(409);
+ }
+ @Test void unsetFreeAndCustomShippingAllQuoteTheFixedAmount() throws Exception {
+  item(30000,3000);
+  for(Long previous:Arrays.asList(null,0L,5000L)) {
+   jdbc.update("update posts set shipping_amount=? where id=?",previous,product);
+   assertThat(call(owner,"GET","/api/posts/"+product+"/shipping",null).data()).containsEntry("shippingAmount",3000);
+   assertThat(call(owner,"GET","/api/posts/"+product,null).data()).containsEntry("shippingAmount",3000);
+   assertThat((Map)quote().data().get("pricing")).containsEntry("shippingAmount",3000).containsEntry("totalAmount",33000);
+   assertThat(call(owner,"POST","/api/orders","{\"postId\":"+product+",\"shippingAddressId\":"+address+",\"amount\":30000,\"paymentMethod\":\"CARD\"}").status()).isEqualTo(409);
+  }
+ }
+ @Test void existingOrderPricingSurvivesCurrentShippingPolicy() throws Exception {
+  item(30000,3000);var made=order(quote(),33000);String number=(String)made.data().get("orderId");
+  jdbc.update("update orders set amount=35000,shipping_amount=5000,seller_payout_amount=33500 where order_number=?",number);
+  var detail=call(owner,"GET","/api/orders/"+number,null).data();
+  assertThat(detail).containsEntry("amount",35000);
+  assertThat((Map)detail.get("pricing")).containsEntry("shippingAmount",5000).containsEntry("totalAmount",35000);
  }
  @Test void ownershipTamperingAndLegacyBypassAreRejected() throws Exception {
   item(10000,3000);var q=quote();assertThat(order(q,10000).status()).isEqualTo(409);
   assertThat(call(user(),"POST","/api/orders",orderBody(q,13000)).status()).isEqualTo(409);
-  assertThat(call(user(),"PATCH","/api/posts/"+product+"/shipping","{\"shippingAmount\":0}").status()).isEqualTo(403);
+  assertThat(call(user(),"PATCH","/api/posts/"+product+"/shipping","{\"shippingAmount\":3000}").status()).isEqualTo(403);
   assertThat(call(owner,"POST","/api/orders",orderBody(q,13000).replace(",\"quoteId\":\""+q.data().get("quoteId")+"\"","")).status()).isEqualTo(409);
   assertThat(order(q,13000).status()).isEqualTo(201);
-  assertThat(call(seller,"PATCH","/api/posts/"+product+"/shipping","{\"shippingAmount\":0}").status()).isEqualTo(409);
+  assertThat(call(seller,"PATCH","/api/posts/"+product+"/shipping","{\"shippingAmount\":3000}").status()).isEqualTo(409);
  }
  @Test void concurrentQuoteConsumptionCreatesOnlyOneOrder() throws Exception {
   item(10000,3000);var q=quote();

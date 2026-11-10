@@ -1,6 +1,7 @@
 // 주문 생성과 초기 결제 대기 정보 생성을 담당하는 서비스
 package com.kitschcatch.backend.domain.order.service;
 
+import com.kitschcatch.backend.domain.order.entity.ShippingPolicy;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderRequest;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
@@ -37,7 +38,7 @@ public class OrderService {
 	private com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses;
     @org.springframework.beans.factory.annotation.Value("${app.orders.shipping-address-required:false}")
     private boolean shippingAddressRequired;
-    @org.springframework.beans.factory.annotation.Value("${app.orders.quote-required:false}") private boolean quoteRequired;
+    @org.springframework.beans.factory.annotation.Value("${app.orders.quote-required:true}") private boolean quoteRequired;
     @Autowired
     public void setAddresses(com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses) { this.addresses=addresses; }
     @Autowired private com.kitschcatch.backend.domain.order.repository.OrderQuoteRepository quotes;
@@ -127,7 +128,7 @@ public class OrderService {
         var shippingAddress=request.shippingAddressId()==null?null:new com.kitschcatch.backend.domain.order.entity.OrderShippingAddress(addresses.forOrder(userId,request.shippingAddressId()));
         if(quote!=null && (quote.getExpiresAt().isBefore(LocalDateTime.now())
             || !quote.getPricing().getProductAmount().equals(post.getPrice())
-            || !quote.getPricing().getShippingAmount().equals(post.getShippingAmount())
+            || !quote.getPricing().getShippingAmount().equals(ShippingPolicy.AMOUNT)
             || !com.kitschcatch.backend.domain.order.entity.OrderPricing.POLICY.equals(quote.getPricing().getPolicy())
             || !quote.getAddressUpdatedAt().equals(addresses.forOrder(userId,request.shippingAddressId()).getUpdatedAt()))) throw new BusinessException(ErrorCode.QUOTE_INVALID);
         PurchaseOrder order = PurchaseOrder.builder()
