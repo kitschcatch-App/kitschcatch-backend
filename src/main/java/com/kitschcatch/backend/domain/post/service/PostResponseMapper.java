@@ -1,6 +1,7 @@
 // 상품 조회와 판매자 목록에서 공통 상품 응답을 만든다.
 package com.kitschcatch.backend.domain.post.service;
 
+import com.kitschcatch.backend.domain.order.entity.ShippingPolicy;
 import com.kitschcatch.backend.domain.post.dto.PostImageResponse;
 import com.kitschcatch.backend.domain.post.dto.PostResponse;
 import com.kitschcatch.backend.domain.post.entity.Post;
@@ -16,6 +17,6 @@ public class PostResponseMapper {
             post.getTitle(), post.getDescription(), post.getPrice(), post.getProductCategory(),
             post.getProductCondition(), post.getProductStatus(), post.getImages().stream()
                 .map(image -> new PostImageResponse(image.getObjectKey(), images.imageUrl(image.getObjectKey()), image.getSortOrder()))
-                .toList(), post.getCreatedAt(), post.getUpdatedAt(), counts.favoriteCount(), counts.chatRoomCount(),post.getShippingAmount());
+                .toList(), post.getCreatedAt(), post.getUpdatedAt(), counts.favoriteCount(), counts.chatRoomCount(),ShippingPolicy.AMOUNT);
     }
 }

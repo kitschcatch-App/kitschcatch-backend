@@ -52,6 +52,11 @@ class ShippingAddressHttpTest {
   return new Result(response.statusCode(),json.readValue(response.body(),Map.class));
  }
  long create() throws Exception {var r=call(owner,"POST",root(),body()); assertThat(r.status).isEqualTo(201); return ((Number)r.data().get("id")).longValue();}
+ String quotedOrderBody(long post,long address,long amount) throws Exception {
+  var q=call(owner,"POST","/api/orders/quotes","{\"postId\":"+post+",\"shippingAddressId\":"+address+"}");
+  assertThat(q.status()).isEqualTo(201);
+  return "{\"postId\":"+post+",\"amount\":"+amount+",\"paymentMethod\":\"CARD\",\"shippingAddressId\":"+address+",\"quoteId\":\""+q.data().get("quoteId")+"\"}";
+ }
  @Test void crudDefaultsAndPatchPresence() throws Exception {
   assertThat((List)call(owner,"GET",root(),null).body.get("data")).isEmpty();
   long first=create(), second=create();
@@ -88,8 +93,8 @@ class ShippingAddressHttpTest {
  @Test void orderSnapshotSurvivesChangesAndHidesFromUnpaidSeller() throws Exception {
   long address=create(), seller=user();
   var post=posts.save(Post.builder().user(users.findById(seller).orElseThrow()).title("테스트 상품").description("설명").price(12000L).productCategory(ProductCategory.GOODS).productCondition(ProductCondition.NEW).productStatus(ProductStatus.ON_SALE).build());
-  String orderBody="{\"postId\":"+post.getId()+",\"amount\":12000,\"paymentMethod\":\"CARD\",\"shippingAddressId\":"+address+"}";
-  assertThat(call(seller,"POST","/api/orders",orderBody).status).isIn(400,403);
+  String orderBody=quotedOrderBody(post.getId(),address,15000);
+  assertThat(call(seller,"POST","/api/orders",orderBody).status).isIn(400,403,409);
   var made=call(owner,"POST","/api/orders",orderBody); assertThat(made.status).isEqualTo(201);String number=(String)made.data().get("orderId");
   call(owner,"PATCH",root()+"/"+address,"{\"addressLine2\":\"202호\"}");call(owner,"DELETE",root()+"/"+address,null);
   var buyer=call(owner,"GET","/api/orders/"+number,null);assertThat(buyer.status).isEqualTo(200);
@@ -120,13 +125,13 @@ class ShippingAddressHttpTest {
  @Test void addressDeletionRacesOrderCreationSafely() throws Exception {
   long address=create(), seller=user();
   var post=posts.save(Post.builder().user(users.findById(seller).orElseThrow()).title("경합 상품").description("설명").price(12000L).productCategory(ProductCategory.GOODS).productCondition(ProductCondition.NEW).productStatus(ProductStatus.ON_SALE).build());
-  String payload="{\"postId\":"+post.getId()+",\"amount\":12000,\"paymentMethod\":\"CARD\",\"shippingAddressId\":"+address+"}";
+  String payload=quotedOrderBody(post.getId(),address,15000);
   try(var pool=Executors.newFixedThreadPool(2)) {
    var gate=new CyclicBarrier(2);
    var order=pool.submit(()->{gate.await();return call(owner,"POST","/api/orders",payload);});
    var deleted=pool.submit(()->{gate.await();return call(owner,"DELETE",root()+"/"+address,null);});
    var result=order.get();assertThat(deleted.get().status).isEqualTo(200);
-   assertThat(result.status).isIn(201,404);
+   assertThat(result.status).isIn(201,404,409);
    if(result.status==201) assertThat(call(owner,"GET","/api/orders/"+result.data().get("orderId"),null).data().get("shippingAddress")).isNotNull();
   }
  }

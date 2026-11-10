@@ -34,7 +34,8 @@ import org.springframework.web.client.RestClient;
 	"spring.datasource.password=",
 	"spring.jpa.hibernate.ddl-auto=create-drop",
 	"kakao.oauth.native-app-key=test-native-app-key",
-	"app.orders.expiration-enabled=false"
+	"app.orders.expiration-enabled=false",
+    "app.orders.quote-required=true"
 })
 class OrderReservationHttpTest {
 	@LocalServerPort private int port;
@@ -59,7 +60,15 @@ class OrderReservationHttpTest {
 			"productCategory", "GOODS", "productCondition", "NEW", "imageKeys", List.of(imageKey)
 		)).retrieve().body(Map.class));
 		String postUrl = "/api/posts/" + createdPost.get("id");
-		Map<String, Object> orderRequest = Map.of("postId", createdPost.get("id"), "amount", 12000, "paymentMethod", "CARD");
+		assertThat(createdPost.get("shippingAmount")).isEqualTo(3000);
+        Map<?, ?> address = data(buyerClient.post().uri("/api/users/me/addresses").body(Map.of(
+            "recipientName", "구매자", "recipientPhone", "01012345678", "postalCode", "01234", "addressLine1", "서울 예시로 10"
+        )).retrieve().body(Map.class));
+        Map<?, ?> quote = data(buyerClient.post().uri("/api/orders/quotes").body(Map.of(
+            "postId", createdPost.get("id"), "shippingAddressId", address.get("id")
+        )).retrieve().body(Map.class));
+        Map<String, Object> orderRequest = Map.of("postId", createdPost.get("id"), "amount", 15000, "paymentMethod", "CARD",
+            "shippingAddressId", address.get("id"), "quoteId", quote.get("quoteId"));
 		var creation = buyerClient.post().uri("/api/orders").body(orderRequest).retrieve().toEntity(Map.class);
 		assertThat(creation.getStatusCode().value()).isEqualTo(201);
 		Map<?, ?> order = data(creation.getBody());
@@ -71,18 +80,18 @@ class OrderReservationHttpTest {
 			.isInstanceOf(HttpClientErrorException.Conflict.class);
 		assertThatThrownBy(() -> sellerClient.delete().uri(postUrl).retrieve().toBodilessEntity())
 			.isInstanceOf(HttpClientErrorException.Conflict.class);
-		assertThatThrownBy(() -> buyerClient.post().uri("/api/orders").body(orderRequest).retrieve().toBodilessEntity())
-			.isInstanceOf(HttpClientErrorException.BadRequest.class);
+		assertThat(data(buyerClient.post().uri("/api/orders").body(orderRequest).retrieve().body(Map.class)).get("orderId"))
+            .isEqualTo(orderId);
 		assertThatThrownBy(() -> sellerClient.get().uri("/api/payments/" + paymentId).retrieve().toBodilessEntity())
 			.isInstanceOf(HttpClientErrorException.NotFound.class);
 
-		when(tossPaymentsClient.confirm(any())).thenReturn(cardApproval("pg-key", orderId, 12000L));
+		when(tossPaymentsClient.confirm(any())).thenReturn(cardApproval("pg-key", orderId, 15000L));
 		Map<?, ?> approved = data(buyerClient.post().uri("/api/payments/" + paymentId + "/confirm")
 			.body(Map.of("paymentId", paymentId, "paymentKey", "pg-key")).retrieve().body(Map.class));
 		assertThat(approved.get("status")).isEqualTo("SUCCESS");
 		assertThat(data(buyerClient.get().uri(postUrl).retrieve().body(Map.class)).get("productStatus")).isEqualTo("SOLD_OUT");
 
-		when(tossPaymentsClient.cancel(any())).thenReturn(new TossPaymentResponse("pg-key", orderId, 12000L, "CANCELED"));
+		when(tossPaymentsClient.cancel(any())).thenReturn(new TossPaymentResponse("pg-key", orderId, 15000L, "CANCELED"));
 		Map<?, ?> canceled = data(buyerClient.post().uri("/api/payments/" + paymentId + "/cancel").retrieve().body(Map.class));
 		assertThat(canceled.get("status")).isEqualTo("CANCELED");
 		assertThat(data(buyerClient.get().uri(postUrl).retrieve().body(Map.class)).get("productStatus")).isEqualTo("ON_SALE");

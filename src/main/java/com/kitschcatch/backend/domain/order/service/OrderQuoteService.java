@@ -23,20 +23,20 @@ public class OrderQuoteService {
   users.findActiveByIdForUpdate(userId).orElseThrow(()->new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
   var post=post(r.postId());
   if(post.getUser().getId().equals(userId) || post.getProductStatus()!=ProductStatus.ON_SALE)throw new BusinessException(ErrorCode.ORDER_INVALID_STATE);
-  if(post.getShippingAmount()==null)throw new BusinessException(ErrorCode.SHIPPING_PRICE_REQUIRED);
   var address=addresses.forOrder(userId,r.shippingAddressId());
   OrderPricing pricing;
-  try {pricing=OrderPricing.calculate(post.getPrice(),post.getShippingAmount());}
+  try {pricing=OrderPricing.calculate(post.getPrice(),ShippingPolicy.AMOUNT);}
   catch(IllegalArgumentException|ArithmeticException e) {throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);}
   var q=quotes.save(new OrderQuote(userId,post.getId(),address.getId(),address.getUpdatedAt(),pricing));
   return new QuoteResponse(q.getId(),PriceBreakdown.from(pricing),q.getExpiresAt());
  }
- @Transactional public ShippingResponse shipping(long postId) {return new ShippingResponse(post(postId).getShippingAmount());}
+ @Transactional public ShippingResponse shipping(long postId) {post(postId);return new ShippingResponse(ShippingPolicy.AMOUNT);}
  @Transactional public ShippingResponse shipping(long userId,long postId,long amount) {
   users.findActiveByIdForUpdate(userId).orElseThrow(()->new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
   var p=post(postId);
   if(!p.getUser().getId().equals(userId))throw new BusinessException(ErrorCode.POST_FORBIDDEN);
   if(p.getActiveOrderNumber()!=null || p.getProductStatus()!=ProductStatus.ON_SALE)throw new BusinessException(ErrorCode.POST_TRANSACTION_IN_PROGRESS);
+  if(amount!=ShippingPolicy.AMOUNT)throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
   p.changeShipping(amount);return new ShippingResponse(p.getShippingAmount());
  }
 }

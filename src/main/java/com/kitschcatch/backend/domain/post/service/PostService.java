@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.domain.post.service;
 
+import com.kitschcatch.backend.domain.order.entity.ShippingPolicy;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
 import com.kitschcatch.backend.domain.order.repository.PurchaseOrderRepository;
 import com.kitschcatch.backend.domain.post.dto.CreatePostImageUploadUrlRequest;
@@ -94,7 +95,7 @@ public class PostService {
 				.productCondition(request.productCondition())
 				.productStatus(ProductStatus.ON_SALE)
 				.build();
-			if(request.shippingAmount()!=null) post.changeShipping(request.shippingAmount());
+			post.changeShipping(ShippingPolicy.AMOUNT);
             addImages(post, imageKeys);
 
 			return new PostResponseMapper(postImageStorage).from(postRepository.save(post), PostCounts.ZERO);
@@ -126,7 +127,7 @@ public class PostService {
 			validateOwner(userId, post);
 			validateNoActiveOrder(post);
 
-			if(request.shippingAmount()!=null) post.changeShipping(request.shippingAmount());
+			post.changeShipping(ShippingPolicy.AMOUNT);
             post.update(
 				request.title(),
 				request.description(),
