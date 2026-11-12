@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# PG 승인·취소 응답 유실이나 앱 종료 뒤 자동 결제 복구를 검증한다.
+# PG 승인·취소 전후의 응답 유실과 앱 종료 뒤 결제 복구를 검증한다.
 
 import argparse
 import base64
@@ -26,6 +26,8 @@ import uuid
 AMOUNT = 12000
 PAYMENT_KEY = "a1-test-payment"
 READ_TIMEOUT = 10
+SHORT_RESERVATION_TTL = 15
+SHORT_EXPIRATION_SCAN = 2
 ROOT = Path(__file__).resolve().parents[1]
 HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -102,13 +104,15 @@ class Database:
             RETURNING id
         """).splitlines()
         seller, buyer = map(int, ids)
-        post_id = int(self.query(f"""
+        return seller, buyer, self.new_post(seller)
+
+    def new_post(self, seller):
+        return int(self.query(f"""
             INSERT INTO posts (user_id, title, description, price, product_category,
                                product_condition, product_status, created_at, updated_at)
             VALUES ({seller}, 'A1', 'A1 fixture', {AMOUNT}, 'GOODS', 'NEW', 'ON_SALE', now(), now())
             RETURNING id
         """))
-        return seller, buyer, post_id
 
     def state(self, post_id):
         return json.loads(self.query(f"""
@@ -121,6 +125,9 @@ class Database:
                 'lease_until', a.lease_until, 'recovery_state', p.recovery_state,
                 'failure_reason', a.failure_reason, 'pg_status', a.pg_status,
                 'shipment_registered_at', o.shipment_registered_at,
+                'reservation_expires_at', o.reservation_expires_at,
+                'reservation_expired', o.reservation_expires_at <= localtimestamp,
+                'next_check_pending', a.next_check_at > localtimestamp,
                 'approved_confirm_attempt_id', (SELECT attempt_id FROM payment_attempts
                     WHERE payment_id = p.id AND operation = 'CONFIRM' AND attempt_status = 'SUCCEEDED'),
                 'cancel_attempts', (SELECT count(*) FROM payment_attempts
@@ -245,7 +252,11 @@ class PaymentGateway:
                                      if self.path in ("/v1/payments/" + value["paymentKey"],
                                                       "/v1/payments/orders/" + value["orderId"])), None)
                 if matching is None:
-                    self.send_error(404)
+                    if gateway.scenario == "A4":
+                        self.send_json(404, {"code": "NOT_FOUND_PAYMENT", "message": "결제 기록 없음"})
+                        gateway.trace.event("lookup_not_found", http_status=404, code="NOT_FOUND_PAYMENT")
+                    else:
+                        self.send_error(404)
                     return
                 self.send_json(200, matching)
                 gateway.trace.event("lookup_response_sent", status=matching["status"],
@@ -265,9 +276,16 @@ class PaymentGateway:
 @contextmanager
 def app(args, db, gateway_url, secret, trace, phase, ddl):
     log_path = trace.directory / (phase + ".log")
+    jvm_options = ["-XX:ActiveProcessorCount=2", "-Xmx512m"]
+    if args.scenario == "A4" and ddl == "create":
+        jvm_options.append("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:0")
+    order_options = []
+    if args.a4_short_expiry:
+        order_options = [f"--app.orders.reservation-ttl={SHORT_RESERVATION_TTL}s",
+                         f"--app.orders.expiration-scan-delay={SHORT_EXPIRATION_SCAN}s"]
     with log_path.open("w") as log:
         process = subprocess.Popen(
-            [args.java, "-XX:ActiveProcessorCount=2", "-Xmx512m", "-jar", str(args.jar),
+            [args.java, *jvm_options, "-jar", str(args.jar),
              "--spring.config.location=classpath:/application.yml",
              "--server.port=0", "--server.address=127.0.0.1",
              f"--spring.datasource.url=jdbc:postgresql://127.0.0.1:{args.db_port}/{args.db_name}"
@@ -277,7 +295,8 @@ def app(args, db, gateway_url, secret, trace, phase, ddl):
              f"--app.jwt.secret={secret}", "--app.payments.recovery.enabled=true",
              f"--app.payments.recovery.scan-delay={args.scan_seconds if ddl == 'validate' or args.scenario == 'A2' else 30}s",
              f"--app.toss-payments.read-timeout={READ_TIMEOUT}s",
-             "--app.toss-payments.secret-key=a1-test", f"--app.toss-payments.base-url={gateway_url}"],
+             "--app.toss-payments.secret-key=a1-test", f"--app.toss-payments.base-url={gateway_url}",
+             *order_options],
             stdout=log, stderr=subprocess.STDOUT, env={},
         )
         trace.event("app_started", phase=phase, pid=process.pid)
@@ -318,18 +337,20 @@ def run(args, directory):
                 """)
                 (directory / "schema.txt").write_text(schema + "\n")
                 bearer = token(buyer, secret)
-                order = post(port, "/api/orders", dict(postId=post_id, amount=AMOUNT,
-                                                       paymentMethod="CARD"), bearer, 201)
-                route = f"/api/payments/{order['paymentId']}/confirm"
-                body = dict(paymentId=order["paymentId"], paymentKey=PAYMENT_KEY,
-                            attemptId=order["attemptId"])
+                if args.scenario == "A4":
+                    order, route, body, control_id = start_approval_and_kill(
+                        args, trace, db, pg, first, client, port, seller, post_id, bearer
+                    )
+                else:
+                    order = create_order(port, bearer, post_id)
+                    route, body = approval_request(order)
                 recipients = sorted([seller, buyer])
                 if args.scenario == "A3":
                     cancel_id, sent = start_cancel_and_kill(trace, db, pg, first, client, port, post_id,
                                                             order, route, body, bearer, recipients)
-                else:
+                elif args.scenario != "A4":
                     pending = client.submit(post_response, port, route, body, bearer,
-                                        202 if args.scenario == "A2" else 200)
+                                            202 if args.scenario == "A2" else 200)
                     require(pg.approved.wait(8), "PG 승인 요청에 도달하지 않았습니다.")
                     before = db.state(post_id)
                     trace.event("before_kill" if args.scenario == "A1" else "before_response_drop", **before)
@@ -353,6 +374,9 @@ def run(args, directory):
 
             with app(args, db, pg_url, secret, trace, "restart", "validate") as (second, port, ready):
                 require(second.pid != first.pid, "재기동 JVM의 PID가 바뀌지 않았습니다.")
+                if args.scenario == "A4":
+                    return observe_missing_approval(args, trace, db, pg, second, port, ready,
+                                                    post_id, control_id, order, route, body, bearer)
                 if args.scenario == "A3":
                     recovered = observe_cancellation(args.scan_seconds + 20, trace, db, second, pg,
                                                      port, post_id, order, cancel_id, bearer, recipients, secret)
@@ -371,6 +395,116 @@ def run(args, directory):
                             lookup_gets=pg.lookups)
     finally:
         db.query(f"DROP SCHEMA {db.schema} CASCADE")
+
+
+def create_order(port, bearer, post_id):
+    return post(port, "/api/orders", dict(postId=post_id, amount=AMOUNT, paymentMethod="CARD"),
+                bearer, 201)
+
+
+def approval_request(order):
+    return f"/api/payments/{order['paymentId']}/confirm", dict(
+        paymentId=order["paymentId"], paymentKey=PAYMENT_KEY, attemptId=order["attemptId"]
+    )
+
+
+def await_log(process, path, marker):
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and process.poll() is None:
+        for line in path.read_text().splitlines():
+            if line.startswith(marker):
+                return line
+        time.sleep(0.05)
+    raise RuntimeError(f"{marker} 이벤트를 확인하지 못했습니다. 로그: {path}")
+
+
+def start_approval_and_kill(args, trace, db, pg, process, client, port, seller, post_id, bearer):
+    original_log = (trace.directory / "original.log").read_text()
+    debug_port = re.search(r"Listening for transport dt_socket at address: (\d+)", original_log)
+    require(debug_port is not None, "실험 JVM의 루프백 디버그 포트를 찾지 못했습니다.")
+    path = trace.directory / "approval-breakpoint.log"
+    with path.open("w") as log:
+        debugger = subprocess.Popen(
+            [args.java, "-XX:ActiveProcessorCount=2", "--add-modules", "jdk.jdi",
+             "-cp", str(args.debugger_classes), "BeforePgApproval", debug_port[1]],
+            stdout=log, stderr=subprocess.STDOUT, env={},
+        )
+        try:
+            await_log(debugger, path, "ARMED")
+            control_id = None
+            if args.a4_short_expiry:
+                control_id = db.new_post(seller)
+                create_order(port, bearer, control_id)
+            order = create_order(port, bearer, post_id)
+            route, body = approval_request(order)
+            pending = client.submit(post_response, port, route, body, bearer, 200)
+            location = await_log(debugger, path, "PAUSED ")
+            paused = trace.event("before_pg_approval", pid=process.pid, location=location)
+            state = db.state(post_id)
+            trace.event("before_kill", approval_posts=pg.approvals, approval_effects=len(pg.effects),
+                        **state)
+            expect_state(state, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
+            require(pg.approvals == len(pg.effects) == pg.lookups == 0,
+                    "종료 전에 PG 호출 또는 승인 효과가 관측됐습니다.")
+            kill_during_request(trace, process, pending, paused)
+            state = db.state(post_id)
+            trace.event("after_kill", **state)
+            expect_state(state, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
+            pg.allow_lookup.set()
+            return order, route, body, control_id
+        finally:
+            if debugger.poll() is None:
+                debugger.terminate()
+                debugger.wait(timeout=10)
+
+
+def observe_missing_approval(args, trace, db, pg, process, port, ready, post_id, control_id,
+                             order, route, body, bearer):
+    min_checks = 2 if args.a4_short_expiry else 1
+    deadline = time.monotonic() + args.scan_seconds + 35 + (35 if min_checks == 2 else 0)
+    seen_checks = 0
+    control_expired = False
+    first_unknown = None
+    while time.monotonic() < deadline and process.poll() is None:
+        state = db.state(post_id)
+        require(state["attempt"] in ("PROCESSING", "UNKNOWN"), "미확정 승인이 종료됐습니다.")
+        expect_state(state, order, ("PROCESSING", "PENDING", "RESERVED", state["attempt"]), [])
+        if state["attempt"] == "UNKNOWN" and state["check_count"] > seen_checks:
+            seen_checks = state["check_count"]
+            observed = trace.event("lookup_failure_saved", pid=process.pid, **state)
+            if first_unknown is None:
+                first_unknown = observed
+        if control_id is not None and not control_expired:
+            control = db.state(control_id)
+            if control["order"] == "CANCELED":
+                require(control["post"] == "ON_SALE" and control["owner"] is None
+                        and control["reservation_expired"], "일반 예약의 만료 해제가 일치하지 않습니다.")
+                trace.event("control_reservation_expired", **control)
+                control_expired = True
+        if seen_checks >= min_checks and (control_id is None or control_expired):
+            break
+        time.sleep(0.25)
+    else:
+        raise RuntimeError("예정한 조회 실패나 대조 예약의 만료를 관측하지 못했습니다.")
+
+    require(state["recovery_state"] == "PENDING" and state["failure_reason"] == "토스페이먼츠 요청에 실패했습니다."
+            and state["next_check_pending"] and state["lease_until"] is None
+            and pg.lookups == state["check_count"], "조회 실패 뒤 재조회 상태가 일치하지 않습니다.")
+    if control_id is not None:
+        require(state["reservation_expired"], "대상 예약의 기한이 지나지 않았습니다.")
+    status, payload = post_response(port, route, body, bearer, 202)
+    require(payload["data"]["status"] == "PROCESSING", "동일 승인 요청이 PROCESSING을 반환하지 않았습니다.")
+    trace.event("approval_replay_response", pid=process.pid, http_status=status, body=payload)
+    final = db.state(post_id)
+    trace.event("still_unresolved", pid=process.pid, approval_posts=pg.approvals,
+                approval_effects=len(pg.effects), **final)
+    expect_state(final, order, ("PROCESSING", "PENDING", "RESERVED", "UNKNOWN"), [])
+    require(pg.approvals == len(pg.effects) == 0 and process.poll() is None,
+            "승인 POST가 발생했거나 재기동 JVM이 종료됐습니다.")
+    return dict(restart_ready_to_unknown_s=round(first_unknown - ready, 3),
+                approval_posts=pg.approvals, approval_effects=len(pg.effects), lookup_gets=pg.lookups,
+                check_count=final["check_count"], replay_http_status=status,
+                reservation_expired=final["reservation_expired"], control_expired=control_expired)
 
 
 def kill_during_request(trace, process, pending, effect_time):
@@ -533,7 +667,7 @@ def expect_state(state, order, statuses, notifications):
 
 def main():
     parser = argparse.ArgumentParser(description="PG 승인·취소 응답 유실 이후 자동 결제 복구를 검증한다.")
-    parser.add_argument("--scenario", choices=("A1", "A2", "A3"), default="A1")
+    parser.add_argument("--scenario", choices=("A1", "A2", "A3", "A4"), default="A1")
     parser.add_argument("--jar", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="새 결과 디렉터리")
     parser.add_argument("--java", default="java")
@@ -542,13 +676,22 @@ def main():
     parser.add_argument("--db-name", required=True)
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--scan-seconds", type=int, default=30)
+    parser.add_argument("--a4-short-expiry", action="store_true",
+                        help="A4에서 15초 예약과 2초 만료 스캔으로 대조군을 확인한다.")
     args = parser.parse_args()
     require(args.jar.is_file() and args.repeat > 0 and args.scan_seconds > 0, "실행 인자를 확인하세요.")
     # JDBC URL에 들어가는 값은 격리 실험의 단순 식별자만 허용한다.
     require(re.fullmatch(r"[a-zA-Z_][a-zA-Z_0-9]*", args.db_name), "DB 이름을 확인하세요.")
     args.psql = shutil.which("psql")
     require(args.psql is not None, "psql을 PATH에 추가하세요.")
+    require(not args.a4_short_expiry or args.scenario == "A4", "단축 만료는 A4 전용입니다.")
     args.out.mkdir(parents=True)
+    if args.scenario == "A4":
+        args.debugger_classes = args.out / "debugger"
+        args.debugger_classes.mkdir()
+        java = Path(shutil.which(args.java)).resolve()
+        command(str(java.with_name("javac")), "--add-modules", "jdk.jdi",
+                "-d", str(args.debugger_classes), str(ROOT / "scripts/BeforePgApproval.java"))
     with args.jar.open("rb") as jar:
         jar_sha = hashlib.file_digest(jar, "sha256").hexdigest()
     manifest = dict(scenario=args.scenario, checkout_commit=command("git", "rev-parse", "HEAD", cwd=ROOT),
@@ -560,12 +703,19 @@ def main():
                     recovery_enabled=True, batch=100, lease_seconds=45, read_timeout_seconds=READ_TIMEOUT,
                     original_scan_seconds=args.scan_seconds if args.scenario == "A2" else 30,
                     restart_scan_seconds=args.scan_seconds if args.scenario != "A2" else None,
+                    reservation_ttl_seconds=SHORT_RESERVATION_TTL if args.a4_short_expiry else 900,
+                    expiration_scan_seconds=SHORT_EXPIRATION_SCAN if args.a4_short_expiry else 60,
+                    debugger_sha256=hashlib.sha256((ROOT / "scripts/BeforePgApproval.java").read_bytes()).hexdigest()
+                    if args.scenario == "A4" else None,
                     repeat=args.repeat, amount=AMOUNT, poll_interval_seconds=0.25)
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     fields = ["run", "result", "pg_to_recovery_s", "approval_posts", "approval_effects", "lookup_gets"]
     if args.scenario == "A2":
         fields += ["accepted_to_recovery_s", "drop_to_accepted_s", "approval_http_status",
                    "processing_replay_http_status"]
+    elif args.scenario == "A4":
+        fields = ["run", "result", "restart_ready_to_unknown_s", "approval_posts", "approval_effects",
+                  "lookup_gets", "check_count", "replay_http_status", "reservation_expired", "control_expired"]
     else:
         fields += ["restart_ready_to_recovery_s", "effect_to_sigkill_s"]
     if args.scenario == "A3":
