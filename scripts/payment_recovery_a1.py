@@ -298,10 +298,10 @@ class PaymentGateway:
 
 
 @contextmanager
-def app(args, db, gateway_url, secret, trace, phase, ddl, *, recovery_enabled=True):
+def app(args, db, gateway_url, secret, trace, phase, ddl, *, recovery_enabled=True, debug=False):
     log_path = trace.directory / (phase + ".log")
     jvm_options = ["-XX:ActiveProcessorCount=2", "-Xmx512m"]
-    if args.scenario == "A4" and ddl == "create":
+    if debug or (args.scenario == "A4" and ddl == "create"):
         jvm_options.append("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:0")
     order_options = []
     if args.a4_short_expiry:
