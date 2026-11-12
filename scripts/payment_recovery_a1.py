@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# PG 승인·취소 전후의 응답 유실과 앱 종료 뒤 결제 복구를 검증한다.
+# PG 승인·취소 중 장애와 복구 커밋 실패 뒤 결제 상태를 검증한다.
 
 import argparse
 import base64
@@ -20,6 +20,7 @@ import socket
 import subprocess
 import threading
 import time
+from urllib.error import HTTPError
 import urllib.request
 import uuid
 
@@ -56,9 +57,16 @@ def post_response(port, path, body, bearer, expected_status):
         f"http://127.0.0.1:{port}{path}", json.dumps(body).encode(),
         {"Content-Type": "application/json", "Authorization": "Bearer " + bearer},
     )
-    with HTTP.open(request, timeout=20) as response:
+    try:
+        response = HTTP.open(request, timeout=20)
+    except HTTPError as error:
+        if error.code != expected_status:
+            raise
+        response = error
+    with response:
         payload = json.load(response)
-        require(response.status == expected_status and payload["success"], str(payload))
+        require(response.status == expected_status and payload["success"] == (expected_status < 400),
+                str(payload))
         return response.status, payload
 
 
@@ -84,14 +92,17 @@ class Database:
         self.args = args
         self.schema = schema
 
-    def query(self, sql):
+    def psql(self, *args, **kwargs):
         return command(
             self.args.psql, "-XAtqw", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1",
             "-p", str(self.args.db_port), "-U", self.args.db_user,
-            "-d", self.args.db_name, "-c", sql,
+            "-d", self.args.db_name, *args,
             env={"PGOPTIONS": f"-c search_path={self.schema} -c client_min_messages=warning",
-                 "PGCLIENTENCODING": "UTF8"},
+                 "PGCLIENTENCODING": "UTF8"}, **kwargs,
         )
+
+    def query(self, sql):
+        return self.psql("-c", sql)
 
     def fixture(self):
         migration = (ROOT / "src/main/resources/db/manual/029_payment_recovery.sql").read_text()
@@ -124,6 +135,9 @@ class Database:
                 'check_count', a.check_count, 'next_check_at', a.next_check_at,
                 'lease_until', a.lease_until, 'recovery_state', p.recovery_state,
                 'failure_reason', a.failure_reason, 'pg_status', a.pg_status,
+                'approved_at', p.approved_at, 'last_verified_at', p.last_verified_at,
+                'payment_version', p.state_version, 'attempt_version', a.state_version,
+                'completed_at', a.completed_at,
                 'shipment_registered_at', o.shipment_registered_at,
                 'reservation_expires_at', o.reservation_expires_at,
                 'reservation_expired', o.reservation_expires_at <= localtimestamp,
@@ -215,7 +229,12 @@ class PaymentGateway:
                     self.send_json(200, effect)
                     return
                 # 실험기가 승인 효과와 커밋 상태를 확인할 때까지 응답을 보류한다.
-                if gateway.finished.wait(120) and gateway.drop_requested.is_set():
+                if not gateway.finished.wait(120):
+                    return
+                if gateway.scenario == "B":
+                    self.send_json(200, effect)
+                    gateway.trace.event("approval_response_sent", http_status=200, **effect)
+                elif gateway.drop_requested.is_set():
                     gateway.response_dropped_at = gateway.trace.event("approval_response_dropped")
                     gateway.allow_lookup.set()
                     self.connection.shutdown(socket.SHUT_WR)
@@ -240,7 +259,9 @@ class PaymentGateway:
             def do_GET(self):
                 with gateway.lock:
                     gateway.lookups += 1
-                    boundary = "after_response_drop" if gateway.scenario == "A2" else "after_kill"
+                    boundary = {"A2": "after_response_drop", "B": "after_fault_removed"}.get(
+                        gateway.scenario, "after_kill"
+                    )
                     gateway.trace.event("lookup_received", path=self.path,
                                         **{boundary: gateway.allow_lookup.is_set()})
                 if not gateway.allow_lookup.is_set():
@@ -293,7 +314,7 @@ def app(args, db, gateway_url, secret, trace, phase, ddl):
              f"--spring.datasource.username={args.db_user}",
              f"--spring.jpa.hibernate.ddl-auto={ddl}", "--kakao.oauth.native-app-key=a1-test",
              f"--app.jwt.secret={secret}", "--app.payments.recovery.enabled=true",
-             f"--app.payments.recovery.scan-delay={args.scan_seconds if ddl == 'validate' or args.scenario == 'A2' else 30}s",
+             f"--app.payments.recovery.scan-delay={args.scan_seconds if ddl == 'validate' or args.scenario in ('A2', 'B') else 30}s",
              f"--app.toss-payments.read-timeout={READ_TIMEOUT}s",
              "--app.toss-payments.secret-key=a1-test", f"--app.toss-payments.base-url={gateway_url}",
              *order_options],
@@ -345,6 +366,10 @@ def run(args, directory):
                     order = create_order(port, bearer, post_id)
                     route, body = approval_request(order)
                 recipients = sorted([seller, buyer])
+                if args.scenario == "B":
+                    return recover_after_commit_rejection(args, trace, db, pg, first, client,
+                                                          port, post_id, order, route, body, bearer,
+                                                          recipients)
                 if args.scenario == "A3":
                     cancel_id, sent = start_cancel_and_kill(trace, db, pg, first, client, port, post_id,
                                                             order, route, body, bearer, recipients)
@@ -507,6 +532,97 @@ def observe_missing_approval(args, trace, db, pg, process, port, ready, post_id,
                 reservation_expired=final["reservation_expired"], control_expired=control_expired)
 
 
+def read_commit_rejection(db_log, offset, payment_id, trace):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        with db_log.open("rb") as log:
+            log.seek(offset)
+            lines = log.read().decode(errors="replace").splitlines()
+        for index, line in enumerate(lines):
+            match = re.search(r"\[(\d+)\] ERROR:\s+P126B:\s+B_COMMIT_REJECTED (\{.*\})$", line)
+            if not match:
+                continue
+            attempted = json.loads(match[2])
+            if attempted["payment_id"] != payment_id:
+                continue
+            commit = re.compile(rf"\[{match[1]}\] STATEMENT:\s+COMMIT;?\s*$", re.IGNORECASE)
+            following = lines[index + 1:]
+            for following_index, candidate in enumerate(following):
+                if commit.search(candidate):
+                    evidence = [line, *(item for item in following[:following_index + 1]
+                                        if f"[{match[1]}]" in item)]
+                    (trace.directory / "postgres-commit.log").write_text("\n".join(evidence) + "\n")
+                    return attempted
+        time.sleep(0.05)
+    raise RuntimeError("해당 결제의 PostgreSQL COMMIT 거절 로그를 찾지 못했습니다.")
+
+
+def recover_after_commit_rejection(args, trace, db, pg, process, client, port, post_id, order,
+                                   route, body, bearer, recipients):
+    fault = (ROOT / "scripts/payment_recovery_b_fault.sql").read_text()
+    db.psql("-v", f"payment_id={order['paymentId']}", "-f", "-", input=fault)
+    trigger = db.query("""
+        SELECT pg_get_triggerdef(oid) FROM pg_trigger
+        WHERE tgrelid = 'payments'::regclass AND tgname = 'reject_b_recovery_commit'
+          AND tgdeferrable AND tginitdeferred
+    """)
+    require(trigger and order["paymentId"] in trigger, "대상 결제의 지연 제약 트리거가 없습니다.")
+    trace.event("fault_installed", payment_id=order["paymentId"], trigger=trigger, sqlstate="P126B")
+    offset = args.b_postgres_log.stat().st_size
+    pending = client.submit(post_response, port, route, body, bearer, 500)
+    require(pg.approved.wait(8), "PG 승인 요청에 도달하지 않았습니다.")
+    before = db.state(post_id)
+    trace.event("before_approval_response", pid=process.pid, **before)
+    expect_state(before, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
+    require(pg.approvals == len(pg.effects) == 1 and not pending.done(),
+            "승인 응답을 보류한 상태의 PG 효과가 일치하지 않습니다.")
+    effect = next(iter(pg.effects.values()))
+    require(effect["orderId"] == order["pgOrderId"] and effect["paymentKey"] == PAYMENT_KEY
+            and effect["totalAmount"] == AMOUNT and effect["status"] == "DONE",
+            "원래 결제에 해당하는 PG 승인 효과가 아닙니다.")
+    pg.finished.set()
+
+    status, payload = pending.result(timeout=15)
+    trace.event("approval_client_response", pid=process.pid, http_status=status, body=payload)
+    require(payload.get("error", {}).get("code") == "COMMON_999",
+            "커밋 거절이 앱의 서버 오류 응답으로 전달되지 않았습니다.")
+    attempted = read_commit_rejection(args.b_postgres_log, offset, order["paymentId"], trace)
+    app_log = (trace.directory / "original.log").read_text()
+    require("PgConnection.commit(" in app_log and "PaymentRecoveryService" in app_log,
+            "앱의 복구 트랜잭션이 JDBC 커밋 중 실패한 근거를 찾지 못했습니다.")
+    trace.event("db_commit_rejected", sqlstate="P126B", attempted=attempted)
+    require(tuple(attempted[key] for key in ("payment", "order", "post", "attempt"))
+            == ("SUCCESS", "PAID", "SOLD_OUT", "SUCCEEDED")
+            and attempted["notifications"] == recipients and attempted["owner"] == order["orderId"]
+            and attempted["attempt_id"] == order["attemptId"]
+            and attempted["approved_at"] is not None and attempted["completed_at"] is not None,
+            f"커밋 시점에 기대한 변경 전체를 관측하지 못했습니다. {attempted}")
+
+    rolled_back = db.state(post_id)
+    trace.event("rolled_back", pid=process.pid, **rolled_back)
+    require(rolled_back == before and pg.lookups == 0 and process.poll() is None,
+            "커밋 거절 후 초기 상태 외의 변경이 남았거나 워커가 먼저 개입했습니다.")
+    db.query("""
+        BEGIN;
+        DROP TRIGGER reject_b_recovery_commit ON payments;
+        DROP FUNCTION reject_b_recovery_commit();
+        COMMIT;
+    """)
+    require(db.query("""
+        SELECT count(*) FROM pg_trigger WHERE tgrelid = 'payments'::regclass
+            AND tgname = 'reject_b_recovery_commit'
+    """) == "0", "커밋 장애 트리거가 남아 있습니다.")
+    removed = trace.event("fault_removed", pid=process.pid)
+    pg.allow_lookup.set()
+
+    recovered = observe_recovery(args.scan_seconds + 20, trace, db, process, pg, port, post_id,
+                                 order, route, body, bearer, recipients)
+    return dict(pg_to_recovery_s=round(recovered - pg.effect_time, 3),
+                fault_removed_to_recovery_s=round(recovered - removed, 3),
+                approval_http_status=status, sqlstate="P126B", approval_posts=pg.approvals,
+                approval_effects=len(pg.effects), lookup_gets=pg.lookups)
+
+
 def kill_during_request(trace, process, pending, effect_time):
     require(not pending.done() and process.poll() is None, "장애 주입 전에 요청이 끝났습니다.")
     sent = trace.event("sigkill_sent", pid=process.pid)
@@ -666,8 +782,8 @@ def expect_state(state, order, statuses, notifications):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PG 승인·취소 응답 유실 이후 자동 결제 복구를 검증한다.")
-    parser.add_argument("--scenario", choices=("A1", "A2", "A3", "A4"), default="A1")
+    parser = argparse.ArgumentParser(description="PG 승인·취소 중 장애 이후 자동 결제 복구를 검증한다.")
+    parser.add_argument("--scenario", choices=("A1", "A2", "A3", "A4", "B"), default="A1")
     parser.add_argument("--jar", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="새 결과 디렉터리")
     parser.add_argument("--java", default="java")
@@ -678,6 +794,8 @@ def main():
     parser.add_argument("--scan-seconds", type=int, default=30)
     parser.add_argument("--a4-short-expiry", action="store_true",
                         help="A4에서 15초 예약과 2초 만료 스캔으로 대조군을 확인한다.")
+    parser.add_argument("--b-postgres-log", type=Path,
+                        help="B의 COMMIT 거절을 확인할 실험 전용 PostgreSQL 서버 로그")
     args = parser.parse_args()
     require(args.jar.is_file() and args.repeat > 0 and args.scan_seconds > 0, "실행 인자를 확인하세요.")
     # JDBC URL에 들어가는 값은 격리 실험의 단순 식별자만 허용한다.
@@ -685,6 +803,8 @@ def main():
     args.psql = shutil.which("psql")
     require(args.psql is not None, "psql을 PATH에 추가하세요.")
     require(not args.a4_short_expiry or args.scenario == "A4", "단축 만료는 A4 전용입니다.")
+    require(args.scenario != "B" or (args.b_postgres_log is not None and args.b_postgres_log.is_file()),
+            "B에는 읽을 수 있는 실험 전용 PostgreSQL 로그가 필요합니다.")
     args.out.mkdir(parents=True)
     if args.scenario == "A4":
         args.debugger_classes = args.out / "debugger"
@@ -701,18 +821,22 @@ def main():
                                         text=True, check=True, timeout=15).stderr,
                     postgres=Database(args, "public").query("SHOW server_version"),
                     recovery_enabled=True, batch=100, lease_seconds=45, read_timeout_seconds=READ_TIMEOUT,
-                    original_scan_seconds=args.scan_seconds if args.scenario == "A2" else 30,
-                    restart_scan_seconds=args.scan_seconds if args.scenario != "A2" else None,
+                    original_scan_seconds=args.scan_seconds if args.scenario in ("A2", "B") else 30,
+                    restart_scan_seconds=args.scan_seconds if args.scenario not in ("A2", "B") else None,
                     reservation_ttl_seconds=SHORT_RESERVATION_TTL if args.a4_short_expiry else 900,
                     expiration_scan_seconds=SHORT_EXPIRATION_SCAN if args.a4_short_expiry else 60,
                     debugger_sha256=hashlib.sha256((ROOT / "scripts/BeforePgApproval.java").read_bytes()).hexdigest()
                     if args.scenario == "A4" else None,
+                    fault_sql_sha256=hashlib.sha256((ROOT / "scripts/payment_recovery_b_fault.sql").read_bytes()).hexdigest()
+                    if args.scenario == "B" else None,
                     repeat=args.repeat, amount=AMOUNT, poll_interval_seconds=0.25)
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     fields = ["run", "result", "pg_to_recovery_s", "approval_posts", "approval_effects", "lookup_gets"]
     if args.scenario == "A2":
         fields += ["accepted_to_recovery_s", "drop_to_accepted_s", "approval_http_status",
                    "processing_replay_http_status"]
+    elif args.scenario == "B":
+        fields += ["fault_removed_to_recovery_s", "approval_http_status", "sqlstate"]
     elif args.scenario == "A4":
         fields = ["run", "result", "restart_ready_to_unknown_s", "approval_posts", "approval_effects",
                   "lookup_gets", "check_count", "replay_http_status", "reservation_expired", "control_expired"]
