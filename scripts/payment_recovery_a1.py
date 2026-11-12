@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# PG 승인 응답 전 JVM을 강제 종료하고 재시작한 앱의 자동 결제 복구를 검증한다.
+# PG 승인 응답 전 JVM 종료 또는 응답 연결 유실 이후 자동 결제 복구를 검증한다.
 
 import argparse
 import base64
@@ -16,6 +16,7 @@ import re
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -48,7 +49,7 @@ def token(user_id, secret):
     return payload + "." + encode(hmac.digest(secret.encode(), payload.encode(), "sha256"))
 
 
-def post(port, path, body, bearer, expected_status):
+def post_response(port, path, body, bearer, expected_status):
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}", json.dumps(body).encode(),
         {"Content-Type": "application/json", "Authorization": "Bearer " + bearer},
@@ -56,7 +57,11 @@ def post(port, path, body, bearer, expected_status):
     with HTTP.open(request, timeout=20) as response:
         payload = json.load(response)
         require(response.status == expected_status and payload["success"], str(payload))
-        return payload["data"]
+        return response.status, payload
+
+
+def post(port, path, body, bearer, expected_status):
+    return post_response(port, path, body, bearer, expected_status)[1]["data"]
 
 
 class Trace:
@@ -114,6 +119,7 @@ class Database:
                 'attempt', a.attempt_status, 'operation', a.operation,
                 'check_count', a.check_count, 'next_check_at', a.next_check_at,
                 'lease_until', a.lease_until, 'recovery_state', p.recovery_state,
+                'failure_reason', a.failure_reason,
                 'attempts', (SELECT count(*) FROM payment_attempts WHERE payment_id = p.id),
                 'notifications', coalesce((SELECT json_agg(user_id ORDER BY user_id)
                     FROM notifications WHERE type = 'PAYMENT_SUCCESS'), '[]'::json))
@@ -125,8 +131,11 @@ class Database:
 
 
 class PaymentGateway:
-    def __init__(self, trace):
+    def __init__(self, trace, scenario):
         self.trace = trace
+        self.scenario = scenario
+        self.drop_requested = threading.Event()
+        self.response_dropped_at = None
         self.approved = threading.Event()
         self.allow_lookup = threading.Event()
         self.finished = threading.Event()
@@ -178,14 +187,18 @@ class PaymentGateway:
                             "approval_effect_committed", **gateway.effects[key]
                         )
                     gateway.approved.set()
-                # 승인 응답은 끝까지 보류하고 실험기가 소유한 앱 프로세스의 종료를 기다린다.
-                gateway.finished.wait(120)
+                # 실험기가 승인 효과와 커밋 상태를 확인할 때까지 응답을 보류한다.
+                if gateway.finished.wait(120) and gateway.drop_requested.is_set():
+                    gateway.response_dropped_at = gateway.trace.event("approval_response_dropped")
+                    gateway.allow_lookup.set()
+                    self.connection.shutdown(socket.SHUT_WR)
 
             def do_GET(self):
                 with gateway.lock:
                     gateway.lookups += 1
+                    boundary = "after_kill" if gateway.scenario == "A1" else "after_response_drop"
                     gateway.trace.event("lookup_received", path=self.path,
-                                        after_kill=gateway.allow_lookup.is_set())
+                                        **{boundary: gateway.allow_lookup.is_set()})
                 if not gateway.allow_lookup.is_set():
                     self.send_error(503)
                     return
@@ -223,7 +236,7 @@ def app(args, db, gateway_url, secret, trace, phase, ddl):
              f"--spring.datasource.username={args.db_user}",
              f"--spring.jpa.hibernate.ddl-auto={ddl}", "--kakao.oauth.native-app-key=a1-test",
              f"--app.jwt.secret={secret}", "--app.payments.recovery.enabled=true",
-             f"--app.payments.recovery.scan-delay={args.scan_seconds if ddl == 'validate' else 30}s",
+             f"--app.payments.recovery.scan-delay={args.scan_seconds if ddl == 'validate' or args.scenario == 'A2' else 30}s",
              f"--app.toss-payments.read-timeout={READ_TIMEOUT}s",
              "--app.toss-payments.secret-key=a1-test", f"--app.toss-payments.base-url={gateway_url}"],
             stdout=log, stderr=subprocess.STDOUT, env={},
@@ -248,9 +261,9 @@ def app(args, db, gateway_url, secret, trace, phase, ddl):
 
 def run(args, directory):
     trace = Trace(directory)
-    db = Database(args, "a1_" + uuid.uuid4().hex)
+    db = Database(args, args.scenario.lower() + "_" + uuid.uuid4().hex)
     secret = secrets.token_hex(32)
-    pg = PaymentGateway(trace)
+    pg = PaymentGateway(trace, args.scenario)
     db.query(f"CREATE SCHEMA {db.schema}")
     trace.event("schema_created", schema=db.schema)
     try:
@@ -271,16 +284,22 @@ def run(args, directory):
                 route = f"/api/payments/{order['paymentId']}/confirm"
                 body = dict(paymentId=order["paymentId"], paymentKey=PAYMENT_KEY,
                             attemptId=order["attemptId"])
-                pending = client.submit(post, port, route, body, bearer, 200)
+                pending = client.submit(post_response, port, route, body, bearer,
+                                        202 if args.scenario == "A2" else 200)
                 require(pg.approved.wait(8), "PG 승인 요청에 도달하지 않았습니다.")
                 before = db.state(post_id)
-                trace.event("before_kill", **before)
+                trace.event("before_kill" if args.scenario == "A1" else "before_response_drop", **before)
                 expect_state(before, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
                 require(pg.approvals == 1 and len(pg.effects) == 1, "PG 승인 효과가 1회가 아닙니다.")
                 effect = next(iter(pg.effects.values()))
                 require(effect["orderId"] == order["pgOrderId"] and effect["paymentKey"] == PAYMENT_KEY
                         and effect["totalAmount"] == AMOUNT, "PG 승인 요청 식별자 또는 금액이 다릅니다.")
-                require(not pending.done() and first.poll() is None, "종료 전 승인 응답이 완료됐습니다.")
+                require(not pending.done() and first.poll() is None, "장애 주입 전에 승인 요청이 끝났습니다.")
+                recipients = sorted([seller, buyer])
+                if args.scenario == "A2":
+                    return recover_after_response_loss(args, trace, db, pg, first, port, pending,
+                                                       post_id, order, route, body, bearer, recipients)
+
                 sent = trace.event("sigkill_sent", pid=first.pid)
                 require(sent - pg.effect_time < READ_TIMEOUT, "PG 응답 제한 시간을 초과했습니다.")
                 first.kill()
@@ -298,24 +317,8 @@ def run(args, directory):
 
             with app(args, db, pg_url, secret, trace, "restart", "validate") as (second, port, ready):
                 require(second.pid != first.pid, "재기동 JVM의 PID가 바뀌지 않았습니다.")
-                deadline = time.monotonic() + args.scan_seconds + 20
-                while time.monotonic() < deadline and second.poll() is None:
-                    state = db.state(post_id)
-                    if state["payment"] == "SUCCESS":
-                        recovered = trace.event("recovered", **state)
-                        break
-                    time.sleep(0.25)
-                else:
-                    raise RuntimeError("스케줄러의 자동 복구를 관측하지 못했습니다.")
-                expected = ("SUCCESS", "PAID", "SOLD_OUT", "SUCCEEDED")
-                expect_state(state, order, expected, sorted([seller, buyer]))
-                require(pg.lookups >= 1, "PG 조회 없이 완료됐습니다.")
-                require(post(port, route, body, bearer, 200)["status"] == "SUCCESS",
-                        "동일 승인 재전송에서 SUCCESS 응답을 받지 못했습니다.")
-                replay = db.state(post_id)
-                trace.event("after_replay", **replay)
-                expect_state(replay, order, expected, sorted([seller, buyer]))
-                require(pg.approvals == len(pg.effects) == 1, "동일 요청이 PG를 다시 승인했습니다.")
+                recovered = observe_recovery(args.scan_seconds + 20, trace, db, second, pg,
+                                             port, post_id, order, route, body, bearer, recipients)
                 return dict(pg_to_recovery_s=round(recovered - pg.effect_time, 3),
                             restart_ready_to_recovery_s=round(recovered - ready, 3),
                             effect_to_sigkill_s=round(sent - pg.effect_time, 3),
@@ -323,6 +326,63 @@ def run(args, directory):
                             lookup_gets=pg.lookups)
     finally:
         db.query(f"DROP SCHEMA {db.schema} CASCADE")
+
+
+def recover_after_response_loss(args, trace, db, pg, process, port, pending,
+                                post_id, order, route, body, bearer, recipients):
+    pg.drop_requested.set()
+    pg.finished.set()
+    status, payload = pending.result(timeout=READ_TIMEOUT + 5)
+    accepted = trace.event("approval_client_response", pid=process.pid, http_status=status, body=payload)
+    require(pg.response_dropped_at is not None
+            and pg.response_dropped_at - pg.effect_time < READ_TIMEOUT,
+            "읽기 제한 전에 PG 승인 응답을 끊지 못했습니다.")
+    require(payload["data"]["status"] == "PROCESSING" and process.poll() is None,
+            "동일 JVM의 승인 응답이 PROCESSING이 아닙니다.")
+    unknown = db.state(post_id)
+    trace.event("after_response_drop", pid=process.pid, **unknown)
+    expect_state(unknown, order, ("PROCESSING", "PENDING", "RESERVED", "UNKNOWN"), [])
+    require(unknown["recovery_state"] == "PENDING" and unknown["failure_reason"] == "TRANSPORT_ERROR"
+            and unknown["next_check_at"] is not None, "전송 오류에 대한 자동 조회가 예약되지 않았습니다.")
+
+    replay_status, replay_payload = post_response(port, route, body, bearer, 202)
+    trace.event("processing_replay_response", pid=process.pid, http_status=replay_status,
+                body=replay_payload)
+    require(replay_payload["data"]["status"] == "PROCESSING"
+            and pg.approvals == 1 and pg.lookups == 0, "미확정 상태의 재전송이 PG를 호출했습니다.")
+
+    # 전송 오류의 최초 재조회 대기 30초와 스캔 주기를 모두 기다린다.
+    recovered = observe_recovery(30 + args.scan_seconds + 20, trace, db, process, pg,
+                                 port, post_id, order, route, body, bearer, recipients)
+    return dict(pg_to_recovery_s=round(recovered - pg.effect_time, 3),
+                accepted_to_recovery_s=round(recovered - accepted, 3),
+                drop_to_accepted_s=round(accepted - pg.response_dropped_at, 3),
+                approval_http_status=status, processing_replay_http_status=replay_status,
+                approval_posts=pg.approvals, approval_effects=len(pg.effects), lookup_gets=pg.lookups)
+
+
+def observe_recovery(timeout, trace, db, process, pg, port, post_id, order, route, body, bearer,
+                     recipients):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and process.poll() is None:
+        state = db.state(post_id)
+        if state["payment"] == "SUCCESS":
+            recovered = trace.event("recovered", pid=process.pid, **state)
+            break
+        time.sleep(0.25)
+    else:
+        raise RuntimeError("스케줄러의 자동 복구를 관측하지 못했습니다.")
+    expected = ("SUCCESS", "PAID", "SOLD_OUT", "SUCCEEDED")
+    expect_state(state, order, expected, recipients)
+    require(pg.lookups >= 1, "PG 조회 없이 완료됐습니다.")
+    status, payload = post_response(port, route, body, bearer, 200)
+    require(payload["data"]["status"] == "SUCCESS", "재전송에서 SUCCESS 응답을 받지 못했습니다.")
+    replay = db.state(post_id)
+    trace.event("after_replay", pid=process.pid, http_status=status, **replay)
+    expect_state(replay, order, expected, recipients)
+    require(process.poll() is None and pg.approvals == len(pg.effects) == 1,
+            "복구를 처리한 JVM이 종료됐거나 PG 승인이 다시 호출됐습니다.")
+    return recovered
 
 
 def expect_state(state, order, statuses, notifications):
@@ -337,7 +397,8 @@ def expect_state(state, order, statuses, notifications):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="PG 승인 결과 유실 이후 자동 결제 복구를 검증한다.")
+    parser.add_argument("--scenario", choices=("A1", "A2"), default="A1")
     parser.add_argument("--jar", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="새 결과 디렉터리")
     parser.add_argument("--java", default="java")
@@ -355,18 +416,23 @@ def main():
     args.out.mkdir(parents=True)
     with args.jar.open("rb") as jar:
         jar_sha = hashlib.file_digest(jar, "sha256").hexdigest()
-    manifest = dict(checkout_commit=command("git", "rev-parse", "HEAD", cwd=ROOT),
+    manifest = dict(scenario=args.scenario, checkout_commit=command("git", "rev-parse", "HEAD", cwd=ROOT),
                     jar_sha256=jar_sha,
                     runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                     java=subprocess.run([args.java, "-version"], capture_output=True,
                                         text=True, check=True, timeout=15).stderr,
                     postgres=Database(args, "public").query("SHOW server_version"),
                     recovery_enabled=True, batch=100, lease_seconds=45, read_timeout_seconds=READ_TIMEOUT,
-                    original_scan_seconds=30, restart_scan_seconds=args.scan_seconds,
+                    original_scan_seconds=args.scan_seconds if args.scenario == "A2" else 30,
+                    restart_scan_seconds=args.scan_seconds if args.scenario == "A1" else None,
                     repeat=args.repeat, amount=AMOUNT, poll_interval_seconds=0.25)
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    fields = ["run", "result", "pg_to_recovery_s", "restart_ready_to_recovery_s",
-              "effect_to_sigkill_s", "approval_posts", "approval_effects", "lookup_gets"]
+    fields = ["run", "result", "pg_to_recovery_s", "approval_posts", "approval_effects", "lookup_gets"]
+    if args.scenario == "A1":
+        fields += ["restart_ready_to_recovery_s", "effect_to_sigkill_s"]
+    else:
+        fields += ["accepted_to_recovery_s", "drop_to_accepted_s", "approval_http_status",
+                   "processing_replay_http_status"]
     with (args.out / "scenario-results.csv").open("w", newline="") as output:
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
@@ -380,7 +446,7 @@ def main():
                 raise
             writer.writerow(dict(run=iteration, result="pass", **result))
             output.flush()
-            print(f"A1 {iteration}/{args.repeat}: {result}", flush=True)
+            print(f"{args.scenario} {iteration}/{args.repeat}: {result}", flush=True)
 
 
 if __name__ == "__main__":
