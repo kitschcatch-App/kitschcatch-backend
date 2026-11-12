@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# PG 승인 응답 전 JVM 종료 또는 응답 연결 유실 이후 자동 결제 복구를 검증한다.
+# PG 승인·취소 응답 유실이나 앱 종료 뒤 자동 결제 복구를 검증한다.
 
 import argparse
 import base64
@@ -119,7 +119,15 @@ class Database:
                 'attempt', a.attempt_status, 'operation', a.operation,
                 'check_count', a.check_count, 'next_check_at', a.next_check_at,
                 'lease_until', a.lease_until, 'recovery_state', p.recovery_state,
-                'failure_reason', a.failure_reason,
+                'failure_reason', a.failure_reason, 'pg_status', a.pg_status,
+                'shipment_registered_at', o.shipment_registered_at,
+                'approved_confirm_attempt_id', (SELECT attempt_id FROM payment_attempts
+                    WHERE payment_id = p.id AND operation = 'CONFIRM' AND attempt_status = 'SUCCEEDED'),
+                'cancel_attempts', (SELECT count(*) FROM payment_attempts
+                    WHERE payment_id = p.id AND operation = 'CANCEL'),
+                'cancellation_notifications', coalesce((SELECT json_agg(user_id ORDER BY user_id)
+                    FROM notifications WHERE type = 'PAYMENT_CANCELED' AND target_id = o.order_number),
+                    '[]'::json),
                 'attempts', (SELECT count(*) FROM payment_attempts WHERE payment_id = p.id),
                 'notifications', coalesce((SELECT json_agg(user_id ORDER BY user_id)
                     FROM notifications WHERE type = 'PAYMENT_SUCCESS'), '[]'::json))
@@ -127,6 +135,7 @@ class Database:
             JOIN payments p ON p.order_id = o.id
             JOIN payment_attempts a ON a.payment_id = p.id AND a.attempt_id = p.current_attempt_id
             WHERE s.id = {post_id}
+            ORDER BY o.id DESC LIMIT 1
         """))
 
 
@@ -144,6 +153,10 @@ class PaymentGateway:
         self.lookups = 0
         self.effects = {}
         self.effect_time = None
+        self.canceled = threading.Event()
+        self.cancels = 0
+        self.cancel_effects = {}
+        self.cancel_effect_time = None
 
     @contextmanager
     def serve(self):
@@ -161,7 +174,7 @@ class PaymentGateway:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def approval_body(self):
+            def request_body(self):
                 if self.headers.get("Transfer-Encoding") != "chunked":
                     return json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 chunks = []
@@ -171,10 +184,13 @@ class PaymentGateway:
                 return json.loads(b"".join(chunks))
 
             def do_POST(self):
+                if gateway.scenario == "A3" and self.path == f"/v1/payments/{PAYMENT_KEY}/cancel":
+                    self.cancel()
+                    return
                 if self.path != "/v1/payments/confirm":
                     self.send_error(404)
                     return
-                request = self.approval_body()
+                request = self.request_body()
                 key = self.headers.get("Idempotency-Key")
                 with gateway.lock:
                     gateway.approvals += 1
@@ -187,30 +203,53 @@ class PaymentGateway:
                             "approval_effect_committed", **gateway.effects[key]
                         )
                     gateway.approved.set()
+                    effect = gateway.effects.get(key)
+                if gateway.scenario == "A3":
+                    self.send_json(200, effect)
+                    return
                 # 실험기가 승인 효과와 커밋 상태를 확인할 때까지 응답을 보류한다.
                 if gateway.finished.wait(120) and gateway.drop_requested.is_set():
                     gateway.response_dropped_at = gateway.trace.event("approval_response_dropped")
                     gateway.allow_lookup.set()
                     self.connection.shutdown(socket.SHUT_WR)
 
+            def cancel(self):
+                request = self.request_body()
+                key = self.headers.get("Idempotency-Key")
+                with gateway.lock:
+                    gateway.cancels += 1
+                    gateway.trace.event("cancel_received", request=request, idempotency_key=key)
+                    approved = next((effect for effect in gateway.effects.values()
+                                     if effect["paymentKey"] == PAYMENT_KEY), None)
+                    if approved and key and key not in gateway.cancel_effects:
+                        gateway.cancel_effects[key] = dict(approved, status="CANCELED", balanceAmount=0)
+                        gateway.cancel_effect_time = gateway.trace.event(
+                            "cancel_effect_committed", **gateway.cancel_effects[key]
+                        )
+                    gateway.canceled.set()
+                # 첫 앱이 죽을 때까지 취소 응답을 보내지 않는다.
+                gateway.finished.wait(120)
+
             def do_GET(self):
                 with gateway.lock:
                     gateway.lookups += 1
-                    boundary = "after_kill" if gateway.scenario == "A1" else "after_response_drop"
+                    boundary = "after_response_drop" if gateway.scenario == "A2" else "after_kill"
                     gateway.trace.event("lookup_received", path=self.path,
                                         **{boundary: gateway.allow_lookup.is_set()})
                 if not gateway.allow_lookup.is_set():
                     self.send_error(503)
                     return
                 with gateway.lock:
-                    matching = next((value for value in gateway.effects.values()
+                    effects = gateway.cancel_effects or gateway.effects
+                    matching = next((value for value in effects.values()
                                      if self.path in ("/v1/payments/" + value["paymentKey"],
                                                       "/v1/payments/orders/" + value["orderId"])), None)
                 if matching is None:
                     self.send_error(404)
                     return
                 self.send_json(200, matching)
-                gateway.trace.event("lookup_response_sent", status=matching["status"])
+                gateway.trace.event("lookup_response_sent", status=matching["status"],
+                                    balance_amount=matching.get("balanceAmount"))
 
         with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
             worker = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05})
@@ -284,39 +323,45 @@ def run(args, directory):
                 route = f"/api/payments/{order['paymentId']}/confirm"
                 body = dict(paymentId=order["paymentId"], paymentKey=PAYMENT_KEY,
                             attemptId=order["attemptId"])
-                pending = client.submit(post_response, port, route, body, bearer,
-                                        202 if args.scenario == "A2" else 200)
-                require(pg.approved.wait(8), "PG 승인 요청에 도달하지 않았습니다.")
-                before = db.state(post_id)
-                trace.event("before_kill" if args.scenario == "A1" else "before_response_drop", **before)
-                expect_state(before, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
-                require(pg.approvals == 1 and len(pg.effects) == 1, "PG 승인 효과가 1회가 아닙니다.")
-                effect = next(iter(pg.effects.values()))
-                require(effect["orderId"] == order["pgOrderId"] and effect["paymentKey"] == PAYMENT_KEY
-                        and effect["totalAmount"] == AMOUNT, "PG 승인 요청 식별자 또는 금액이 다릅니다.")
-                require(not pending.done() and first.poll() is None, "장애 주입 전에 승인 요청이 끝났습니다.")
                 recipients = sorted([seller, buyer])
-                if args.scenario == "A2":
-                    return recover_after_response_loss(args, trace, db, pg, first, port, pending,
-                                                       post_id, order, route, body, bearer, recipients)
+                if args.scenario == "A3":
+                    cancel_id, sent = start_cancel_and_kill(trace, db, pg, first, client, port, post_id,
+                                                            order, route, body, bearer, recipients)
+                else:
+                    pending = client.submit(post_response, port, route, body, bearer,
+                                        202 if args.scenario == "A2" else 200)
+                    require(pg.approved.wait(8), "PG 승인 요청에 도달하지 않았습니다.")
+                    before = db.state(post_id)
+                    trace.event("before_kill" if args.scenario == "A1" else "before_response_drop", **before)
+                    expect_state(before, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
+                    require(pg.approvals == 1 and len(pg.effects) == 1, "PG 승인 효과가 1회가 아닙니다.")
+                    effect = next(iter(pg.effects.values()))
+                    require(effect["orderId"] == order["pgOrderId"] and effect["paymentKey"] == PAYMENT_KEY
+                            and effect["totalAmount"] == AMOUNT, "PG 승인 요청 식별자 또는 금액이 다릅니다.")
+                    require(not pending.done() and first.poll() is None, "장애 주입 전에 승인 요청이 끝났습니다.")
+                    if args.scenario == "A2":
+                        return recover_after_response_loss(args, trace, db, pg, first, port, pending,
+                                                           post_id, order, route, body, bearer, recipients)
 
-                sent = trace.event("sigkill_sent", pid=first.pid)
-                require(sent - pg.effect_time < READ_TIMEOUT, "PG 응답 제한 시간을 초과했습니다.")
-                first.kill()
-                require(first.wait(timeout=10) == -signal.SIGKILL, "SIGKILL 종료를 확인하지 못했습니다.")
-                trace.event("app_killed", pid=first.pid)
-                disconnected = pending.exception(timeout=10)
-                require(isinstance(disconnected, (RemoteDisconnected, ConnectionResetError)),
-                        f"강제 종료에 따른 승인 연결 단절을 확인하지 못했습니다. {disconnected!r}")
-                require(pg.lookups == 0, "종료 전에 원래 JVM이 조회를 시작했습니다.")
-                after_kill = db.state(post_id)
-                trace.event("after_kill", **after_kill)
-                expect_state(after_kill, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
-                pg.allow_lookup.set()
-                pg.finished.set()
+                    sent = kill_during_request(trace, first, pending, pg.effect_time)
+                    require(pg.lookups == 0, "종료 전에 원래 JVM이 조회를 시작했습니다.")
+                    after_kill = db.state(post_id)
+                    trace.event("after_kill", **after_kill)
+                    expect_state(after_kill, order, ("PROCESSING", "PENDING", "RESERVED", "PROCESSING"), [])
+                    pg.allow_lookup.set()
+                    pg.finished.set()
 
             with app(args, db, pg_url, secret, trace, "restart", "validate") as (second, port, ready):
                 require(second.pid != first.pid, "재기동 JVM의 PID가 바뀌지 않았습니다.")
+                if args.scenario == "A3":
+                    recovered = observe_cancellation(args.scan_seconds + 20, trace, db, second, pg,
+                                                     port, post_id, order, cancel_id, bearer, recipients, secret)
+                    return dict(pg_to_recovery_s=round(recovered - pg.cancel_effect_time, 3),
+                                restart_ready_to_recovery_s=round(recovered - ready, 3),
+                                effect_to_sigkill_s=round(sent - pg.cancel_effect_time, 3),
+                                approval_posts=pg.approvals, approval_effects=len(pg.effects),
+                                cancel_posts=pg.cancels, cancel_effects=len(pg.cancel_effects),
+                                lookup_gets=pg.lookups)
                 recovered = observe_recovery(args.scan_seconds + 20, trace, db, second, pg,
                                              port, post_id, order, route, body, bearer, recipients)
                 return dict(pg_to_recovery_s=round(recovered - pg.effect_time, 3),
@@ -326,6 +371,94 @@ def run(args, directory):
                             lookup_gets=pg.lookups)
     finally:
         db.query(f"DROP SCHEMA {db.schema} CASCADE")
+
+
+def kill_during_request(trace, process, pending, effect_time):
+    require(not pending.done() and process.poll() is None, "장애 주입 전에 요청이 끝났습니다.")
+    sent = trace.event("sigkill_sent", pid=process.pid)
+    require(sent - effect_time < READ_TIMEOUT, "PG 응답 제한 시간을 초과했습니다.")
+    process.kill()
+    require(process.wait(timeout=10) == -signal.SIGKILL, "SIGKILL 종료를 확인하지 못했습니다.")
+    trace.event("app_killed", pid=process.pid)
+    disconnected = pending.exception(timeout=10)
+    require(isinstance(disconnected, (RemoteDisconnected, ConnectionResetError)),
+            f"강제 종료에 따른 연결 단절을 확인하지 못했습니다. {disconnected!r}")
+    return sent
+
+
+def start_cancel_and_kill(trace, db, pg, process, client, port, post_id, order, route, body,
+                          bearer, recipients):
+    require(post(port, route, body, bearer, 200)["status"] == "SUCCESS", "준비 승인이 실패했습니다.")
+    approved = db.state(post_id)
+    trace.event("approved_before_cancel", **approved)
+    expect_state(approved, order, ("SUCCESS", "PAID", "SOLD_OUT", "SUCCEEDED"), recipients)
+    require(approved["shipment_registered_at"] is None and approved["cancel_attempts"] == 0,
+            "배송 전 결제가 아닙니다.")
+    pending = client.submit(post_response, port, f"/api/payments/{order['paymentId']}/cancel",
+                            {}, bearer, 200)
+    require(pg.canceled.wait(8), "PG 취소 요청에 도달하지 않았습니다.")
+    effect = next(iter(pg.cancel_effects.values()), None)
+    require(pg.cancels == len(pg.cancel_effects) == 1 and effect["status"] == "CANCELED"
+            and effect["balanceAmount"] == 0 and effect["totalAmount"] == AMOUNT
+            and effect["orderId"] == order["pgOrderId"] and effect["paymentKey"] == PAYMENT_KEY,
+            "원래 승인에 해당하는 전액 취소 효과를 확인하지 못했습니다.")
+    state = db.state(post_id)
+    cancel_id = state["attempt_id"]
+    trace.event("before_kill", **state)
+    expect_cancel_state(state, order, cancel_id, recipients, recovered=False)
+    sent = kill_during_request(trace, process, pending, pg.cancel_effect_time)
+    require(pg.lookups == 0, "종료 전에 원래 JVM이 조회를 시작했습니다.")
+    state = db.state(post_id)
+    trace.event("after_kill", **state)
+    expect_cancel_state(state, order, cancel_id, recipients, recovered=False)
+    pg.allow_lookup.set()
+    pg.finished.set()
+    return cancel_id, sent
+
+
+def expect_cancel_state(state, order, cancel_id, recipients, recovered):
+    statuses = (("CANCELED", "CANCELED", "ON_SALE", "SUCCEEDED") if recovered
+                else ("PROCESSING", "PAID", "SOLD_OUT", "PROCESSING"))
+    owner = None if recovered else order["orderId"]
+    require(tuple(state[key] for key in ("payment", "order", "post", "attempt")) == statuses
+            and state["owner"] == owner and state["shipment_registered_at"] is None
+            and state["order_id"] == order["orderId"] and state["payment_id"] == order["paymentId"]
+            and state["attempt_id"] == cancel_id and cancel_id != order["attemptId"]
+            and state["approved_confirm_attempt_id"] == order["attemptId"]
+            and state["operation"] == "CANCEL" and state["attempts"] == 2 and state["cancel_attempts"] == 1
+            and state["notifications"] == recipients
+            and state["cancellation_notifications"] == (recipients if recovered else [])
+            and state["pg_status"] == ("CANCELED" if recovered else None),
+            f"취소 기대 상태 {statuses}, 예약 소유자 {owner}. 실제: {state}")
+
+
+def observe_cancellation(timeout, trace, db, process, pg, port, post_id, order, cancel_id,
+                         bearer, recipients, secret):
+    state, recovered = await_recovery(timeout, trace, db, process, post_id, "CANCELED")
+    expect_cancel_state(state, order, cancel_id, recipients, recovered=True)
+    require(pg.lookups >= 1 and pg.cancels == 1, "재기동 후 조회로 취소를 확정하지 못했습니다.")
+    status, payload = post_response(port, f"/api/payments/{order['paymentId']}/cancel", {}, bearer, 200)
+    require(payload["data"]["status"] == "CANCELED", "취소 재전송이 CANCELED를 반환하지 않았습니다.")
+    replay = db.state(post_id)
+    trace.event("after_replay", pid=process.pid, http_status=status, **replay)
+    expect_cancel_state(replay, order, cancel_id, recipients, recovered=True)
+    require(pg.approvals == len(pg.effects) == pg.cancels == len(pg.cancel_effects) == 1,
+            "승인 또는 취소 요청이 PG에 추가로 전달됐습니다.")
+
+    # 상태값 확인에 이어 다른 구매자가 실제 주문 API로 같은 상품을 예약한다.
+    new_buyer = int(db.query("""
+        INSERT INTO users (nickname, auth_provider, provider_user_id, created_at)
+        VALUES ('new-buyer', 'KAKAO', 'new-buyer', now()) RETURNING id
+    """))
+    replacement = post(port, "/api/orders", dict(postId=post_id, amount=AMOUNT, paymentMethod="CARD"),
+                       token(new_buyer, secret), 201)
+    reserved = db.state(post_id)
+    trace.event("new_buyer_reserved", pid=process.pid, http_status=201, **reserved)
+    require(process.poll() is None and reserved["post"] == "RESERVED" and reserved["order"] == "PENDING"
+            and reserved["payment"] == "READY"
+            and reserved["order_id"] == reserved["owner"] == replacement["orderId"] != order["orderId"],
+            "복구 후 새 주문이 상품 예약을 소유하지 못했습니다.")
+    return recovered
 
 
 def recover_after_response_loss(args, trace, db, pg, process, port, pending,
@@ -361,17 +494,19 @@ def recover_after_response_loss(args, trace, db, pg, process, port, pending,
                 approval_posts=pg.approvals, approval_effects=len(pg.effects), lookup_gets=pg.lookups)
 
 
-def observe_recovery(timeout, trace, db, process, pg, port, post_id, order, route, body, bearer,
-                     recipients):
+def await_recovery(timeout, trace, db, process, post_id, target_status):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline and process.poll() is None:
         state = db.state(post_id)
-        if state["payment"] == "SUCCESS":
-            recovered = trace.event("recovered", pid=process.pid, **state)
-            break
+        if state["payment"] == target_status:
+            return state, trace.event("recovered", pid=process.pid, **state)
         time.sleep(0.25)
-    else:
-        raise RuntimeError("스케줄러의 자동 복구를 관측하지 못했습니다.")
+    raise RuntimeError("스케줄러의 자동 복구를 관측하지 못했습니다.")
+
+
+def observe_recovery(timeout, trace, db, process, pg, port, post_id, order, route, body, bearer,
+                     recipients):
+    state, recovered = await_recovery(timeout, trace, db, process, post_id, "SUCCESS")
     expected = ("SUCCESS", "PAID", "SOLD_OUT", "SUCCEEDED")
     expect_state(state, order, expected, recipients)
     require(pg.lookups >= 1, "PG 조회 없이 완료됐습니다.")
@@ -397,8 +532,8 @@ def expect_state(state, order, statuses, notifications):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PG 승인 결과 유실 이후 자동 결제 복구를 검증한다.")
-    parser.add_argument("--scenario", choices=("A1", "A2"), default="A1")
+    parser = argparse.ArgumentParser(description="PG 승인·취소 응답 유실 이후 자동 결제 복구를 검증한다.")
+    parser.add_argument("--scenario", choices=("A1", "A2", "A3"), default="A1")
     parser.add_argument("--jar", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="새 결과 디렉터리")
     parser.add_argument("--java", default="java")
@@ -424,15 +559,17 @@ def main():
                     postgres=Database(args, "public").query("SHOW server_version"),
                     recovery_enabled=True, batch=100, lease_seconds=45, read_timeout_seconds=READ_TIMEOUT,
                     original_scan_seconds=args.scan_seconds if args.scenario == "A2" else 30,
-                    restart_scan_seconds=args.scan_seconds if args.scenario == "A1" else None,
+                    restart_scan_seconds=args.scan_seconds if args.scenario != "A2" else None,
                     repeat=args.repeat, amount=AMOUNT, poll_interval_seconds=0.25)
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     fields = ["run", "result", "pg_to_recovery_s", "approval_posts", "approval_effects", "lookup_gets"]
-    if args.scenario == "A1":
-        fields += ["restart_ready_to_recovery_s", "effect_to_sigkill_s"]
-    else:
+    if args.scenario == "A2":
         fields += ["accepted_to_recovery_s", "drop_to_accepted_s", "approval_http_status",
                    "processing_replay_http_status"]
+    else:
+        fields += ["restart_ready_to_recovery_s", "effect_to_sigkill_s"]
+    if args.scenario == "A3":
+        fields += ["cancel_posts", "cancel_effects"]
     with (args.out / "scenario-results.csv").open("w", newline="") as output:
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
