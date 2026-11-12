@@ -17,9 +17,24 @@ kakao:
     jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 app:
+  naver:
+    ios-app-id: ${NAVER_IOS_APP_ID:}
+  addresses:
+    max-count: ${APP_ADDRESSES_MAX_COUNT:10}
   refunds:
     operator-user-ids: ${APP_REFUNDS_OPERATOR_USER_IDS:}
+  refund-images:
+    cleanup-enabled: ${APP_REFUND_IMAGES_CLEANUP_ENABLED:true}
+    cleanup-delay-ms: ${APP_REFUND_IMAGES_CLEANUP_DELAY_MS:60000}
+  shipment:
+    tracking:
+      enabled: ${APP_SHIPMENT_TRACKING_ENABLED:false}
+      notify-enabled: ${APP_SHIPMENT_TRACKING_NOTIFY_ENABLED:false}
+      client-id: ${APP_SHIPMENT_TRACKING_CLIENT_ID:}
+      client-secret: ${APP_SHIPMENT_TRACKING_CLIENT_SECRET:}
+      callback-base: ${APP_SHIPMENT_TRACKING_CALLBACK_BASE:}
   settlement:
+    sync-enabled: ${APP_SETTLEMENT_SYNC_ENABLED:false}
     operator-user-ids: ${APP_SETTLEMENT_OPERATOR_USER_IDS:}
     fee-basis-points: ${APP_SETTLEMENT_FEE_BASIS_POINTS:500}
     toss:
@@ -30,6 +45,7 @@ app:
       timeout-millis: ${APP_SETTLEMENT_TOSS_TIMEOUT_MILLIS:5000}
       lookup-max-pages: ${APP_SETTLEMENT_TOSS_LOOKUP_MAX_PAGES:10}
   notifications:
+    trade-enabled: ${APP_NOTIFICATIONS_TRADE_ENABLED:false}
     push:
       enabled: ${APP_NOTIFICATIONS_PUSH_ENABLED:false}
       project-id: ${APP_FCM_PROJECT_ID:}
@@ -38,10 +54,15 @@ app:
       base-url: ${APP_FCM_BASE_URL:https://fcm.googleapis.com}
       token-url: ${APP_FCM_TOKEN_URL:https://oauth2.googleapis.com/token}
       scan-delay: ${APP_NOTIFICATIONS_PUSH_SCAN_DELAY:30s}
+  store-review-images:
+    cleanup-enabled: ${APP_STORE_REVIEW_IMAGES_CLEANUP_ENABLED:false}
+    cleanup-delay-ms: ${APP_STORE_REVIEW_IMAGES_CLEANUP_DELAY_MS:60000}
   profile-image:
     max-size-bytes: ${APP_PROFILE_IMAGE_MAX_SIZE_BYTES:5000000}
     upload-url-ttl: ${APP_PROFILE_IMAGE_UPLOAD_URL_TTL:10m}
   orders:
+    quote-required: ${APP_ORDERS_QUOTE_REQUIRED:true}
+    shipping-address-required: ${APP_ORDERS_SHIPPING_ADDRESS_REQUIRED:false}
     reservation-ttl: 15m
     expiration-scan-delay: 60s
     expiration-enabled: true
@@ -51,6 +72,12 @@ app:
       success-scan-delay: 1h
       batch-size: 100
       enabled: false
+  reports:
+    minute-limit: ${APP_REPORTS_MINUTE_LIMIT:5}
+    daily-limit: ${APP_REPORTS_DAILY_LIMIT:20}
+    retention-days: ${APP_REPORTS_RETENTION_DAYS:90}
+    cleanup-enabled: ${APP_REPORTS_CLEANUP_ENABLED:false}
+    cleanup-delay: ${APP_REPORTS_CLEANUP_DELAY:1m}
   jwt:
     secret: ${APP_JWT_SECRET:dev-only-kitschcatch-jwt-secret-32-bytes}
     access-token-ttl: ${APP_JWT_ACCESS_TOKEN_TTL:30m}

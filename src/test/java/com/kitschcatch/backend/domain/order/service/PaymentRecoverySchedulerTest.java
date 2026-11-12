@@ -1,6 +1,8 @@
 // 성공 결제의 외부 취소를 저빈도 순환 조회에 포함하는지 검증하는 테스트
 package com.kitschcatch.backend.domain.order.service;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -60,9 +62,9 @@ class PaymentRecoverySchedulerTest {
 		AtomicReference<LocalDateTime> firstLookupFinishedAt = new AtomicReference<>();
 		when(pg.getPayment("key-1")).thenAnswer(invocation -> {
 			firstLookupFinishedAt.set(LocalDateTime.now());
-			return new TossPaymentResponse("key-1", "PG-ATT-1", 12000L, "DONE");
+			return cardApproval("key-1", "PG-ATT-1", 12000L);
 		});
-		when(pg.getPayment("key-2")).thenReturn(new TossPaymentResponse("key-2", "PG-ATT-2", 12000L, "DONE"));
+		when(pg.getPayment("key-2")).thenReturn(cardApproval("key-2", "PG-ATT-2", 12000L));
 		new PaymentRecoveryScheduler(repository, pg, recovery, 10).scanSuccessfulPayments();
 		var expiry = ArgumentCaptor.forClass(LocalDateTime.class);
 		verify(recovery, times(2)).claim(anyString(), anyString(), expiry.capture());

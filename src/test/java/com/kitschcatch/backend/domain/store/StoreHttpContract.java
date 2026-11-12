@@ -1,7 +1,9 @@
 // 실제 HTTP 서버에서 매장 조회 계약을 H2와 PostgreSQL에 공통 검증한다.
 package com.kitschcatch.backend.domain.store;
 
+import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.kitschcatch.backend.domain.store.entity.Store;
 import com.kitschcatch.backend.domain.store.entity.StoreBusinessHours;
@@ -22,7 +24,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.convention.TestBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestClient;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 abstract class StoreHttpContract {
     @LocalServerPort int port;
@@ -30,16 +39,28 @@ abstract class StoreHttpContract {
     @Autowired JdbcTemplate jdbc;
     @Autowired JwtTokenProvider tokens;
     @Autowired UserRepository users;
+    @MockitoBean S3Client s3;
+    @TestBean(methodName = "testPresigner") S3Presigner presigner;
     String token;
+    long userId;
+
+    static S3Presigner testPresigner() {
+        return S3Presigner.builder().region(Region.AP_NORTHEAST_2).credentialsProvider(
+            StaticCredentialsProvider.create(AwsSessionCredentials.create("test-access", "test-secret", "test-session")))
+            .build();
+    }
 
     @BeforeEach
     void resetData() {
+        jdbc.update("DELETE FROM store_images");
+        jdbc.update("DELETE FROM store_amenities");
         jdbc.update("DELETE FROM store_business_hours");
         jdbc.update("DELETE FROM stores");
         users.deleteAllInBatch();
         var user=users.saveAndFlush(User.builder().nickname("매장 조회자").email("store-reader@example.test")
             .authProvider(AuthProvider.KAKAO).providerUserId("store-reader").build());
-        token = tokens.createAccessToken(user.getId());
+        userId = user.getId();
+        token = tokens.createAccessToken(userId);
     }
 
     @Test
@@ -86,6 +107,9 @@ abstract class StoreHttpContract {
         var response = get("/api/stores/" + store.getId());
         assertThat(response.status()).isEqualTo(200);
         assertThat(response.data()).containsEntry("phone", null).containsEntry("latitude", 37.5);
+        assertThat((Map<?, ?>) response.data().get("reviewSummary"))
+            .extracting(summary -> summary.get("reviewCount"), summary -> summary.get("averageRating"))
+            .containsExactly(0, null);
         var hours = response.rows("businessHours");
         assertThat(hours).extracting(row -> row.get("dayOfWeek")).containsExactly("MONDAY", "FRIDAY", "SUNDAY");
         assertThat(hours.getFirst()).containsEntry("openTime", "11:00").containsEntry("closeTime", "20:00");
@@ -96,12 +120,58 @@ abstract class StoreHttpContract {
     @Test
     void detailDistinguishesMissingHoursFromMissingStore() {
         var store = store("시간 미등록", "서울", 0, 0);
-        assertThat(get("/api/stores/" + store.getId()).rows("businessHours")).isEmpty();
+        var detail = get("/api/stores/" + store.getId());
+        assertThat(detail.rows("businessHours")).isEmpty();
+        assertThat(detail.data()).containsEntry("description", null).containsEntry("thumbnailUrl", null);
+        assertThat(detail.rows("images")).isEmpty();
+        assertThat(detail.rows("amenities")).hasSize(6).allSatisfy(row -> assertThat(row)
+            .containsEntry("status", "UNKNOWN").containsEntry("note", null));
         assertError(get("/api/stores/9223372036854775807"), 404, "STORE_001");
     }
 
+    @Test
+    void detailShowsVerifiedFacilitiesAndSignsTheOrderedPhotosWithoutContactingS3() {
+        var store = store("소개 검증", "서울", 37.5, 127);
+        long id = store.getId();
+        String description = "첫 문단\n둘째 문단";
+        jdbc.update("UPDATE stores SET description = ? WHERE id = ?", description, id);
+        jdbc.update("INSERT INTO store_amenities(store_id,code,status,note) VALUES (?,?,?,?)",
+            id, "PARKING", "AVAILABLE", "건물 공용 유료");
+        jdbc.update("INSERT INTO store_amenities(store_id,code,status) VALUES (?,?,?)", id, "WIFI", "UNAVAILABLE");
+        String first = "stores/" + id + "/00000000-0000-4000-8000-000000000001.jpg";
+        String second = "stores/" + id + "/00000000-0000-4000-8000-000000000002.webp";
+        jdbc.update("INSERT INTO store_images(store_id,object_key,sort_order) VALUES (?,?,?)", id, second, 1);
+        jdbc.update("INSERT INTO store_images(store_id,object_key,sort_order,caption,credit,source_url) VALUES (?,?,?,?,?,?)",
+            id, first, 0, "매장 입구", "매장 제공", "https://example.test/source");
+
+        String path = "/api/stores/" + id;
+        var response = get(path);
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.data()).containsEntry("description", description).containsEntry("favorited", false);
+        var photos = response.rows("images");
+        assertThat(photos).extracting(row -> row.get("sortOrder")).containsExactly(0, 1);
+        var representative = photos.getFirst();
+        assertThat(representative).containsEntry("caption", "매장 입구").containsEntry("credit", "매장 제공")
+            .containsEntry("sourceUrl", "https://example.test/source").doesNotContainKeys("objectKey", "imageKey");
+        String thumbnail = (String) response.data().get("thumbnailUrl");
+        assertThat(thumbnail).isEqualTo(representative.get("imageUrl")).contains("X-Amz-Security-Token=test-session");
+        assertGetUrl(thumbnail, "store-test-bucket", first, 720, "test-access", "test-secret");
+        assertGetUrl((String) photos.get(1).get("imageUrl"), "store-test-bucket", second, 720, "test-access", "test-secret");
+        var facilities = response.rows("amenities");
+        assertThat(facilities).extracting(row -> row.get("code")).containsExactly(
+            "PARKING", "RESTROOM", "WIFI", "ELEVATOR", "WHEELCHAIR_ACCESS", "PET_FRIENDLY");
+        assertThat(facilities).extracting(row -> row.get("status")).containsExactly(
+            "AVAILABLE", "UNKNOWN", "UNAVAILABLE", "UNKNOWN", "UNKNOWN", "UNKNOWN");
+        assertThat(facilities.getFirst()).containsEntry("label", "주차").containsEntry("note", "건물 공용 유료");
+        var headers = RestClient.create("http://127.0.0.1:" + port).get().uri(path)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toBodilessEntity().getHeaders();
+        assertThat(headers.getCacheControl()).contains("no-store");
+        verifyNoInteractions(s3);
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"/api/stores", "/api/stores/nearby?latitude=0&longitude=0", "/api/stores/1"})
+    @ValueSource(strings = {"/api/stores", "/api/stores/nearby?latitude=0&longitude=0", "/api/stores/1",
+        "/api/stores/1/recommendations"})
     void allEndpointsRequireAccessToken(String path) {
         assertError(request(path, null), 401, "AUTH_004");
         assertError(request(path, "invalid"), 401, "AUTH_004");
@@ -125,6 +195,7 @@ abstract class StoreHttpContract {
     @ValueSource(strings = {"0", "-1", "abc", "1.5", "9223372036854775808"})
     void malformedStoreIdsAreBadRequests(String id) {
         assertError(get("/api/stores/" + id), 400, "COMMON_002");
+        assertError(get("/api/stores/" + id + "/recommendations"), 400, "COMMON_002");
     }
 
     @ParameterizedTest
@@ -158,6 +229,81 @@ abstract class StoreHttpContract {
         assertThat(next.ids("stores")).containsExactly(edge.getId());
         assertThat(next.rows("stores").getFirst()).containsEntry("distanceMeters", radiusKm * 1000);
         assertThat(next.data()).containsEntry("hasNext", false);
+
+        var recommended = get(recommendationsPath(origin) + "?radiusKm=" + radiusKm + "&limit=10");
+        assertThat(recommended.status()).isEqualTo(200);
+        assertThat(recommended.ids("stores")).containsExactly(duplicate.getId(), edge.getId());
+        assertThat(recommended.rows("stores").getLast()).containsEntry("distanceMeters", radiusKm * 1000);
+    }
+
+    @Test
+    void recommendationsExcludeTheSourceBeforeLimitingAndSortByUnroundedDistanceThenId() {
+        double latitude = 37.5;
+        double longitude = 127;
+        var source = store("기준 매장", "서울", latitude, longitude);
+        var first = store("같은 좌표의 다른 지역 매장", "경기", latitude, longitude);
+        var second = store("같은 좌표의 두 번째 매장", "서울", latitude, longitude);
+        var farther = store("반올림 거리가 같은 먼 매장", "서울", latitude + northOfEquator(999.8), longitude);
+        var closer = store("반올림 거리가 같은 가까운 매장", "서울", latitude + northOfEquator(999.6), longitude);
+        var withinDefaultRadius = store("기본 반경 안", "서울", latitude + northOfEquator(2400), longitude);
+        store("개수 제한 밖", "서울", latitude + northOfEquator(4900), longitude);
+
+        var response = get(recommendationsPath(source));
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.data()).containsOnlyKeys("sourceStoreId", "radiusKm", "limit", "stores")
+            .containsEntry("radiusKm", 5).containsEntry("limit", 5);
+        assertThat(((Number) response.data().get("sourceStoreId")).longValue()).isEqualTo(source.getId());
+        assertThat(response.ids("stores"))
+            .containsExactly(first.getId(), second.getId(), closer.getId(), farther.getId(), withinDefaultRadius.getId());
+        var rows = response.rows("stores");
+        assertThat(rows.getFirst()).containsOnlyKeys("id", "name", "address", "latitude", "longitude",
+                "distanceMeters", "favorited")
+            .containsEntry("name", first.getName()).containsEntry("address", first.getAddress())
+            .containsEntry("latitude", latitude).containsEntry("longitude", longitude)
+            .containsEntry("distanceMeters", 0).containsEntry("favorited", false);
+        assertThat(rows.subList(2, 4)).allSatisfy(row -> assertThat(row).containsEntry("distanceMeters", 1000));
+        var limited = get(recommendationsPath(source) + "?limit=1");
+        assertThat(limited.data()).containsEntry("limit", 1);
+        assertThat(limited.ids("stores")).containsExactly(first.getId());
+    }
+
+    @Test
+    void recommendationsDistinguishNoCandidatesFromMissingSource() {
+        var source = store("외곽 매장", "서울", 0, 0);
+        store("반경 밖 매장", "서울", 1, 0);
+        var empty = get(recommendationsPath(source));
+        assertThat(empty.status()).isEqualTo(200);
+        assertThat(empty.rows("stores")).isEmpty();
+        assertError(get("/api/stores/9223372036854775807/recommendations"), 404, "STORE_001");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "2", "6", "1.5", "word"})
+    void recommendationsRejectInvalidRadius(String radius) {
+        var source = store("기준 매장", "서울", 0, 0);
+        assertError(get(recommendationsPath(source) + "?radiusKm=" + radius), 400, "STORE_002");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "11", "1.5", "word", "2147483648"})
+    void recommendationsRejectInvalidLimit(String limit) {
+        var source = store("기준 매장", "서울", 0, 0);
+        assertError(get(recommendationsPath(source) + "?limit=" + limit), 400, "COMMON_001");
+    }
+
+    @Test
+    void recommendationsIncludeFavoritesForOnlyTheAuthenticatedUser() {
+        var source = store("기준 매장", "서울", 0, 0);
+        var candidate = store("추천 매장", "서울", 0, 0);
+        var other = users.saveAndFlush(User.builder().nickname("다른 조회자").email("other-store-reader@example.test")
+            .authProvider(AuthProvider.KAKAO).providerUserId("other-store-reader").build());
+        jdbc.update("INSERT INTO store_favorites(user_id, store_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            userId, candidate.getId());
+
+        var path = recommendationsPath(source);
+        assertThat(get(path).rows("stores").getFirst()).containsEntry("favorited", true);
+        assertThat(request(path, tokens.createAccessToken(other.getId())).rows("stores").getFirst())
+            .containsEntry("favorited", false);
     }
 
     @Test
@@ -193,16 +339,25 @@ abstract class StoreHttpContract {
 
     @Test
     @SuppressWarnings("unchecked")
-    void swaggerExposesThreeAuthenticatedReadEndpoints() {
+    void swaggerExposesAuthenticatedStoreReadEndpoints() {
         var response = request("/v3/api-docs", null);
         assertThat(response.status()).isEqualTo(200);
         var paths = (Map<String, Map<String, Map<String, Object>>>) response.body().get("paths");
-        for (String path : List.of("/api/stores", "/api/stores/nearby", "/api/stores/{storeId}")) {
+        var recommendations = "/api/stores/{storeId}/recommendations";
+        for (String path : List.of("/api/stores", "/api/stores/nearby", "/api/stores/{storeId}", recommendations)) {
             assertThat(paths.get(path)).containsOnlyKeys("get");
             assertThat(paths.get(path).get("get").get("security").toString()).contains("bearerAuth");
         }
+        assertThat(response.body().get("components").toString())
+            .contains("thumbnailUrl", "description", "images", "amenities", "UNKNOWN");
         assertThat(paths.get("/api/stores/nearby").get("get").get("parameters").toString())
             .contains("latitude", "longitude", "radiusKm", "page", "size");
+        assertThat(paths.get(recommendations).get("get").get("parameters").toString())
+            .contains("storeId", "radiusKm", "limit").doesNotContain("latitude", "longitude", "page");
+    }
+
+    private String recommendationsPath(Store source) {
+        return "/api/stores/" + source.getId() + "/recommendations";
     }
 
     Store store(String name, String region, double latitude, double longitude) {

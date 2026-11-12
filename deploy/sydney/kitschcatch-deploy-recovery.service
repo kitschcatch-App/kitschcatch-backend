@@ -1,0 +1,13 @@
+[Unit]
+Description=Recover interrupted KitschCatch development deployments
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=5min
+ExecStart=/usr/bin/python3 /opt/kitschcatch/deploy/deploy.py recover
+
+[Install]
+WantedBy=multi-user.target

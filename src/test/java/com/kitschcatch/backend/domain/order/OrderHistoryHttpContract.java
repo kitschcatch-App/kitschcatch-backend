@@ -1,6 +1,8 @@
 // 실제 HTTP·JWT·DB로 거래 내역의 권한·상태·스냅샷·페이지와 읽기 전용 동작을 검증한다.
 package com.kitschcatch.backend.domain.order;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static com.kitschcatch.backend.support.S3GetUrlAssertions.assertGetUrl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -344,7 +346,7 @@ abstract class OrderHistoryHttpContract {
     }
 
     private void approve(OrderFixture order) {
-        when(toss.confirm(any())).thenReturn(new TossPaymentResponse("pg-key-" + order.paymentId(), order.orderId(), 12000L, "DONE"));
+        when(toss.confirm(any())).thenReturn(cardApproval("pg-key-" + order.paymentId(), order.orderId(), 12000L));
         assertThat(request("POST", "/api/payments/" + order.paymentId() + "/confirm", buyerToken,
             Map.of("paymentId", order.paymentId(), "paymentKey", "pg-key-" + order.paymentId())).status()).isEqualTo(200);
     }

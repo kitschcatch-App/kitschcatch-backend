@@ -1,6 +1,8 @@
 // 주문과 결제 서비스의 상태 전이를 검증하는 테스트
 package com.kitschcatch.backend.domain.order.service;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -148,7 +150,7 @@ class OrderPaymentServiceTest {
 		Payment payment = payment("PAY-999", order, PaymentStatus.READY);
 		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
 		when(tossPaymentsClient.confirm(new TossPaymentConfirmRequest("toss-payment-key", "ORD-123", 650000L)))
-			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "DONE"));
+			.thenReturn(cardApproval("toss-payment-key", "ORD-123", 650000L));
 
 		PaymentResponse response = paymentService.confirmPayment(
 			1L,
@@ -225,7 +227,7 @@ class OrderPaymentServiceTest {
 		Payment payment = payment("PAY-999", order, PaymentStatus.SUCCESS, "toss-payment-key");
 		when(paymentRepository.findByPaymentIdAndOrderUserIdWithLock("PAY-999", 1L)).thenReturn(Optional.of(payment));
 		when(tossPaymentsClient.cancel(new TossPaymentCancelRequest("toss-payment-key", "고객 요청")))
-			.thenReturn(new TossPaymentResponse("toss-payment-key", "ORD-123", 650000L, "DONE"));
+			.thenReturn(cardApproval("toss-payment-key", "ORD-123", 650000L));
 
 		assertThatThrownBy(() -> paymentService.cancelPayment(1L, "PAY-999"))
 			.isInstanceOf(BusinessException.class)

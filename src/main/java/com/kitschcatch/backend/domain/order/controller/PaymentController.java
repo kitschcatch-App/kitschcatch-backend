@@ -46,7 +46,7 @@ public class PaymentController {
 	}
 
 	@PostMapping("/{paymentId}/confirm")
-	@Operation(summary = "결제 승인", description = "최초 시도는 attemptId 생략이 가능합니다. 같은 요청은 PG를 재호출하지 않습니다. 결과가 불확실하거나 처리 중이면 202와 PROCESSING을 반환하며 결제 조회를 반복해야 합니다. 확정 거절은 200과 FAILED로 반환합니다.")
+	@Operation(summary = "결제 승인", description = "신용·체크카드만 결제 완료로 처리합니다. 최초 시도는 attemptId 생략이 가능합니다. 같은 요청은 PG를 재호출하지 않습니다. 승인·취소 처리 중이면 202와 PROCESSING을 반환하므로 결제 조회로 결과를 확인합니다. 확정 거절은 200과 FAILED, 비허용 수단의 취소 완료는 200과 CANCELED(PG_UNSUPPORTED_PAYMENT_METHOD)로 반환합니다.")
 	public ApiResponse<PaymentResponse> confirmPayment(
 		@AuthenticationPrincipal AuthenticatedUser user,
 		@Parameter(description = "내부 결제 ID", example = "pay_123456")

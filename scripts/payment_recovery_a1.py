@@ -222,7 +222,8 @@ class PaymentGateway:
                     if key and key not in gateway.effects:
                         gateway.effects[key] = dict(paymentKey=request["paymentKey"],
                                                     orderId=request["orderId"],
-                                                    totalAmount=request["amount"], status="DONE")
+                                                    totalAmount=request["amount"], status="DONE",
+                                                    method="CARD", card={"cardType": "CREDIT"})
                         gateway.effect_time = gateway.trace.event(
                             "approval_effect_committed", **gateway.effects[key]
                         )
@@ -312,6 +313,7 @@ def app(args, db, gateway_url, secret, trace, phase, ddl, *, recovery_enabled=Tr
             [args.java, *jvm_options, "-jar", str(args.jar),
              "--spring.config.location=classpath:/application.yml",
              "--server.port=0", "--server.address=127.0.0.1",
+             "--app.orders.quote-required=false",
              f"--spring.datasource.url=jdbc:postgresql://127.0.0.1:{args.db_port}/{args.db_name}"
              f"?currentSchema={db.schema}",
              f"--spring.datasource.username={args.db_user}",

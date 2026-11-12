@@ -18,6 +18,8 @@ repositories {
 }
 
 dependencies {
+	implementation 'com.twelvemonkeys.imageio:imageio-webp:3.12.0'
+	implementation 'com.drewnoakes:metadata-extractor:2.19.0'
 	implementation 'org.apache.commons:commons-csv:1.14.1'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -44,6 +46,19 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 전체 통합 테스트에서 사용하지 않는 Spring 컨텍스트가 쌓이지 않게 한다.
+	systemProperty 'spring.test.context.cache.maxSize', '3'
+}
+
+def releaseCommit = providers.gradleProperty('releaseSha').orElse('local').get()
+if (releaseCommit != 'local' && !(releaseCommit ==~ /[0-9a-f]{40}/)) {
+	throw new GradleException('releaseSha는 전체 Git 커밋 SHA여야 합니다.')
+}
+tasks.named('processResources') {
+	inputs.property('releaseSha', releaseCommit)
+	filesMatching('kitschcatch-release.properties') {
+		expand(commit: releaseCommit)
+	}
 }
 
 tasks.register('storeCsv', JavaExec) {
@@ -51,4 +66,11 @@ tasks.register('storeCsv', JavaExec) {
 	description = '명시한 PostgreSQL 대상에서 검수 매장 CSV를 dry-run 또는 apply한다.'
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'com.kitschcatch.backend.tools.storecsv.StoreCsvCommand'
+}
+
+tasks.register('storeContent', JavaExec) {
+	group = 'application'
+	description = '검수한 매장 상세 JSON을 명시한 PostgreSQL 대상에 검증·반영한다.'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.kitschcatch.backend.tools.storecontent.StoreContentCommand'
 }

@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.domain.post.dto;
 
+import com.kitschcatch.backend.domain.order.entity.ShippingPolicy;
 import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -38,6 +39,8 @@ public record CreatePostRequest(
 	@Schema(description = "업로드 완료된 이미지 키 목록")
 	@NotEmpty
 	@Size(max = 10)
-	List<@NotBlank @Size(max = 512) String> imageKeys
+	List<@NotBlank @Size(max = 512) String> imageKeys,
+ @jakarta.validation.constraints.Min(ShippingPolicy.AMOUNT) @jakarta.validation.constraints.Max(ShippingPolicy.AMOUNT) Long shippingAmount
 ) {
+ public CreatePostRequest(String title,String description,Long price,ProductCategory productCategory,ProductCondition productCondition,List<String> imageKeys) {this(title,description,price,productCategory,productCondition,imageKeys,null);}
 }

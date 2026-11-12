@@ -7,6 +7,7 @@ import com.kitschcatch.backend.domain.order.dto.CreatePaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.PaymentResponse;
 import com.kitschcatch.backend.domain.order.dto.RetryPaymentRequest;
 import com.kitschcatch.backend.domain.order.dto.RetryPaymentResponse;
+import com.kitschcatch.backend.domain.order.entity.PaymentOperation;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentCancelRequest;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentConfirmRequest;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentResponse;
@@ -14,6 +15,8 @@ import com.kitschcatch.backend.domain.order.toss.TossPaymentsClient;
 import com.kitschcatch.backend.domain.order.toss.TossPaymentException;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -63,10 +66,33 @@ public class PaymentService {
 			return handlePgFailure(userId, paymentId, context, exception);
 		}
 		if (paymentRecoveryService != null && context.attemptId() != null) {
-			return paymentRecoveryService.recover(context.attemptId(), tossResponse);
+			PaymentResponse result = paymentRecoveryService.recover(context.attemptId(), tossResponse);
+			if (result.processingOperation() == PaymentOperation.CANCEL) {
+				return cancelUnsupportedMethod(result);
+			}
+			return result;
 		}
 		validateTossPayment(tossResponse, context, TOSS_CONFIRM_DONE);
+		if (!tossResponse.isSupportedCard()) throw new BusinessException(ErrorCode.TOSS_PAYMENTS_REQUEST_FAILED);
 		return paymentTransactionService.completeConfirm(userId, paymentId, tossResponse.paymentKey());
+	}
+
+	private PaymentResponse cancelUnsupportedMethod(PaymentResponse pending) {
+		String attemptId = pending.attemptId();
+		var request = paymentRecoveryService.findUnsupportedMethodCancellation(attemptId);
+		String token = UUID.randomUUID().toString();
+		if (request.isEmpty() || !paymentRecoveryService.claim(attemptId, token, LocalDateTime.now().plusSeconds(45))) {
+			return pending;
+		}
+		TossPaymentResponse canceled;
+		try {
+			canceled = tossPaymentsClient.cancel(request.get());
+		} catch (BusinessException exception) {
+			String code = exception instanceof TossPaymentException pg ? pg.pgCode() : exception.getErrorCode().name();
+			paymentRecoveryService.recordLookupFailure(attemptId, code, token);
+			return pending;
+		}
+		return paymentRecoveryService.recover(attemptId, canceled, token);
 	}
 
 	public PaymentResponse getPayment(Long userId, String paymentId) {

@@ -1,5 +1,7 @@
 // 구매 확정 권한과 늦은 PG 취소 및 조회 계약을 검증한다.
 package com.kitschcatch.backend.domain.order;
+
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -62,7 +64,7 @@ abstract class PurchaseConfirmationHttpContract extends OrderLifecycleHttpFixtur
         String attempt=jdbc.queryForObject("SELECT current_attempt_id FROM payments",String.class);
         recovery.recover(attempt,new TossPaymentResponse("pg-key-"+o.paymentId(),o.orderId(),12000L,"CANCELED"));
         assertThat(jdbc.queryForObject("SELECT recovery_state FROM payments",String.class)).isEqualTo("REVIEW_REQUIRED");
-        recovery.recover(attempt,new TossPaymentResponse("pg-key-"+o.paymentId(),o.orderId(),12000L,"DONE"));
+        recovery.recover(attempt,cardApproval("pg-key-"+o.paymentId(),o.orderId(),12000L));
         assertThat(jdbc.queryForObject("SELECT recovery_state FROM payments",String.class)).isEqualTo("REVIEW_REQUIRED");
         assertThat(jdbc.queryForObject("SELECT order_status FROM orders",String.class)).isEqualTo("PURCHASE_CONFIRMED");
         assertThat(jdbc.queryForObject("SELECT product_status FROM posts",String.class)).isEqualTo("SOLD_OUT");

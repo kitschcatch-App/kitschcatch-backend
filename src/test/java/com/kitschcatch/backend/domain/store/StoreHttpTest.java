@@ -9,6 +9,6 @@ import org.springframework.boot.test.context.SpringBootTest;
     "spring.datasource.username=sa", "spring.datasource.password=",
     "spring.jpa.hibernate.ddl-auto=create-drop", "kakao.oauth.native-app-key=test-native-app-key",
     "app.orders.expiration-enabled=false", "app.payments.recovery.enabled=false",
-    "springdoc.api-docs.enabled=true"
+    "springdoc.api-docs.enabled=true", "app.s3.bucket=store-test-bucket", "app.s3.download-url-ttl=12m"
 })
 class StoreHttpTest extends StoreHttpContract {}

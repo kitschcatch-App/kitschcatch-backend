@@ -60,10 +60,14 @@ abstract class PublicUserProfileHttpContract {
 		var own = get(owner.getId(), "/api/users/" + owner.getId());
 		var publicData = own.data();
 		assertThat(own.status()).isEqualTo(200);
-		assertThat(publicData.keySet()).containsExactlyInAnyOrder("id", "nickname", "username", "bio", "profileImageUrl", "profileRegisteredAt");
+		assertThat(publicData.keySet()).containsExactlyInAnyOrder("id", "nickname", "username", "bio", "profileImageUrl", "profileRegisteredAt",
+            "blockedByMe", "canFollow");
 		assertThat(publicData).containsEntry("username", "collector_1").containsEntry("bio", "가 수집")
 			.containsEntry("profileImageUrl", "https://cdn.example/" + key);
-		assertThat(get(other.getId(), "/api/users/" + owner.getId()).data()).isEqualTo(publicData);
+		assertThat(publicData).containsEntry("blockedByMe", false).containsEntry("canFollow", false);
+        var otherView = new java.util.HashMap<>(publicData);
+        otherView.put("canFollow", true);
+        assertThat(get(other.getId(), "/api/users/" + owner.getId()).data()).isEqualTo(otherView);
 		assertError(get(null, "/api/users/" + owner.getId()), 401, "AUTH_004");
 		assertError(get(owner.getId(), "/api/users/" + other.getId()), 404, "USER_001");
 		assertError(get(owner.getId(), "/api/users/9223372036854775807"), 404, "USER_001");
@@ -209,7 +213,8 @@ abstract class PublicUserProfileHttpContract {
 		var schemas = (Map<?, ?>) ((Map<?, ?>) document.get("components")).get("schemas");
 		var publicProperties = (Map<?, ?>) ((Map<?, ?>) schemas.get("PublicUserProfileResponse")).get("properties");
 		assertThat(publicProperties.keySet().stream().map(Object::toString).toList())
-			.containsExactlyInAnyOrder("id", "nickname", "username", "bio", "profileImageUrl", "profileRegisteredAt");
+			.containsExactlyInAnyOrder("id", "nickname", "username", "bio", "profileImageUrl", "profileRegisteredAt",
+                "blockedByMe", "canFollow");
 		var paths = (Map<?, ?>) document.get("paths");
 		assertThat(paths.containsKey("/api/users/{userId}")).isTrue();
 		assertThat(paths.containsKey("/api/users/username-availability")).isTrue();

@@ -60,7 +60,8 @@ import org.springframework.web.client.RestClient;
 	"spring.jpa.hibernate.ddl-auto=create-drop", "kakao.oauth.native-app-key=kakao-app",
 	"app.orders.expiration-enabled=false", "app.payments.recovery.enabled=false",
 	"social.oauth.apple.client-id=apple-app", "social.oauth.naver.client-id=naver-app",
-	"social.oauth.naver.client-secret=local-secret", "social.oauth.naver.redirect-uri=https://app.example/callback"
+	"social.oauth.naver.client-secret=local-secret", "social.oauth.naver.redirect-uri=https://app.example/callback",
+	"app.naver.ios-app-id=TESTTEAM12.com.example.app"
 })
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext
@@ -131,6 +132,20 @@ class SocialLoginHttpTest {
 	@Autowired private LoginNonceRepository nonces;
 	@Autowired private JwtTokenProvider jwt;
 	@MockitoSpyBean private SocialUserService socialUsers;
+
+	@Test
+	void appleAssociationIsPublicAndOnlyClaimsNaverCallback() {
+		RestClient.create("http://127.0.0.1:" + port).get()
+			.uri("/.well-known/apple-app-site-association")
+			.exchange((request, response) -> {
+				assertThat(response.getStatusCode().value()).isEqualTo(200);
+				assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
+				assertThat(response.bodyTo(Map.class)).isEqualTo(Map.of("applinks", Map.of("details", List.of(
+					Map.of("appIDs", List.of("TESTTEAM12.com.example.app"), "components",
+						List.of(Map.of("/", "/api/auth/naver/callback")))))));
+				return null;
+			});
+	}
 
 	@BeforeAll
 	void legacyMigrationWhenPostgres() throws Exception {

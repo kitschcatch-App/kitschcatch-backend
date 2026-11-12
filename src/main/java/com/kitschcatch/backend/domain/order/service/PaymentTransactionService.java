@@ -108,6 +108,9 @@ public class PaymentTransactionService {
 			|| payment.getPaymentStatus() == PaymentStatus.SUCCESS
 			|| payment.getPaymentStatus() == PaymentStatus.CANCELED) {
 			PaymentAttempt current = currentAttempt(payment);
+			if (current != null && current.isUnsupportedMethodCancellation()) {
+				current = current.getApprovalAttempt();
+			}
 			if (current == null || current.getOperation() != PaymentAttemptOperation.CONFIRM
 				|| !request.paymentKey().equals(current.getPaymentKey())
 				|| !matchesAttempt(request, current)) {
@@ -291,11 +294,12 @@ public class PaymentTransactionService {
 		validatePaymentStatus(payment, PaymentStatus.PROCESSING);
 		validateOrderStatus(payment.getOrder(), OrderStatus.PAID);
 		validateReservation(payment.getOrder(), ProductStatus.SOLD_OUT);
+		OrderStatus previousOrderStatus = payment.getOrder().getOrderStatus();
 		payment.cancel();
 		if (payment.getOrder().getShipment() == null) payment.getOrder().getPost().releaseOrder(payment.getOrder().getOrderNumber());
 		if (notificationPublisher != null) {
 		    notificationPublisher.publishEvent(
-		        new NotificationEvents.PaymentChanged(payment, NotificationType.PAYMENT_CANCELED));
+		        new NotificationEvents.PaymentCanceled(payment, previousOrderStatus));
 		}
 		return toResponse(payment);
 	}

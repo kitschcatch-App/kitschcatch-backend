@@ -9,8 +9,10 @@ import com.kitschcatch.backend.global.security.JwtTokenProvider;
 
 import java.security.Principal;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import org.springframework.context.event.EventListener;
+import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -35,11 +37,11 @@ import org.springframework.util.StringUtils;
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
 	private static final String BEARER_PREFIX = "Bearer ";
-	private static final Pattern CHAT_ROOM_SUBSCRIBE_PATTERN = Pattern.compile("^/sub/chat-rooms/(\\d+)$");
 
 	private final JwtTokenProvider jwtTokenProvider;
 	private final ChatRoomRepository chatRoomRepository;
 	private final UserRepository users;
+	private final ConcurrentMap<String, Long> sessionUsers = new ConcurrentHashMap<>();
 
 	@Override
 	public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -65,30 +67,35 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 				null,
 				List.of(new SimpleGrantedAuthority("ROLE_USER"))
 			));
-			return message;
-		}
+            if (accessor.getSessionId() != null) {
+                sessionUsers.put(accessor.getSessionId(), authenticatedUser.userId());
+            }
+            return message;
+        }
 
-		if (StompCommand.SEND.equals(accessor.getCommand()) || StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-			requireActive(extractUserId(accessor.getUser()));
-		}
+        if (StompCommand.SEND.equals(accessor.getCommand()) || StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+            Long userId = extractUserId(accessor.getUser());
+            requireActive(userId);
+            String destination = accessor.getDestination();
+            Long roomId = StompCommand.SUBSCRIBE.equals(accessor.getCommand())
+                ? ChatSocketDestinations.subscriptionRoom(destination)
+                : ChatSocketDestinations.commandRoom(destination);
+            if (roomId == null || !chatRoomRepository.existsParticipant(roomId, userId)) {
+                throw new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+            }
+        }
 
-		if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-			// 실시간 메시지 구독도 채팅방 참여자만 허용한다.
-			String destination = accessor.getDestination();
-			Matcher matcher = CHAT_ROOM_SUBSCRIBE_PATTERN.matcher(destination == null ? "" : destination);
+        return message;
+    }
 
-			if (matcher.matches()) {
-				Long userId = extractUserId(accessor.getUser());
-				Long chatRoomId = Long.valueOf(matcher.group(1));
+    Long userForSession(String sessionId) {
+        return sessionId == null ? null : sessionUsers.get(sessionId);
+    }
 
-				if (!chatRoomRepository.existsParticipant(chatRoomId, userId)) {
-					throw new BusinessException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
-				}
-			}
-		}
-
-		return message;
-	}
+    @EventListener
+    public void removeSession(SessionDisconnectEvent event) {
+        sessionUsers.remove(event.getSessionId());
+    }
 
 	private void requireActive(Long userId) {
 		if (!users.existsByIdAndWithdrawnAtIsNull(userId)) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);

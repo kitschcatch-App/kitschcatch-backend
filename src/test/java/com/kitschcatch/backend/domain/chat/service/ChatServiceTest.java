@@ -1,5 +1,7 @@
 package com.kitschcatch.backend.domain.chat.service;
 
+import com.kitschcatch.backend.domain.block.repository.UserBlockRepository;
+import com.kitschcatch.backend.domain.block.service.UserInteractionPolicy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,7 +58,8 @@ class ChatServiceTest {
 		postRepository = mock(PostRepository.class);
 		userRepository = mock(UserRepository.class);
 		postImageStorage = mock(PostImageStorage.class);
-		chatService = new ChatService(chatRoomRepository, chatMessageRepository, postRepository, userRepository, postImageStorage);
+		chatService = new ChatService(chatRoomRepository, chatMessageRepository, postRepository, userRepository, postImageStorage,
+            mock(ChatContactPolicy.class), new UserInteractionPolicy(mock(UserBlockRepository.class)));
 
 		// 채팅방 상세 조회와 생성 테스트에서 공통으로 사용할 기본 데이터를 준비한다.
 		buyer = user(1L, "buyer", "buyer@example.com", "buyer-provider");

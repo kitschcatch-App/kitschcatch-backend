@@ -58,7 +58,9 @@ class HttpTossPaymentsClientTest {
 				  "paymentKey": "toss-payment-key",
 				  "orderId": "ORD-123",
 				  "totalAmount": 650000,
-				  "status": "DONE"
+				  "status": "DONE",
+				  "method": "카드",
+				  "card": {"cardType": "체크", "issuerCode": "61"}
 				}
 				""", MediaType.APPLICATION_JSON));
 
@@ -67,6 +69,8 @@ class HttpTossPaymentsClientTest {
 		);
 
 		assertThat(response.status()).isEqualTo("DONE");
+		assertThat(response.method()).isEqualTo("카드");
+		assertThat(response.card().cardType()).isEqualTo("체크");
 		server.verify();
 	}
 

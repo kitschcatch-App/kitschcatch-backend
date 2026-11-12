@@ -1,6 +1,8 @@
 // 실제 데이터베이스에서 주문 예약과 결제 및 상품 변경의 동시성을 검증한다.
 package com.kitschcatch.backend.domain.order.service;
 
+import static com.kitschcatch.backend.domain.order.toss.TossPaymentFixtures.cardApproval;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -67,7 +69,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 	"spring.jpa.hibernate.ddl-auto=create-drop"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({OrderService.class, OrderReservationService.class, OrderReservationScheduler.class,
+@Import({com.kitschcatch.backend.domain.address.service.ShippingAddressService.class, OrderService.class, OrderReservationService.class, OrderReservationScheduler.class,
 	PaymentTransactionService.class, PaymentService.class, PaymentRecoveryService.class, PostService.class, com.kitschcatch.backend.domain.post.service.PostCountQueryService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class OrderReservationIntegrationTest {
@@ -161,7 +163,7 @@ class OrderReservationIntegrationTest {
 	@Test
 	void confirmationSellsPostAndCancellationReleasesIt() {
 		CreateOrderResponse order = createOrder();
-		when(tossPaymentsClient.confirm(any())).thenReturn(new TossPaymentResponse("key", order.orderId(), 12000L, "DONE"));
+		when(tossPaymentsClient.confirm(any())).thenReturn(cardApproval("key", order.orderId(), 12000L));
 		paymentService.confirmPayment(buyerId, order.paymentId(), new ConfirmPaymentRequest(order.paymentId(), "key"));
 		assertThat(postRepository.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.SOLD_OUT);
 		assertThat(orderRepository.findByOrderNumberAndUserId(order.orderId(), buyerId).orElseThrow().getOrderStatus()).isEqualTo(OrderStatus.PAID);
@@ -235,7 +237,7 @@ class OrderReservationIntegrationTest {
 		assertThat(retry.pgOrderId()).isNotEqualTo(order.orderId());
 		reset(tossPaymentsClient);
 		when(tossPaymentsClient.confirm(any())).thenReturn(
-			new TossPaymentResponse("second-key", retry.pgOrderId(), 12000L, "DONE"));
+			cardApproval("second-key", retry.pgOrderId(), 12000L));
 
 		paymentService.confirmPayment(buyerId, order.paymentId(),
 			new ConfirmPaymentRequest(order.paymentId(), "second-key", retry.attemptId()));
@@ -308,7 +310,7 @@ class OrderReservationIntegrationTest {
 		when(tossPaymentsClient.confirm(any())).thenAnswer(invocation -> {
 			pgStarted.countDown();
 			if (!pgFinish.await(15, TimeUnit.SECONDS)) throw new AssertionError("PG 완료 신호 없음");
-			return new TossPaymentResponse("key", order.orderId(), 12000L, "DONE");
+			return cardApproval("key", order.orderId(), 12000L);
 		});
 		try (var executor = Executors.newSingleThreadExecutor()) {
 			var approval = executor.submit(() -> paymentService.confirmPayment(buyerId, order.paymentId(),
@@ -351,7 +353,7 @@ class OrderReservationIntegrationTest {
 	@Test
 	void paidOrderAlsoBlocksChangesAndUnknownCancellationKeepsSoldOut() {
 		CreateOrderResponse order = createOrder();
-		when(tossPaymentsClient.confirm(any())).thenReturn(new TossPaymentResponse("key", order.orderId(), 12000L, "DONE"));
+		when(tossPaymentsClient.confirm(any())).thenReturn(cardApproval("key", order.orderId(), 12000L));
 		paymentService.confirmPayment(buyerId, order.paymentId(), new ConfirmPaymentRequest(order.paymentId(), "key"));
 		assertThatThrownBy(() -> postService.deletePost(sellerId, postId)).isInstanceOf(BusinessException.class);
 		assertThatThrownBy(() -> postService.updatePost(sellerId, postId,

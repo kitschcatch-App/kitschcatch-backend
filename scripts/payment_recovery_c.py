@@ -68,7 +68,7 @@ class Handler(BaseHTTPRequestHandler):
                     "seconds": committed,
                     "available": None if delay is None else committed + delay,
                     "body": dict(paymentKey=key, orderId=request["orderId"], totalAmount=AMOUNT,
-                                 status="DONE"),
+                                 status="DONE", method="CARD", card={"cardType": "CREDIT"}),
                 }
         # 승인 효과는 보존한 채 응답 없이 연결을 닫아 앱에 미확정 상태를 만든다.
 

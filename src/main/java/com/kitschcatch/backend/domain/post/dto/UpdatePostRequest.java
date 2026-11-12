@@ -1,5 +1,6 @@
 package com.kitschcatch.backend.domain.post.dto;
 
+import com.kitschcatch.backend.domain.order.entity.ShippingPolicy;
 import com.kitschcatch.backend.domain.post.entity.ProductCategory;
 import com.kitschcatch.backend.domain.post.entity.ProductCondition;
 import com.kitschcatch.backend.domain.post.entity.ProductStatus;
@@ -33,6 +34,8 @@ public record UpdatePostRequest(
 
 	@Schema(description = "교체할 이미지 키 목록")
 	@Size(max = 10)
-	List<@Size(max = 512) String> imageKeys
+	List<@Size(max = 512) String> imageKeys,
+ @jakarta.validation.constraints.Min(ShippingPolicy.AMOUNT) @jakarta.validation.constraints.Max(ShippingPolicy.AMOUNT) Long shippingAmount
 ) {
+ public UpdatePostRequest(String title,String description,Long price,ProductCategory productCategory,ProductCondition productCondition,ProductStatus productStatus,List<String> imageKeys) {this(title,description,price,productCategory,productCondition,productStatus,imageKeys,null);}
 }

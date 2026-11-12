@@ -2,6 +2,7 @@
 package com.kitschcatch.backend.domain.order.service;
 
 import com.kitschcatch.backend.domain.order.entity.PaymentAttempt;
+import com.kitschcatch.backend.domain.order.entity.PaymentAttemptStatus;
 import com.kitschcatch.backend.domain.order.entity.PaymentWebhookEvent;
 import com.kitschcatch.backend.domain.order.entity.PaymentStatus;
 import com.kitschcatch.backend.domain.order.repository.PaymentAttemptRepository;
@@ -70,6 +71,10 @@ public class PaymentWebhookProcessingService {
 				PaymentAttempt attempt = attemptRepository.findFirstByPaymentKeyOrPgOrderIdOrderBySequenceNumberDesc(
 					event.getPaymentKey(), event.getPgOrderId()).orElse(null);
 				if (attempt == null) {
+					webhookService.markProcessed(event.getId(), token);
+					continue;
+				}
+				if (attempt.isUnsupportedMethodCancellation() && attempt.getAttemptStatus() == PaymentAttemptStatus.SUCCEEDED) {
 					webhookService.markProcessed(event.getId(), token);
 					continue;
 				}

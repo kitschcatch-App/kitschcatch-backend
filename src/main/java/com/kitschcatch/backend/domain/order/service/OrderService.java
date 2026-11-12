@@ -1,6 +1,7 @@
 // 주문 생성과 초기 결제 대기 정보 생성을 담당하는 서비스
 package com.kitschcatch.backend.domain.order.service;
 
+import com.kitschcatch.backend.domain.order.entity.ShippingPolicy;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderRequest;
 import com.kitschcatch.backend.domain.order.dto.CreateOrderResponse;
 import com.kitschcatch.backend.domain.order.entity.OrderStatus;
@@ -34,7 +35,14 @@ import org.springframework.transaction.annotation.Transactional;
 @EnableConfigurationProperties(OrderReservationProperties.class)
 public class OrderService {
 
-	private final PurchaseOrderRepository orderRepository;
+	private com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses;
+    @org.springframework.beans.factory.annotation.Value("${app.orders.shipping-address-required:false}")
+    private boolean shippingAddressRequired;
+    @org.springframework.beans.factory.annotation.Value("${app.orders.quote-required:true}") private boolean quoteRequired;
+    @Autowired
+    public void setAddresses(com.kitschcatch.backend.domain.address.service.ShippingAddressService addresses) { this.addresses=addresses; }
+    @Autowired private com.kitschcatch.backend.domain.order.repository.OrderQuoteRepository quotes;
+    private final PurchaseOrderRepository orderRepository;
 	private final PaymentRepository paymentRepository;
 	private final PostRepository postRepository;
 	private final UserRepository userRepository;
@@ -74,12 +82,31 @@ public class OrderService {
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 		// 두 거래 당사자 → 상품 순서로 잠가 신규 주문과 탈퇴를 직렬화한다.
 		User buyer = null;
+        boolean inactiveSeller = false;
 		for (Long id : java.util.stream.Stream.of(userId, sellerId).distinct().sorted().toList()) {
-			User participant = userRepository.findActiveByIdForUpdate(id)
-				.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
+			var participantResult = userRepository.findActiveByIdForUpdate(id);
+            // 이미 생성된 견적 주문은 판매자가 탈퇴해도 같은 결과를 반환한다.
+            if (participantResult.isEmpty() && !id.equals(userId) && request.quoteId() != null) {
+                participantResult = userRepository.findByIdForUpdate(id);
+                inactiveSeller = true;
+            }
+            User participant = participantResult
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_AUTH_TOKEN));
 			if (id.equals(userId)) buyer = participant;
 		}
-		Post post = postRepository.findByIdForUpdate(request.postId())
+		var quote=request.quoteId()==null?null:quotes.findByIdAndUserId(request.quoteId(),userId).orElseThrow(()->new BusinessException(ErrorCode.QUOTE_INVALID));
+        if(quote!=null) {
+            if(!quote.getPostId().equals(request.postId()) || !quote.getAddressId().equals(request.shippingAddressId()) || quote.getPricing().total()!=request.amount()) throw new BusinessException(ErrorCode.QUOTE_INVALID);
+            if(quote.getUsedOrderNumber()!=null) {
+                var existing=orderRepository.findByOrderNumber(quote.getUsedOrderNumber()).orElseThrow();
+                var payment=paymentRepository.findByOrderIdForUpdate(existing.getId()).orElseThrow();
+                if(payment.getPaymentMethod()!=request.paymentMethod()) throw new BusinessException(ErrorCode.QUOTE_INVALID);
+                var attempt=paymentAttemptRepository.findByAttemptId(payment.getCurrentAttemptId()).orElseThrow();
+                return new CreateOrderResponse(existing.getOrderNumber(),payment.getPaymentId(),payment.getPaymentStatus(),attempt.getAttemptId(),attempt.getPgOrderId(),existing.getReservationExpiresAt(),com.kitschcatch.backend.domain.order.dto.PriceBreakdown.from(existing.getPricing()));
+            }
+        }
+        if (inactiveSeller) throw new BusinessException(ErrorCode.INVALID_AUTH_TOKEN);
+        Post post = postRepository.findByIdForUpdate(request.postId())
 			.orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
 		if (!post.getUser().getId().equals(sellerId)) throw new BusinessException(ErrorCode.POST_NOT_FOUND);
 		if (post.getDeletedAt() != null) {
@@ -88,13 +115,23 @@ public class OrderService {
 
 		validatePostOnSale(post);
 		validateNotSeller(userId, post);
-		validateAmount(request.amount(), post.getPrice());
+		if(quote==null) {
+            if(quoteRequired || post.getShippingAmount()!=null) throw new BusinessException(ErrorCode.QUOTE_REQUIRED);
+            validateAmount(request.amount(), post.getPrice());
+        }
 		if (post.getActiveOrderNumber() != null || orderRepository.existsByPostIdAndOrderStatusIn(
 			post.getId(), List.of(OrderStatus.PENDING, OrderStatus.PAID))) {
 			throw new BusinessException(ErrorCode.POST_TRANSACTION_IN_PROGRESS);
 		}
 
-		PurchaseOrder order = orderRepository.save(PurchaseOrder.builder()
+		if(shippingAddressRequired && request.shippingAddressId()==null) throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        var shippingAddress=request.shippingAddressId()==null?null:new com.kitschcatch.backend.domain.order.entity.OrderShippingAddress(addresses.forOrder(userId,request.shippingAddressId()));
+        if(quote!=null && (quote.getExpiresAt().isBefore(LocalDateTime.now())
+            || !quote.getPricing().getProductAmount().equals(post.getPrice())
+            || !quote.getPricing().getShippingAmount().equals(ShippingPolicy.AMOUNT)
+            || !com.kitschcatch.backend.domain.order.entity.OrderPricing.POLICY.equals(quote.getPricing().getPolicy())
+            || !quote.getAddressUpdatedAt().equals(addresses.forOrder(userId,request.shippingAddressId()).getUpdatedAt()))) throw new BusinessException(ErrorCode.QUOTE_INVALID);
+        PurchaseOrder order = PurchaseOrder.builder()
 			.orderNumber(generateId("ORD"))
 			.user(buyer)
 			.post(post)
@@ -102,8 +139,11 @@ public class OrderService {
 			.pgProvider(PgProvider.TOSS_PAYMENTS)
 			.orderStatus(OrderStatus.PENDING)
 			.reservationExpiresAt(LocalDateTime.now().plus(reservationProperties.reservationTtl()))
-			.build());
-		post.reserve(order.getOrderNumber());
+			.build();
+		order.captureShippingAddress(shippingAddress);
+        if(quote!=null) {order.capturePricing(quote.getPricing(),quote.getId());quote.consume(order.getOrderNumber());}
+        order = orderRepository.save(order);
+        post.reserve(order.getOrderNumber());
 		Payment payment = paymentRepository.save(Payment.builder()
 			.paymentId(generateId("PAY"))
 			.order(order)
@@ -115,7 +155,7 @@ public class OrderService {
 
 		return new CreateOrderResponse(order.getOrderNumber(), payment.getPaymentId(), payment.getPaymentStatus(),
 			attempt == null ? null : attempt.getAttemptId(), attempt == null ? null : attempt.getPgOrderId(),
-			order.getReservationExpiresAt());
+			order.getReservationExpiresAt(),com.kitschcatch.backend.domain.order.dto.PriceBreakdown.from(order.getPricing()));
 	}
 
 	private PaymentAttempt prepareInitialAttempt(Payment payment) {

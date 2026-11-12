@@ -1,12 +1,15 @@
-// 인증된 사용자를 위한 전국·주변·상세 매장 조회 API와 입력 오류를 제공한다.
+// 인증된 사용자를 위한 전국·주변·상세·추천 매장 조회 API를 제공한다.
 package com.kitschcatch.backend.domain.store.controller;
 
 import com.kitschcatch.backend.domain.store.dto.NearbyStorePageResponse;
 import com.kitschcatch.backend.domain.store.dto.StoreDetailResponse;
 import com.kitschcatch.backend.domain.store.dto.StorePageResponse;
+import com.kitschcatch.backend.domain.store.dto.StoreRecommendationResponse;
 import com.kitschcatch.backend.domain.store.service.NearbyStoreQuery;
 import com.kitschcatch.backend.domain.store.service.NearbyStoreService;
 import com.kitschcatch.backend.domain.store.service.StorePageQuery;
+import com.kitschcatch.backend.domain.store.service.StoreRecommendationQuery;
+import com.kitschcatch.backend.domain.store.service.StoreRecommendationService;
 import com.kitschcatch.backend.domain.store.service.StoreService;
 import com.kitschcatch.backend.global.exception.ErrorCode;
 import com.kitschcatch.backend.global.security.AuthenticatedUser;
@@ -34,10 +37,13 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class StoreController {
     private final StoreService storeService;
     private final NearbyStoreService nearbyStoreService;
+    private final StoreRecommendationService recommendations;
 
-    public StoreController(StoreService storeService, NearbyStoreService nearbyStoreService) {
+    public StoreController(StoreService storeService, NearbyStoreService nearbyStoreService,
+                           StoreRecommendationService recommendations) {
         this.storeService = storeService;
         this.nearbyStoreService = nearbyStoreService;
+        this.recommendations = recommendations;
     }
 
     @GetMapping
@@ -74,7 +80,7 @@ public class StoreController {
     }
 
     @GetMapping("/{storeId}")
-    @Operation(summary = "매장 상세 및 운영 정보 조회", description = "favorited는 요청 사용자의 관심 여부입니다. 영업시간은 월요일부터 정렬합니다. 미등록은 빈 배열, 휴무일은 closed=true와 null 시각입니다. closeTime이 openTime 이하이면 다음 날 종료(같으면 24시간)입니다. phone 미등록은 null입니다.")
+    @Operation(summary = "매장 상세 및 운영 정보 조회", description = "favorited는 요청 사용자의 관심 여부입니다. 영업시간은 월요일부터 정렬합니다. 미등록은 빈 배열, 휴무일은 closed=true와 null 시각입니다. closeTime이 openTime 이하이면 다음 날 종료(같으면 24시간)입니다. 소개와 대표 사진 미등록은 null, 사진 미등록은 빈 배열입니다. 사진 URL은 임시 GET 서명입니다. 미확인 편의시설은 UNKNOWN입니다. phone 미등록은 null입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "매장 상세 조회 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_002: 매장 ID 형식·범위 오류")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "STORE_001: 매장을 찾을 수 없음")
@@ -83,6 +89,23 @@ public class StoreController {
         @Parameter(schema = @Schema(minimum = "1")) @PathVariable long storeId
     ) {
         return ApiResponse.success(storeService.detail(user.userId(), storeId));
+    }
+
+    @GetMapping("/{storeId}/recommendations")
+    @Operation(summary = "선택한 매장 주변의 다른 매장 추천", description = "선택한 매장의 저장 좌표를 기준으로 조회하며 기준 매장은 제외합니다. 구면 직선거리, ID 순으로 정렬합니다. distanceMeters는 미터 반올림 값입니다. favorited는 요청 사용자의 관심 여부입니다. 기본 반경은 5km, 기본 최대 개수는 5개입니다. 후보가 없으면 stores가 빈 배열입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "추천 매장 조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "COMMON_002: 매장 ID 오류. STORE_002: 반경 오류. COMMON_001: 개수 제한 오류")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "STORE_001: 기준 매장을 찾을 수 없음")
+    public ApiResponse<StoreRecommendationResponse> recommendations(
+        @AuthenticationPrincipal AuthenticatedUser user,
+        @Parameter(schema = @Schema(minimum = "1")) @PathVariable long storeId,
+        @Parameter(schema = @Schema(allowableValues = {"1", "3", "5"}, defaultValue = "5"))
+        @RequestParam(defaultValue = "5") int radiusKm,
+        @Parameter(schema = @Schema(minimum = "1", maximum = "10", defaultValue = "5"))
+        @RequestParam(defaultValue = "5") int limit
+    ) {
+        return ApiResponse.success(recommendations.recommend(user.userId(), storeId,
+            new StoreRecommendationQuery(radiusKm, limit)));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -98,7 +121,7 @@ public class StoreController {
     private ErrorCode parameterError(String name) {
         return switch (name) {
             case "latitude", "longitude", "radiusKm" -> ErrorCode.STORE_QUERY_INVALID;
-            case "page", "size", "region" -> ErrorCode.INVALID_INPUT_VALUE;
+            case "page", "size", "region", "limit" -> ErrorCode.INVALID_INPUT_VALUE;
             default -> ErrorCode.BAD_REQUEST;
         };
     }

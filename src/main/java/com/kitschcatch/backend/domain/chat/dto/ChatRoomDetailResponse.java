@@ -1,6 +1,7 @@
 package com.kitschcatch.backend.domain.chat.dto;
 
 import com.kitschcatch.backend.domain.chat.entity.ChatRoom;
+import com.kitschcatch.backend.domain.block.service.UserInteractionPolicy.Status;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "채팅방 상세 조회 응답")
@@ -19,18 +20,20 @@ public record ChatRoomDetailResponse(
                 description = "판매 게시글 대표 이미지 S3 GET 서명 URL. 기본 15분 유효하며 만료되면 채팅방 상세를 다시 조회합니다.",
                 example = "https://example-bucket.s3.ap-northeast-2.amazonaws.com/posts/1/thumbnail.png?X-Amz-Signature=..."
         )
-        String postThumbnailImageUrl
+        String postThumbnailImageUrl,
+        boolean blockedByMe,
+        boolean canSendMessage
 ) {
 
     public static ChatRoomDetailResponse from(
             ChatRoom chatRoom,
-            String postThumbnailImageUrl
+            String postThumbnailImageUrl, Status status, boolean opponentActive
     ) {
         return new ChatRoomDetailResponse(
                 chatRoom.getId(),
                 chatRoom.getPost().getId(),
                 chatRoom.getPost().getTitle(),
-                postThumbnailImageUrl
+                postThumbnailImageUrl, status.blockedByMe(), status.allowed() && opponentActive
         );
     }
 }

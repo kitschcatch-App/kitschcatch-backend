@@ -1,5 +1,7 @@
 // 내부 정산 실행자의 요청을 직렬화하고 외부 지급 결과를 검증해 저장한다.
 package com.kitschcatch.backend.domain.order.settlement;
+import com.kitschcatch.backend.domain.notification.NotificationEvents.TradeChanged;
+import com.kitschcatch.backend.domain.notification.NotificationType;
 import com.kitschcatch.backend.domain.order.dto.SettlementResponse;
 import com.kitschcatch.backend.domain.order.entity.*;
 import com.kitschcatch.backend.domain.order.repository.PaymentRepository;
@@ -7,14 +9,17 @@ import com.kitschcatch.backend.domain.order.service.OrderAccessService;
 import com.kitschcatch.backend.global.exception.*;
 import java.math.BigInteger;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service @RequiredArgsConstructor
 public class SettlementTransactionService {
     private final OrderAccessService access;
+    private final ApplicationEventPublisher notifications;
     private final PaymentRepository payments;
     private final SettlementProperties properties;
     private final com.kitschcatch.backend.domain.order.repository.SettlementRecipientRepository recipients;
+    public record Submitted(String settlementId) {}
     public record Prepared(SettlementGateway.Command command, boolean request) {}
     @Transactional
     public Prepared prepare(long userId,String number,boolean providerConfigured) {
@@ -25,36 +30,49 @@ public class SettlementTransactionService {
             throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
         var s=o.getSettlement();
         if(s.getStatus()==OrderSettlement.Status.COMPLETED) return null;
-        if(!providerConfigured || properties.feeBasisPoints()==null) throw new BusinessException(ErrorCode.SETTLEMENT_NOT_CONFIGURED);
+        if(!providerConfigured || (o.getPricing()==null && properties.feeBasisPoints()==null)) throw new BusinessException(ErrorCode.SETTLEMENT_NOT_CONFIGURED);
         boolean request=s.getStatus()==OrderSettlement.Status.WAITING;
         if(request) {
-            long fee=s.getFee()!=null?s.getFee():BigInteger.valueOf(o.getAmount()).multiply(BigInteger.valueOf(properties.feeBasisPoints()))
+            long fee=s.getFee()!=null?s.getFee():o.getPricing()!=null?o.getPricing().getSellerFeeAmount():BigInteger.valueOf(o.getAmount()).multiply(BigInteger.valueOf(properties.feeBasisPoints()))
                 .divide(BigInteger.valueOf(10000)).longValueExact();
+            long payout=o.getPricing()==null?o.getAmount()-fee:o.getPricing().getSellerPayoutAmount();
             var recipient=recipients.findById(o.getSellerId()).orElseThrow(()->new BusinessException(ErrorCode.SETTLEMENT_RECIPIENT_NOT_FOUND));
-            if(o.getAmount()-fee<=0 || o.getAmount()-fee>=1_000_000_000L) throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
-            s.start(o.getAmount()-fee,fee,s.getDestination()==null?recipient.getProviderSellerId():s.getDestination());
+            if(payout<=0 || payout>=1_000_000_000L) throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
+            s.start(payout,fee,s.getDestination()==null?recipient.getProviderSellerId():s.getDestination());
+            notifications.publishEvent(new Submitted(s.getSettlementId()));
         }
         return new Prepared(new SettlementGateway.Command(s.getSettlementId(),o.getSellerId(),s.getAmount(),s.getFee(),"KRW",s.getDestination(),s.getProviderReference()),request);
     }
     @Transactional
     public void finish(long userId,String number,SettlementGateway.Result result) {
         var o=access.operatorOrder(userId,number,properties.operatorUserIds(),true);
+        applyResult(o, result);
+    }
+
+    void applyResult(PurchaseOrder o, SettlementGateway.Result result) {
         var s=o.getSettlement();
         if(s==null || s.getStatus()==OrderSettlement.Status.WAITING) throw new BusinessException(ErrorCode.SETTLEMENT_INVALID_STATE);
         if(s.getStatus()==OrderSettlement.Status.COMPLETED) return;
+        boolean verifiedFailure=s.getStatus()==OrderSettlement.Status.FAILED && s.getProviderReference()!=null;
         if(result==null || !s.getSettlementId().equals(result.settlementId()) || !s.getAmount().equals(result.amount())
             || !"KRW".equals(result.currency()) || result.status()==null || s.getDestination()==null
             || !s.getDestination().equals(result.destination())
-            || (s.getProviderReference()!=null && !s.getProviderReference().equals(result.providerReference()))) { s.unknown(); return; }
-        if(result.providerReference()!=null && !result.providerReference().matches("[A-Za-z0-9_-]{1,35}")) { s.unknown(); return; }
+            || (s.getProviderReference()!=null && !s.getProviderReference().equals(result.providerReference()))) { if (!verifiedFailure) s.unknown(); return; }
+        if(result.providerReference()!=null && !result.providerReference().matches("[A-Za-z0-9_-]{1,35}")) { if (!verifiedFailure) s.unknown(); return; }
         s.recordReference(result.providerReference());
         switch(result.status()) {
-            case PENDING -> s.pending();
-            case FAILED -> s.failed();
+            case PENDING -> { if (!verifiedFailure) s.pending(); }
+            case FAILED -> {
+                s.failed();
+                if (!verifiedFailure && result.providerReference()!=null) {
+                    notifications.publishEvent(new TradeChanged(o, NotificationType.SETTLEMENT_FAILED));
+                }
+            }
             case COMPLETED -> {
                 if(result.providerReference()==null || result.providerReference().isBlank() || result.providerReference().length()>200
-                    || result.settledAt()==null) { s.unknown(); return; }
+                    || result.settledAt()==null) { if (!verifiedFailure) s.unknown(); return; }
                 s.complete(result.providerReference(),result.settledAt());
+                notifications.publishEvent(new TradeChanged(o, NotificationType.SETTLEMENT_COMPLETED));
             }
         }
     }
@@ -66,7 +84,8 @@ public class SettlementTransactionService {
     @Transactional
     public void unknown(long userId,String number) {
         var o=access.operatorOrder(userId,number,properties.operatorUserIds(),true);
-        if(o.getSettlement()!=null && o.getSettlement().getStatus()!=OrderSettlement.Status.WAITING) o.getSettlement().unknown();
+        if(o.getSettlement()!=null && o.getSettlement().getStatus()!=OrderSettlement.Status.WAITING
+            && o.getSettlement().getStatus()!=OrderSettlement.Status.FAILED) o.getSettlement().unknown();
     }
     @Transactional(readOnly=true)
     public SettlementResponse get(long userId,String number) {

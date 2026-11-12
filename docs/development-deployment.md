@@ -1,5 +1,7 @@
 # 개발 서버 CI/CD
 
+시드니 개발 EC2의 Compose 배포는 별도 수동 워크플로를 사용한다. 커밋 지정, 스키마 검사, HTTPS 검증과 복구 절차는 [시드니 개발 EC2 배포 문서](sydney-ec2-deployment.md)에 있다.
+
 `.github/workflows/ci-cd.yml`은 `develop` 대상 PR과 `develop` 푸시에서 Java 21 빌드 및 테스트를 실행한다. CI는 폐기 가능한 PostgreSQL 14 서비스 컨테이너를 사용해 `ISSUE27/31/39/41/43/45/47~57` 전용 테스트도 실행한다. 기본 스키마를 쓰는 27·53번 테스트에는 각각 별도 데이터베이스를 사용한다. 외부 S3와 Toss는 CI에서 실제 호출하지 않는다.
 
 `develop` 푸시 또는 `develop`에서 수동 실행한 빌드가 통과하면 `DEV_DEPLOY_ENABLED=true`일 때만 `development` 환경의 ECS 서비스에 배포한다. 새 커밋의 Docker 이미지를 ECR에 올리고 현재 서비스의 태스크 정의에서 컨테이너 이미지만 바꾼 새 리비전을 등록한 뒤 서비스가 안정화될 때까지 기다린다. GitHub OIDC로 단기 AWS 자격 증명을 얻으며 장기 AWS 액세스 키는 GitHub에 저장하지 않는다.

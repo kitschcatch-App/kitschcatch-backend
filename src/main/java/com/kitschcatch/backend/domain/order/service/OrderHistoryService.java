@@ -10,6 +10,7 @@ import com.kitschcatch.backend.domain.post.service.PostImageStorage;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
 import com.kitschcatch.backend.global.exception.ErrorCode;
+import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +22,14 @@ public class OrderHistoryService {
     private final OrderHistoryRepository repository;
     private final UserRepository users;
     private final PostImageStorage images;
+    private final RefundImageService refundImages;
 
-    public OrderHistoryService(OrderHistoryRepository repository, UserRepository users, PostImageStorage images) {
+    public OrderHistoryService(OrderHistoryRepository repository, UserRepository users, PostImageStorage images,
+                               RefundImageService refundImages) {
         this.repository = repository;
         this.users = users;
         this.images = images;
+        this.refundImages = refundImages;
     }
 
     public OrderDetailResponse detail(long userId, String orderNumber) {
@@ -40,7 +44,10 @@ public class OrderHistoryService {
             throw new BusinessException(ErrorCode.ORDER_ACCESS_DENIED);
         }
         String key = order.getPostThumbnailKey();
-        return OrderDetailResponse.from(row, key == null ? null : images.imageUrl(key));
+        boolean includeAddress=order.getUser().getId().equals(userId)
+            || (row.payment()!=null && row.payment().getApprovedAt()!=null);
+        return OrderDetailResponse.from(row, key == null ? null : images.imageUrl(key), includeAddress,
+            order.getRefund() == null ? List.of() : refundImages.responseImages(order));
     }
 
     public OrderHistoryPageResponse<PurchaseOrderSummaryResponse> purchases(long userId, OrderHistoryQuery query) {

@@ -60,7 +60,7 @@ class Handler(BaseHTTPRequestHandler):
                 "대상 결제와 PG 승인 요청이 일치하지 않습니다.")
         pg.posts += 1
         pg.effect = dict(paymentKey=PAYMENT_KEY, orderId=request["orderId"],
-                         totalAmount=AMOUNT, status="DONE")
+                         totalAmount=AMOUNT, status="DONE", method="CARD", card={"cardType": "CREDIT"})
         pg.trace.event("approval_effect_committed", worker=pg.worker, **pg.effect)
         # 최초 승인 응답을 보내지 않아 복구 후보를 만든다.
 

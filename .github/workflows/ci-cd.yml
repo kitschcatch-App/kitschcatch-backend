@@ -44,26 +44,18 @@ jobs:
         run: |
           docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci27
           docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci53
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres kitschcatch_ci93
       - name: Run tests and build
         env:
           CI_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci
           CI_TEST_DB_USER: postgres
           CI_TEST_DB_PASSWORD: postgres
         run: |
-          for issue in 31 39 41 43 45 47 48 49 50 51 52 54 55 56 57 79; do
-            export "ISSUE${issue}_TEST_DB_URL=$CI_TEST_DB_URL"
-            export "ISSUE${issue}_TEST_DB_USERNAME=$CI_TEST_DB_USER"
-            export "ISSUE${issue}_TEST_DB_PASSWORD=$CI_TEST_DB_PASSWORD"
-          done
-          export ISSUE27_TEST_DB_URL=jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci27
-          export ISSUE27_TEST_DB_DRIVER=org.postgresql.Driver
-          export ISSUE27_TEST_DB_USER="$CI_TEST_DB_USER"
-          export ISSUE27_TEST_DB_PASSWORD="$CI_TEST_DB_PASSWORD"
-          export ISSUE53_TEST_DB_URL=jdbc:postgresql://127.0.0.1:5432/kitschcatch_ci53
-          export ISSUE53_TEST_DB_USER="$CI_TEST_DB_USER"
-          export ISSUE53_TEST_DB_PASSWORD="$CI_TEST_DB_PASSWORD"
-          export ISSUE54_TEST_DB_USER="$CI_TEST_DB_USER"
-          ./gradlew clean build --no-daemon --console=plain
+          bash .github/scripts/build.sh
+      - name: Verify Sydney deployment program
+        run: |
+          bash deploy/sydney/check-contract.sh
+          python3 -m unittest discover -s deploy/sydney -p "test_*.py"
       - name: Publish test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

@@ -64,6 +64,13 @@ public class PushDelivery {
     lastCode = "OWNERSHIP_CHANGED";
   }
 
+  public void skipBlocked() {
+    if (status == Status.PENDING) {
+      status = Status.SKIPPED;
+      lastCode = "USER_BLOCKED";
+    }
+  }
+
   public void finish(PushGateway.Result result) {
     attempts++;
     lastCode = result.code();
