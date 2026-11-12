@@ -104,11 +104,14 @@ class Database:
     def query(self, sql):
         return self.psql("-c", sql)
 
-    def fixture(self):
+    def install_attempt_indexes(self):
         migration = (ROOT / "src/main/resources/db/manual/029_payment_recovery.sql").read_text()
         indexes = re.findall(r"CREATE UNIQUE INDEX uk_payment_attempts_[^;]+;", migration)
         require(len(indexes) == 3, "029의 결제 시도 부분 유일 인덱스를 찾지 못했습니다.")
         self.query("\n".join(indexes))
+
+    def fixture(self):
+        self.install_attempt_indexes()
         ids = self.query("""
             INSERT INTO users (nickname, auth_provider, provider_user_id, created_at)
             VALUES ('seller', 'KAKAO', 'seller', now()), ('buyer', 'KAKAO', 'buyer', now())
@@ -295,7 +298,7 @@ class PaymentGateway:
 
 
 @contextmanager
-def app(args, db, gateway_url, secret, trace, phase, ddl):
+def app(args, db, gateway_url, secret, trace, phase, ddl, *, recovery_enabled=True):
     log_path = trace.directory / (phase + ".log")
     jvm_options = ["-XX:ActiveProcessorCount=2", "-Xmx512m"]
     if args.scenario == "A4" and ddl == "create":
@@ -313,7 +316,7 @@ def app(args, db, gateway_url, secret, trace, phase, ddl):
              f"?currentSchema={db.schema}",
              f"--spring.datasource.username={args.db_user}",
              f"--spring.jpa.hibernate.ddl-auto={ddl}", "--kakao.oauth.native-app-key=a1-test",
-             f"--app.jwt.secret={secret}", "--app.payments.recovery.enabled=true",
+             f"--app.jwt.secret={secret}", f"--app.payments.recovery.enabled={str(recovery_enabled).lower()}",
              f"--app.payments.recovery.scan-delay={args.scan_seconds if ddl == 'validate' or args.scenario in ('A2', 'B') else 30}s",
              f"--app.toss-payments.read-timeout={READ_TIMEOUT}s",
              "--app.toss-payments.secret-key=a1-test", f"--app.toss-payments.base-url={gateway_url}",
