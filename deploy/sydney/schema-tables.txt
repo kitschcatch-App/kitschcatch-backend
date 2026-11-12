@@ -5,6 +5,7 @@ login_nonces
 notifications
 order_quotes
 orders
+payment_webhook_events
 payments
 post_favorites
 post_images

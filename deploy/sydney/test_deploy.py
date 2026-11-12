@@ -62,6 +62,30 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(self.server.runtime.read_text(), self.original_env)
         self.recreate.assert_not_called()
 
+    def test_missing_webhook_constraint_rejects_before_release_switch(self):
+        contract = Path(__file__).with_name("schema-contract.jsonl").read_text()
+        (self.artifact / "schema-contract.jsonl").write_text(contract)
+        self.manifest["schemaSha256"] = sha256(self.artifact / "schema-contract.jsonl")
+        write_json(self.artifact / "release.json", self.manifest)
+        write_json(self.job / "request.json",
+                   {"mode": "deploy", "source": "local", "manifestSha": sha256(self.artifact / "release.json")})
+        (self.root / "deploy/catalog.sql").write_text("catalog")
+        self.server.config["postgresImage"] = "test-postgres"
+        constraint = "uk_payment_webhook_events_event_type_hash"
+        actual = "\n".join(line for line in contract.splitlines() if json.loads(line)[2] != constraint)
+        self.schema_check.side_effect = lambda path: Server.schema_check(self.server, path)
+
+        with patch("deploy.execute", return_value=actual), patch.object(self.server, "wait_for_confirmation"):
+            self.server.run(self.job)
+
+        state = self.server.state(self.job)
+        self.assertEqual(state["status"], "REJECTED")
+        self.assertIn(f"constraint/payment_webhook_events/{constraint}", state["error"])
+        self.assertEqual(self.server.runtime.read_text(), self.original_env)
+        self.current_release.assert_not_called()
+        self.recreate.assert_not_called()
+        self.assertFalse((self.server.releases / self.job.name).exists())
+
     def test_startup_failure_recreates_verified_previous_release(self):
         self.recreate.side_effect = [DeploymentError("HTTPS 실패"), None]
         self.server.run(self.job)
@@ -107,6 +131,49 @@ class DeploymentTests(unittest.TestCase):
         with patch("deploy.time.monotonic", return_value=100):
             with self.assertRaisesRegex(DeploymentError, "시간이 초과"):
                 self.server.wait_for_confirmation(self.job)
+
+class PaymentWebhookSchemaTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        (root / "deploy").mkdir()
+        write_json(root / "deploy/config.json", {"postgresImage": "test-postgres"})
+        (root / "deploy/catalog.sql").write_text("catalog")
+        self.server = Server(root)
+        self.contract = Path(__file__).with_name("schema-contract.jsonl")
+        self.rows = [json.loads(line) for line in self.contract.read_text().splitlines()]
+        self.constraint = ["constraint", "payment_webhook_events",
+                           "uk_payment_webhook_events_event_type_hash", "UNIQUE (event_type, event_hash)", True]
+
+    def test_packaged_contract_accepts_migrated_inbox_and_queries_its_table(self):
+        self.assertIn(self.constraint, self.rows)
+        tables = Path(__file__).with_name("schema-tables.txt").read_text().splitlines()
+        self.assertIn("payment_webhook_events", tables)
+        with patch("deploy.execute", return_value=self.contract.read_text()) as query:
+            self.server.schema_check(self.contract)
+        query.assert_called_once()
+        self.assertIn("payment_webhook_events", query.call_args.args[0][-1].split(","))
+
+    def test_missing_inbox_table_is_rejected(self):
+        actual = "\n".join(json.dumps(row) for row in self.rows if row[1] != "payment_webhook_events")
+        with patch("deploy.execute", return_value=actual):
+            with self.assertRaisesRegex(DeploymentError, "table/payment_webhook_events"):
+                self.server.schema_check(self.contract)
+
+    def test_missing_or_different_unique_constraint_is_rejected(self):
+        remaining = [row for row in self.rows if row[:3] != self.constraint[:3]]
+        for definition in (None, "UNIQUE (event_type)"):
+            with self.subTest(definition=definition):
+                rows = remaining.copy()
+                if definition is not None:
+                    rows.append([*self.constraint[:3], definition, True])
+                actual = "\n".join(json.dumps(row) for row in rows)
+                with patch("deploy.execute", return_value=actual):
+                    with self.assertRaisesRegex(DeploymentError,
+                                                "constraint/payment_webhook_events/" + self.constraint[2]):
+                        self.server.schema_check(self.contract)
+
 
 class NotificationSchemaCompatibilityTests(unittest.TestCase):
     def setUp(self):

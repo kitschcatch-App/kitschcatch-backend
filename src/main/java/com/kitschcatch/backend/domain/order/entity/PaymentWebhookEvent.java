@@ -21,7 +21,10 @@ import org.hibernate.annotations.CreationTimestamp;
 @Entity
 @Table(
 	name = "payment_webhook_events",
-	uniqueConstraints = @UniqueConstraint(name = "uk_payment_webhook_events_transmission_id", columnNames = "transmission_id"),
+	uniqueConstraints = {
+		@UniqueConstraint(name = "uk_payment_webhook_events_transmission_id", columnNames = "transmission_id"),
+		@UniqueConstraint(name = "uk_payment_webhook_events_event_type_hash", columnNames = {"event_type", "event_hash"})
+	},
 	indexes = @Index(name = "idx_payment_webhook_events_processing", columnList = "processing_status,next_process_at,id")
 )
 @Getter

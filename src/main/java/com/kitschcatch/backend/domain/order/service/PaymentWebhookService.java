@@ -77,18 +77,12 @@ public class PaymentWebhookService {
 			throw new BusinessException(ErrorCode.PAYMENT_WEBHOOK_INVALID);
 		}
 
-		String eventHash = eventHash(request);
-		if (eventRepository.findByTransmissionId(transmissionId).isPresent()
-			|| eventRepository.findByEventTypeAndEventHash(request.eventType(), eventHash).isPresent()) {
-			return;
-		}
-
 		TossPaymentWebhookRequest.TossPaymentWebhookData data = request.data();
 		boolean supported = PAYMENT_STATUS_CHANGED.equals(request.eventType());
 		PaymentWebhookEvent event = PaymentWebhookEvent.builder()
 			.transmissionId(transmissionId)
 			.eventType(request.eventType())
-			.eventHash(eventHash)
+			.eventHash(eventHash(request))
 			.pgOrderId(data.orderId())
 			.paymentKey(data.paymentKey())
 			.pgStatus(data.status())
@@ -99,7 +93,7 @@ public class PaymentWebhookService {
 		if (!supported) {
 			event.ignore("지원하지 않는 웹훅 이벤트입니다.");
 		}
-		eventRepository.save(event);
+		eventRepository.insertIfAbsent(event);
 	}
 
 	private String eventHash(TossPaymentWebhookRequest request) {
