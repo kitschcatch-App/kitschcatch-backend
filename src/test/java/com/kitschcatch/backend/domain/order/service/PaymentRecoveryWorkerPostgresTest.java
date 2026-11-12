@@ -5,7 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.kitschcatch.backend.domain.notification.NotificationEvents;
+import com.kitschcatch.backend.domain.notification.NotificationService;
+import com.kitschcatch.backend.domain.order.controller.PaymentWebhookController;
 import com.kitschcatch.backend.domain.order.dto.*;
 import com.kitschcatch.backend.domain.order.entity.*;
 import com.kitschcatch.backend.domain.order.repository.*;
@@ -15,19 +21,27 @@ import com.kitschcatch.backend.domain.post.repository.PostRepository;
 import com.kitschcatch.backend.domain.user.entity.*;
 import com.kitschcatch.backend.domain.user.repository.UserRepository;
 import com.kitschcatch.backend.global.exception.BusinessException;
+import com.kitschcatch.backend.global.exception.GlobalExceptionHandler;
+import com.kitschcatch.backend.global.response.ResponseStatusSetterAdvice;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +49,8 @@ import org.springframework.transaction.annotation.Transactional;
 @DataJpaTest(showSql = false, properties = {"spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({OrderService.class, OrderReservationService.class, PaymentTransactionService.class,
-    PaymentService.class, PaymentRecoveryService.class, PaymentWebhookService.class})
+    PaymentService.class, PaymentRecoveryService.class, PaymentWebhookService.class,
+    NotificationEvents.class, NotificationService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentRecoveryWorkerPostgresTest {
     static Issue54PostgresDatabase database;
@@ -74,7 +89,7 @@ class PaymentRecoveryWorkerPostgresTest {
     @BeforeEach
     void fixture() throws Exception {
         reset(pg);
-        jdbc.execute("TRUNCATE users, payment_webhook_events RESTART IDENTITY CASCADE");
+        jdbc.execute("TRUNCATE users, payment_webhook_events, notifications, push_deliveries RESTART IDENTITY CASCADE");
         try (var stream = getClass().getResourceAsStream("/db/manual/029_payment_recovery.sql")) {
             String sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             String indexes = sql.substring(sql.indexOf("CREATE UNIQUE INDEX uk_payment_attempts_confirm_pg_order_id"),
@@ -279,6 +294,78 @@ class PaymentRecoveryWorkerPostgresTest {
         assertThat(payments.getPayment(buyerId, nextOrder.paymentId()).status()).isEqualTo(PaymentStatus.SUCCESS);
         verify(pg, times(1)).getPayment("key");
         verify(pg, times(1)).getPayment("key-2");
+    }
+
+
+    @ParameterizedTest(name = "동일 전송 ID 여부: {0}")
+    @ValueSource(booleans = {true, false})
+    void simultaneousRedeliveriesAcknowledgeAndProcessOneInboxRow(boolean sameTransmission) throws Exception {
+        start();
+        var mvc = MockMvcBuilders.standaloneSetup(new PaymentWebhookController(webhooks))
+            .setControllerAdvice(new ResponseStatusSetterAdvice(), new GlobalExceptionHandler())
+            .build();
+        var delivery = """
+            {"eventType":"PAYMENT_STATUS_CHANGED","createdAt":"2026-10-01T12:00:00+09:00",
+             "data":{"paymentKey":"key","orderId":"%s","totalAmount":12000,"status":"DONE"}}
+            """.formatted(order.pgOrderId());
+        var ready = new CountDownLatch(2);
+        var release = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> receiveTogether(mvc, "delivery-1", delivery, ready, release));
+            var second = executor.submit(() -> receiveTogether(mvc, sameTransmission ? "delivery-1" : "delivery-2",
+                delivery, ready, release));
+            try {
+                assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                release.countDown();
+            }
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+        }
+
+        assertThat(events.findAll()).singleElement().satisfies(inbox -> {
+            assertThat(inbox.getProcessingStatus()).isEqualTo(PaymentWebhookProcessingStatus.RECEIVED);
+            assertThat(inbox.getReceiveCount()).isZero();
+        });
+        verifyNoInteractions(pg);
+        when(pg.getPayment("key")).thenReturn(result("DONE"));
+        var worker = webhookWorker();
+        worker.processWebhooks();
+
+        deliver(mvc, "delivery-replayed", delivery);
+        worker.processWebhooks();
+        assertThat(events.findAll()).singleElement().satisfies(inbox -> {
+            assertThat(inbox.getProcessingStatus()).isEqualTo(PaymentWebhookProcessingStatus.PROCESSED);
+            assertThat(inbox.getReceiveCount()).isEqualTo(1);
+            assertThat(inbox.getProcessedAt()).isNotNull();
+            assertThat(inbox.getLeaseToken()).isNull();
+        });
+        assertThat(payments.getPayment(buyerId, order.paymentId()).status()).isEqualTo(PaymentStatus.SUCCESS);
+        assertThat(orderRepository.findById(localOrderId()).orElseThrow().getOrderStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(posts.findById(postId).orElseThrow().getProductStatus()).isEqualTo(ProductStatus.SOLD_OUT);
+        assertThat(attempts.findByAttemptId(order.attemptId()).orElseThrow().getAttemptStatus())
+            .isEqualTo(PaymentAttemptStatus.SUCCEEDED);
+        assertThat(jdbc.queryForList("SELECT user_id FROM notifications WHERE type='PAYMENT_SUCCESS' AND target_id=?",
+            Long.class, order.orderId())).containsExactlyInAnyOrderElementsOf(List.of(buyerId, sellerId));
+        verify(pg).getPayment("key");
+        verifyNoMoreInteractions(pg);
+    }
+
+    private Void receiveTogether(MockMvc mvc, String transmissionId, String delivery,
+                                CountDownLatch ready, CountDownLatch release) throws Exception {
+        ready.countDown();
+        assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+        deliver(mvc, transmissionId, delivery);
+        return null;
+    }
+
+    private void deliver(MockMvc mvc, String transmissionId, String delivery) throws Exception {
+        mvc.perform(post("/api/payments/webhooks/toss")
+                .header("tosspayments-webhook-transmission-id", transmissionId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(delivery))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true));
     }
 
     PaymentRecoveryScheduler scheduler() {
